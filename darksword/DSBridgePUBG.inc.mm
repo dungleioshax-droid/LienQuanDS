@@ -862,17 +862,9 @@ static void ds_pubg_tick(void) {
         }
         seenPawns.push_back(veh);
 
-        // Check bHidden in AActor
-        uint8_t aHidden = ds_pubg_read_u8(veh + 0xE8ULL);
-        if (aHidden & 0x1) return;
-
         uint64_t rootComp = ds_pubg_read_ptr(veh + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(veh + 0x180ULL);
         if (!rootComp) return;
-
-        // Check bHiddenInGame in RootComponent
-        uint8_t cHidden = ds_pubg_read_u8(rootComp + 0x2DCULL);
-        if (cHidden & 0x2) return;
 
         DSPUBGVector rootLoc = {};
         if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) return;
@@ -974,42 +966,7 @@ static void ds_pubg_tick(void) {
         for (uint64_t seen : seenPawns) {
             if (seen == pawn) return;
         }
-
-        // Check bHidden in AActor
-        uint8_t aHidden = ds_pubg_read_u8(pawn + 0xE8ULL);
-        if (aHidden & 0x1) return;
-
-        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
-        if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
-        if (!rootComp) return;
-
-        // Check bHiddenInGame in RootComponent
-        uint8_t cHidden = ds_pubg_read_u8(rootComp + 0x2DCULL);
-        if (cHidden & 0x2) return;
-
-        // Verify ACharacter identity:
-        // In UE4 ACharacter, CapsuleComponent is at 0x520 and equals RootComponent.
-        // Mesh is at 0x510 and CharacterMovement is at 0x518.
-        uint64_t capsuleComp = ds_pubg_read_ptr(pawn + 0x520ULL);
-        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
-        uint64_t moveComp = ds_pubg_read_ptr(pawn + 0x518ULL);
-
-        bool isChar = (capsuleComp == rootComp && meshComp != 0 && moveComp != 0);
-        if (!isChar && !psHint) {
-            // Not a character! Check if this is a vehicle (ASTExtraVehicleBase)
-            uint64_t vehCommon = ds_pubg_read_ptr(pawn + 0xC08ULL);
-            uint8_t vehType = ds_pubg_read_u8(pawn + 0x70CULL);
-            if (vehCommon && ds_pubg_valid(vehCommon) && vehType > 0) {
-                processVehicle(pawn, vehCommon, vehType);
-            }
-            return; // Discard non-characters and non-vehicles (props, loot, etc.)
-        }
-
         seenPawns.push_back(pawn);
-
-        // Check dead state - STExtraCharacter.bDead at 0xE7C
-        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
-        if (isDead) return;
 
         // Team filter
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
@@ -1017,19 +974,25 @@ static void ds_pubg_tick(void) {
             return;
         }
 
-        // Health reading
+        // Dead check - STExtraCharacter.bDead at 0xE7C
+        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
+
+        // Health reading with resilient defaults
         float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
         float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
 
-        if (health <= 0.0f || isnan(health) || isinf(health)) {
-            return;
-        }
         if (healthMax < 10.0f || healthMax > 500.0f) {
             healthMax = 100.0f;
         }
-        if (health > healthMax) {
+        if (health <= 0.0f || health > healthMax || isnan(health) || isinf(health)) {
+            if (isDead) return;
             health = healthMax;
         }
+        if (isDead && health <= 0.0f) return;
+
+        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
+        if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
+        if (!rootComp) return;
 
         DSPUBGVector rootLoc = {};
         if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
@@ -1195,9 +1158,24 @@ static void ds_pubg_tick(void) {
             std::vector<uint64_t> levelActors(actorsCount, 0);
             if (ds_pubg_read(actorsData, levelActors.data(), actorsCount * sizeof(uint64_t))) {
                 for (uint32_t i = 0; i < actorsCount; i++) {
-                    uint64_t pawn = levelActors[i];
-                    if (pawn && ds_pubg_valid(pawn)) {
-                        processPawn(pawn, 0, false);
+                    uint64_t actor = levelActors[i];
+                    if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
+
+                    // 1. Vehicle detection via VehicleCommon (0xC08) & VehicleType (0x70C)
+                    uint64_t vehCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
+                    uint8_t vehType = ds_pubg_read_u8(actor + 0x70CULL);
+                    if (vehCommon && ds_pubg_valid(vehCommon) && vehType > 0) {
+                        processVehicle(actor, vehCommon, vehType);
+                        continue;
+                    }
+
+                    // 2. Character detection: Mesh component (0x510), PlayerState (0x4D0), or PlayerKey (0x980)
+                    uint64_t meshComp = ds_pubg_read_ptr(actor + kDSPUBGCharacterMeshOffset);
+                    uint64_t ps = ds_pubg_read_ptr(actor + 0x4D0ULL);
+                    uint32_t pkey = ds_pubg_read_u32(actor + kDSPUBGCharacterPlayerKeyOffset);
+
+                    if ((meshComp && ds_pubg_valid(meshComp)) || (ps && ds_pubg_valid(ps)) || (pkey > 0)) {
+                        processPawn(actor, ps, false);
                     }
                 }
             }
