@@ -610,7 +610,39 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     return true;
 }
 
-// Map D (Standard UE4 humanoid rig - verified 100% accurate for PUBG Mobile characters & training dummies):
+// Map G (ShadowTrackerExtra / PUBG Mobile 67-bone rig for Player & Bot):
+// 0: Head (8), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
+// 4: LShoulder (34), 5: LElbow (36), 6: LHand (37)
+// 7: RShoulder (13), 8: RElbow (15), 9: RHand (16)
+// 10: LHip (59), 11: LKnee (60), 12: LFoot (61)
+// 13: RHip (55), 14: RKnee (56), 15: RFoot (57)
+static const int kESPBoneMapG[16] = {
+    8, 5, 4, 1,
+    34, 36, 37,
+    13, 15, 16,
+    59, 60, 61,
+    55, 56, 57
+};
+
+// Map G_Clavicle (67-bone rig variant using clavicle indices 33 and 12):
+static const int kESPBoneMapG_Clavicle[16] = {
+    8, 5, 4, 1,
+    33, 36, 37,
+    12, 15, 16,
+    59, 60, 61,
+    55, 56, 57
+};
+
+// Map G_Head6 (67-bone rig variant with Head at bone 6):
+static const int kESPBoneMapG_Head6[16] = {
+    6, 5, 4, 1,
+    34, 36, 37,
+    13, 15, 16,
+    59, 60, 61,
+    55, 56, 57
+};
+
+// Map D (Standard UE4 humanoid rig - verified 100% accurate for training dummies / < 58 bones):
 // 0: Head (6), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
 // 4: LShoulder (8), 5: LElbow (9), 6: LHand (10)
 // 7: RShoulder (12), 8: RElbow (13), 9: RHand (14)
@@ -624,7 +656,7 @@ static const int kESPBoneMapD[16] = {
     19, 20, 21
 };
 
-// Map E (No-clavicle humanoid rig fallback):
+// Map E (No-clavicle humanoid rig fallback for < 58 bones):
 static const int kESPBoneMapE[16] = {
     6, 5, 4, 1,
     7, 8, 9,
@@ -633,7 +665,7 @@ static const int kESPBoneMapE[16] = {
     19, 20, 21
 };
 
-// Map A (UE4 alternative hand indices fallback):
+// Map A (UE4 alternative hand indices fallback for < 58 bones):
 static const int kESPBoneMapA[16] = {
     6, 5, 4, 1,
     7, 8, 10,
@@ -642,7 +674,7 @@ static const int kESPBoneMapA[16] = {
     19, 20, 21
 };
 
-// Map B (Extra spine bone rig fallback):
+// Map B (Extra spine bone rig fallback for < 58 bones):
 static const int kESPBoneMapB[16] = {
     7, 6, 5, 1,
     8, 9, 10,
@@ -1370,36 +1402,56 @@ static void ds_pubg_tick(void) {
                                 return sqrtf(dx * dx + dy * dy + dz * dz);
                             };
 
-                            // 1. Head (0) to Pelvis (3) distance: 45cm .. 120cm
+                            // 1. Head (0) to Pelvis (3) distance: 35cm .. 140cm
                             float hp = dist3d(j[0], j[3]);
-                            if (hp < 45.0f || hp > 120.0f) return false;
+                            if (hp < 35.0f || hp > 140.0f) return false;
 
-                            // 2. Shoulder separation: LShoulder (4) to RShoulder (7): 20cm .. 70cm
+                            // 2. Shoulder separation: LShoulder (4) to RShoulder (7): 15cm .. 80cm
                             float sh = dist3d(j[4], j[7]);
-                            if (sh < 20.0f || sh > 70.0f) return false;
+                            if (sh < 15.0f || sh > 80.0f) return false;
 
-                            // 3. Hip separation: LHip (10) to RHip (13): 10cm .. 50cm
+                            // 3. Hip separation: LHip (10) to RHip (13): 8cm .. 60cm
                             float hip = dist3d(j[10], j[13]);
-                            if (hip < 10.0f || hip > 50.0f) return false;
+                            if (hip < 8.0f || hip > 60.0f) return false;
 
-                            // 4. Arms & Legs plausible lengths (12cm .. 65cm)
+                            // 4. Arms & Legs plausible lengths (10cm .. 80cm)
                             float lArm = dist3d(j[4], j[5]);
                             float rArm = dist3d(j[7], j[8]);
-                            if (lArm < 12.0f || lArm > 65.0f || rArm < 12.0f || rArm > 65.0f) return false;
+                            if (lArm < 10.0f || lArm > 80.0f || rArm < 10.0f || rArm > 80.0f) return false;
 
                             float lLeg = dist3d(j[10], j[11]);
                             float rLeg = dist3d(j[13], j[14]);
-                            if (lLeg < 15.0f || lLeg > 75.0f || rLeg < 15.0f || rLeg > 75.0f) return false;
+                            if (lLeg < 10.0f || lLeg > 90.0f || rLeg < 10.0f || rLeg > 90.0f) return false;
 
                             return true;
                         };
 
-                        // Primary rig is verified Map D (exact match on dummy and standard UE4 humanoid characters)
-                        const int *bMap = kESPBoneMapD;
-                        if (!validateBoneMap(bMap)) {
-                            if (validateBoneMap(kESPBoneMapE)) bMap = kESPBoneMapE;
-                            else if (validateBoneMap(kESPBoneMapA)) bMap = kESPBoneMapA;
-                            else if (validateBoneMap(kESPBoneMapB)) bMap = kESPBoneMapB;
+                        // Select bone map based on rig size:
+                        // Player and Bot: 67-bone rig (needReadCount >= 58), Map G
+                        // Dummy: ~22-bone rig (needReadCount < 58), Map D
+                        const int *bMap = nullptr;
+                        if (needReadCount >= 58) {
+                            if (validateBoneMap(kESPBoneMapG)) {
+                                bMap = kESPBoneMapG;
+                            } else if (validateBoneMap(kESPBoneMapG_Clavicle)) {
+                                bMap = kESPBoneMapG_Clavicle;
+                            } else if (validateBoneMap(kESPBoneMapG_Head6)) {
+                                bMap = kESPBoneMapG_Head6;
+                            } else {
+                                bMap = kESPBoneMapG; // Guaranteed fallback for 67-bone character
+                            }
+                        } else {
+                            if (validateBoneMap(kESPBoneMapD)) {
+                                bMap = kESPBoneMapD;
+                            } else if (validateBoneMap(kESPBoneMapE)) {
+                                bMap = kESPBoneMapE;
+                            } else if (validateBoneMap(kESPBoneMapA)) {
+                                bMap = kESPBoneMapA;
+                            } else if (validateBoneMap(kESPBoneMapB)) {
+                                bMap = kESPBoneMapB;
+                            } else {
+                                bMap = kESPBoneMapD; // Guaranteed fallback for training dummy
+                            }
                         }
 
                         uint8_t c2w[48] = {0};

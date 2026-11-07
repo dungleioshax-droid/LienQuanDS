@@ -3186,8 +3186,8 @@ static void ds_hosted_apply_pubg(void) {
                 UIBezierPath *skelPath = [UIBezierPath bezierPath];
                 static const int bonePairs[][2] = {
                     {1, 0}, {1, 2}, {2, 3},       // Neck->Head, Neck->Chest, Chest->Pelvis
-                    {2, 4}, {4, 5}, {5, 6},       // Chest->LShoulder, LShoulder->LElbow, LElbow->LHand
-                    {2, 7}, {7, 8}, {8, 9},       // Chest->RShoulder, RShoulder->RElbow, RElbow->RHand
+                    {1, 4}, {4, 5}, {5, 6},       // Neck->LShoulder, LShoulder->LElbow, LElbow->LHand
+                    {1, 7}, {7, 8}, {8, 9},       // Neck->RShoulder, RShoulder->RElbow, RElbow->RHand
                     {3, 10}, {10, 11}, {11, 12},  // Pelvis->LHip, LHip->LKnee, LKnee->LFoot
                     {3, 13}, {13, 14}, {14, 15}   // Pelvis->RHip, RHip->RKnee, RKnee->RFoot
                 };
