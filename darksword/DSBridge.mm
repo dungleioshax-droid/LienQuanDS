@@ -961,7 +961,7 @@ typedef struct {
     DSPUBGJoint skeleton[16];
 } DSPUBGProjectedPlayer;
 
-static const int kDSPUBGMaxPlayers = 60;
+static const int kDSPUBGMaxPlayers = 96;
 static float g_dspubgMaxDistance = 400.0f;
 static BOOL g_pubgEspBox = YES;
 static BOOL g_pubgEspSkeleton = YES;

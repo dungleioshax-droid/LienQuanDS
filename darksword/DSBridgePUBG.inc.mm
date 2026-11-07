@@ -861,6 +861,10 @@ static void ds_pubg_tick(void) {
         if (!veh || !ds_pubg_valid(veh)) return;
         if (!g_pubgEspVehicle) return;
         if (veh == localPawn) return;
+        if (localPawn) {
+            uint64_t myVeh = ds_pubg_read_ptr(localPawn + kDSPUBGCharacterVehicleOffset);
+            if (myVeh && veh == myVeh) return; // Skip vehicle we are currently inside
+        }
         for (uint64_t seen : seenPawns) {
             if (seen == veh) return;
         }
@@ -868,6 +872,10 @@ static void ds_pubg_tick(void) {
         uint64_t rootComp = ds_pubg_read_ptr(veh + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(veh + 0x180ULL);
         if (!rootComp || !ds_pubg_valid(rootComp)) return;
+
+        // Check bHidden in AActor (offset 0xE8)
+        uint8_t aHidden = ds_pubg_read_u8(veh + 0xE8ULL);
+        if (aHidden & 0x1) return;
 
         seenPawns.push_back(veh);
 
@@ -891,9 +899,16 @@ static void ds_pubg_tick(void) {
         float fuelMax = ds_pubg_read_f32(vehCommon + 0x438ULL);
         float fuel = ds_pubg_read_f32(vehCommon + 0x43CULL);
 
-        if (hp <= 0.0f || isnan(hp) || isinf(hp)) return; // Destroyed vehicle
-        if (hpMax < 50.0f || hpMax > 20000.0f || isnan(hpMax) || isinf(hpMax)) hpMax = 1000.0f;
-        if (hp > hpMax) hp = hpMax;
+        // Destroyed / exploded vehicle check:
+        if (!isnan(hp) && !isnan(hpMax) && hpMax >= 50.0f && hp <= 0.0f) {
+            return; // Destroyed/exploded vehicle -> skip
+        }
+        if (hpMax < 50.0f || hpMax > 20000.0f || isnan(hpMax) || isinf(hpMax)) {
+            hpMax = 1000.0f;
+        }
+        if (isnan(hp) || isinf(hp) || hp <= 0.0f || hp > hpMax) {
+            hp = hpMax;
+        }
 
         float fuelPct = (fuelMax > 0.0f && fuel >= 0.0f) ? ((fuel / fuelMax) * 100.0f) : 100.0f;
         if (fuelPct > 100.0f) fuelPct = 100.0f;
@@ -972,48 +987,70 @@ static void ds_pubg_tick(void) {
             if (seen == pawn) return;
         }
 
-        // Reject local player's own bullets, weapons, projectiles
+        // 1. Reject local player's own bullets, weapons, projectiles
         uint64_t owner = ds_pubg_read_ptr(pawn + 0x140ULL);
         uint64_t instigator = ds_pubg_read_ptr(pawn + 0x138ULL);
         if (localPawn && (owner == localPawn || instigator == localPawn)) {
             return;
         }
 
-        // Character verification:
-        // Must have valid PlayerState OR character skeletal mesh with human extent (30..160)
-        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
-        float extZ = (meshComp && ds_pubg_valid(meshComp)) ? ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset) : 0.0f;
-        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
+        // 2. Check bHidden in AActor (offset 0xE8)
+        uint8_t aHidden = ds_pubg_read_u8(pawn + 0xE8ULL);
+        if (aHidden & 0x1) return;
 
-        bool isRealChar = (ps && ds_pubg_valid(ps)) ||
-                          (meshComp && ds_pubg_valid(meshComp) && extZ >= 30.0f && extZ <= 160.0f);
-        if (!isRealChar) {
-            return; // Discard bullets, weapon projectiles, and level debris!
+        // 3. Dead check - STExtraCharacter.bDead at 0xE7C
+        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
+        if (isDead) return;
+
+        // 4. Must have valid RootComponent and Mesh
+        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
+        if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
+        if (!rootComp || !ds_pubg_valid(rootComp)) return;
+
+        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
+        if (!meshComp || !ds_pubg_valid(meshComp)) return;
+
+        // 5. Verification for actors discovered outside PlayerArray:
+        // Must match UE4 ACharacter hierarchy (CapsuleComponent == RootComponent and valid CharacterMovement)
+        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
+        if (!ps || !ds_pubg_valid(ps)) {
+            uint64_t capsuleComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterCapsuleOffset);
+            uint64_t moveComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMovementOffset);
+            if (capsuleComp != rootComp || !moveComp || !ds_pubg_valid(moveComp)) {
+                return; // Discard bullets, weapon projectiles, loot items, level debris!
+            }
         }
 
-        seenPawns.push_back(pawn);
+        // 6. Health check:
+        // Real PUBG Mobile characters have HealthMax 50..500 (usually 100).
+        // Props, crates, items DO NOT have HealthMax in this range!
+        float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
+        float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
+        if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return;
+        if (health <= 0.0f) return; // Discard dead or healthless objects!
 
-        // Team filter
+        if (!psHint) {
+            if (healthMax < 50.0f || healthMax > 500.0f) return;
+            if (health > healthMax + 50.0f) return;
+        } else {
+            if (healthMax < 20.0f || healthMax > 500.0f) healthMax = 100.0f;
+            if (health > healthMax) health = healthMax;
+        }
+
+        // 7. Team filter:
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
+        if (teamId < 0 || teamId > 200000000) return;
         if (localTeamId > 0 && teamId == localTeamId) {
             return;
         }
 
-        // Dead check - STExtraCharacter.bDead at 0xE7C
-        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
-
-        // Health reading with resilient defaults
-        float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
-        float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
-
-        if (healthMax < 10.0f || healthMax > 500.0f || isnan(healthMax) || isinf(healthMax)) {
-            healthMax = 100.0f;
+        // 8. Human skeletal mesh extent check:
+        float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
+        if (extZ < 25.0f || extZ > 170.0f) {
+            if (!psHint) return; // Non-human extents discard!
         }
-        if (health <= 0.0f || health > healthMax || isnan(health) || isinf(health)) {
-            if (isDead) return;
-            health = healthMax;
-        }
-        if (isDead && health <= 0.0f) return;
+
+        seenPawns.push_back(pawn);
 
         uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
@@ -1207,17 +1244,17 @@ static void ds_pubg_tick(void) {
         g_dspubgLastActorsCount = (int)actorsCount;
 
         if (actorsData && actorsCount > 0) {
-            if (actorsCount > 512) actorsCount = 512;
+            if (actorsCount > 4096) actorsCount = 4096;
             std::vector<uint64_t> levelActors(actorsCount, 0);
             if (ds_pubg_read(actorsData, levelActors.data(), actorsCount * sizeof(uint64_t))) {
                 for (uint32_t i = 0; i < actorsCount; i++) {
                     uint64_t actor = levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
 
-                    // 1. Vehicle detection via VehicleCommon (0xC08) & VehicleType (0x70C)
+                    // 1. Vehicle detection via VehicleCommon (0xC08)
                     uint64_t vehCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
-                    uint8_t vehType = ds_pubg_read_u8(actor + 0x70CULL);
-                    if (vehCommon && ds_pubg_valid(vehCommon) && vehType > 0 && vehType <= 55) {
+                    if (vehCommon && ds_pubg_valid(vehCommon)) {
+                        uint8_t vehType = ds_pubg_read_u8(actor + 0x70CULL);
                         processVehicle(actor, vehCommon, vehType);
                         continue;
                     }

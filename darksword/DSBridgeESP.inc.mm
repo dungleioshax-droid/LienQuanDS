@@ -3069,12 +3069,12 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 1. Bounding Box:
-        if (g_pubgEspBox) {
+        // 1. Bounding Box: Only for players and bots, NOT for vehicles ("bỏ luôn cái khung xe đi")
+        if (g_pubgEspBox && !vehicle) {
             CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
             box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
             box.strokeColor = mainColor;
-            box.lineWidth = vehicle ? 1.5 : (ai ? 2.0 : 1.5);
+            box.lineWidth = ai ? 2.0 : 1.5;
             box.hidden = NO;
         } else {
             box.hidden = YES;
