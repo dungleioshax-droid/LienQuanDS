@@ -2923,12 +2923,13 @@ static void ds_hosted_apply_pubg(void) {
 
     if (g_hostedPUBGTopCountLabel) {
         if (activeEnemyCount > 0 || activeBotCount > 0) {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 240.0) * 0.5, 10.0, 240.0, 20.0);
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 260.0) * 0.5, 10.0, 260.0, 20.0);
             g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots", activeEnemyCount, activeBotCount];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else if (ds_pubg_has_render_source()) {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 280.0) * 0.5, 10.0, 280.0, 20.0);
-            g_hostedPUBGTopCountLabel.string = @"PUBG: Attached (Waiting for Players)";
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 340.0) * 0.5, 10.0, 340.0, 20.0);
+            const char *dbgStatus = ds_pubg_get_debug_status();
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithUTF8String:(dbgStatus ? dbgStatus : "PUBG: Attached (Waiting for Players)")];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
             g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 280.0) * 0.5, 10.0, 280.0, 20.0);
