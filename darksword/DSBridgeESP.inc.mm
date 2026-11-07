@@ -3202,17 +3202,18 @@ static void ds_hosted_apply_pubg(void) {
             info.hidden = YES;
         }
 
-        // 7. Skeleton ESP (Hiện xương kết nối 14 đốt xương)
+        // 7. Skeleton ESP (Hiện xương kết nối các khớp)
         if (g_pubgEspSkeleton && p.hasSkeleton && !vehicle && skel) {
             UIBezierPath *skelPath = [UIBezierPath bezierPath];
-            static const int bonePairs[14][2] = {
+            static const int bonePairs[][2] = {
                 {1, 0}, {1, 2}, {2, 3},
                 {1, 4}, {4, 5}, {5, 6},
                 {1, 7}, {7, 8}, {8, 9},
                 {3, 10}, {10, 11}, {11, 12},
                 {3, 13}, {13, 14}, {14, 15}
             };
-            for (int b = 0; b < 14; b++) {
+            const int boneCount = (int)(sizeof(bonePairs) / sizeof(bonePairs[0]));
+            for (int b = 0; b < boneCount; b++) {
                 int u = bonePairs[b][0];
                 int v = bonePairs[b][1];
                 if (p.skeleton[u].valid && p.skeleton[v].valid) {
