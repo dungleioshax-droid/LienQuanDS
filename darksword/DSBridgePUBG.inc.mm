@@ -71,8 +71,6 @@ static DSPUBGProjectedPlayer g_dspubgPlayers[kDSPUBGMaxPlayers] = {};
 static int g_dspubgPlayerCount = 0;
 static uint64_t g_dspubgEpoch = 1;
 
-static float g_dspubgMaxDistance = 400.0f; // Default max distance in meters
-
 // Vector and Rotator types for projection
 struct DSPUBGVector {
     float X, Y, Z;

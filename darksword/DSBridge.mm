@@ -951,6 +951,7 @@ typedef struct {
 } DSPUBGProjectedPlayer;
 
 static const int kDSPUBGMaxPlayers = 40;
+static float g_dspubgMaxDistance = 400.0f;
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPlayers],
