@@ -582,6 +582,10 @@ static bool ds_pubg_cam_basis_build(DSPUBGVector camLoc, DSPUBGRotator camRot, f
 
 static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector world,
                                       float &outX, float &outY, float &outDist) {
+    if (isnan(world.X) || isinf(world.X) ||
+        isnan(world.Y) || isinf(world.Y) ||
+        isnan(world.Z) || isinf(world.Z)) return false;
+
     float dx = world.X - b.lx;
     float dy = world.Y - b.ly;
     float dz = world.Z - b.lz;
@@ -590,11 +594,18 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     float ty = dx * b.m20 + dy * b.m21 + dz * b.m22;
     float tz = dx * b.m00 + dy * b.m01 + dz * b.m02;
 
-    if (tz < 10.0f) return false; // Behind or too close
+    if (isnan(tz) || isinf(tz) || tz < 10.0f) return false; // Behind or too close
 
-    float distM = sqrtf(dx * dx + dy * dy + dz * dz) / 100.0f;
-    outX = b.cx + tx * b.k / tz;
-    outY = b.cy - ty * b.k / tz;
+    float distSq = dx * dx + dy * dy + dz * dz;
+    if (isnan(distSq) || isinf(distSq) || distSq < 0.0f) return false;
+    float distM = sqrtf(distSq) / 100.0f;
+
+    float projX = b.cx + tx * b.k / tz;
+    float projY = b.cy - ty * b.k / tz;
+    if (isnan(projX) || isinf(projX) || isnan(projY) || isinf(projY)) return false;
+
+    outX = projX;
+    outY = projY;
     outDist = distM;
     return true;
 }
@@ -612,7 +623,7 @@ static const int kESPBoneMapG[16] = {
     59, 60, 61,
     55, 56, 57
 };
-// Map D (UE4 mannequin rig fallback for standard UE4 characters):
+// Map D (Standard UE4 mannequin rig for PUBG Mobile characters):
 // 0: Head (6), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
 // 4: LShoulder (8), 5: LElbow (9), 6: LHand (10)
 // 7: RShoulder (12), 8: RElbow (13), 9: RHand (14)
@@ -626,37 +637,7 @@ static const int kESPBoneMapD[16] = {
     19, 20, 21
 };
 
-// Locate ComponentToWorld FTransform (0x208 in USceneComponent)
-static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, uint8_t *outC2W) {
-    if (!meshComp || !outC2W) return false;
-    static const uint32_t c2wOffsets[] = { 0x208, 0x210, 0x190, 0x1A0, 0x200 };
-    for (uint32_t off : c2wOffsets) {
-        if (ds_pubg_read(meshComp + (uint64_t)off, outC2W, 48)) {
-            float qx = 0, qy = 0, qz = 0, qw = 0;
-            float tx = 0, ty = 0, tz = 0;
-            memcpy(&qx, outC2W + 0x0, 4);
-            memcpy(&qy, outC2W + 0x4, 4);
-            memcpy(&qz, outC2W + 0x8, 4);
-            memcpy(&qw, outC2W + 0xC, 4);
-            memcpy(&tx, outC2W + 0x10, 4);
-            memcpy(&ty, outC2W + 0x14, 4);
-            memcpy(&tz, outC2W + 0x18, 4);
-            float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
-            if (!isnan(qlen2) && !isinf(qlen2) && qlen2 >= 0.2f && qlen2 <= 5.0f) {
-                float dX = tx - rootLoc.X;
-                float dY = ty - rootLoc.Y;
-                float dZ = tz - rootLoc.Z;
-                float distSq = dX * dX + dY * dY + dZ * dZ;
-                if (distSq < (500.0f * 500.0f)) {
-                    return true;
-                }
-            }
-        }
-    }
-    return ds_pubg_read(meshComp + 0x208ULL, outC2W, 48);
-}
-
-static void ds_pubg_bone_world_from_local(const uint8_t *c2w, uint64_t rootComp, const DSPUBGVector &rootFallback, const DSPUBGVector *local, DSPUBGVector *out) {
+static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector &rootFallback, const DSPUBGVector *local, DSPUBGVector *out) {
     float qx = 0, qy = 0, qz = 0, qw = 1.0f;
     float tx = 0, ty = 0, tz = 0;
     float sx = 1.0f, sy = 1.0f, sz = 1.0f;
@@ -678,49 +659,19 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w, uint64_t rootComp,
     if (isnan(sz) || isinf(sz) || sz < 0.01f || sz > 100.0f) sz = 1.0f;
 
     float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
-    bool quatValid = (!isnan(qlen2) && !isinf(qlen2) && qlen2 >= 0.2f && qlen2 <= 5.0f);
-    if (quatValid) {
+    if (isnan(qlen2) || isinf(qlen2) || qlen2 < 0.01f || qlen2 > 10.0f) {
+        qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
+    } else {
         float qlen = sqrtf(qlen2);
         qx /= qlen; qy /= qlen; qz /= qlen; qw /= qlen;
-    } else if (rootComp && ds_pubg_valid(rootComp)) {
-        // Fallback: derive rotation quaternion from RootComponent (CapsuleComponent)
-        // RootComponent.RelativeRotation is at 0x1F0 (FRotator: Pitch, Yaw, Roll)
-        // In UE4 Character, Mesh is attached with RelativeRotation(0, -90, 0), so MeshYaw = ActorYaw - 90
-        DSPUBGRotator actorRot = {};
-        if (ds_pubg_read(rootComp + 0x1F0ULL, &actorRot, sizeof(actorRot)) &&
-            !isnan(actorRot.Yaw) && !isinf(actorRot.Yaw)) {
-            const float kDegToRad = 3.141592653589793f / 180.0f;
-            float radPitch = (actorRot.Pitch) * kDegToRad * 0.5f;
-            float radYaw   = (actorRot.Yaw - 90.0f) * kDegToRad * 0.5f;
-            float radRoll  = (actorRot.Roll) * kDegToRad * 0.5f;
-
-            float SP = sinf(radPitch), CP = cosf(radPitch);
-            float SY = sinf(radYaw),   CY = cosf(radYaw);
-            float SR = sinf(radRoll),  CR = cosf(radRoll);
-
-            qx = CR * SP * SY - SR * CP * CY;
-            qy = -CR * SP * CY - SR * CP * SY;
-            qz = CR * CP * SY - SR * SP * CY;
-            qw = CR * CP * CY + SR * SP * SY;
-
-            float qlen = sqrtf(qx * qx + qy * qy + qz * qz + qw * qw);
-            if (qlen > 0.001f) {
-                qx /= qlen; qy /= qlen; qz /= qlen; qw /= qlen;
-            } else {
-                qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
-            }
-        } else {
-            qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
-        }
-    } else {
-        qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
     }
 
     // Translation validation: if c2w translation is uninitialized, local relative, or far from rootFallback, anchor to rootFallback
     float dX = tx - rootFallback.X;
     float dY = ty - rootFallback.Y;
     float distSq = dX * dX + dY * dY;
-    if (isnan(tx) || isinf(tx) || (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (2000.0f * 2000.0f)) {
+    if (isnan(tx) || isinf(tx) || isnan(ty) || isinf(ty) || isnan(tz) || isinf(tz) ||
+        (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (2000.0f * 2000.0f)) {
         tx = rootFallback.X;
         ty = rootFallback.Y;
         tz = rootFallback.Z;
@@ -741,7 +692,7 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w, uint64_t rootComp,
 
 // Dynamically locates live ComponentSpaceTransforms TArray<FTransform> on USkeletalMeshComponent.
 // Tests verified double buffer offsets (0xA30/0xA40), eval-context (0xE18/0xE28), cached (0xCE0/0xCD0),
-// bone-space (0xC98), and range scans 0x400..0xF00.
+// and bone-space (0xC98).
 static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32_t *outCount, uint32_t *outOffset) {
     if (!meshComp || !ds_pubg_valid(meshComp)) return false;
 
@@ -764,21 +715,21 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
         return true;
     };
 
+    // 0. Test last working offset first
+    if (s_cachedBoneOffset != 0 && testOffset(s_cachedBoneOffset)) {
+        return true;
+    }
+
     // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
     int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
     if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA78ULL);
     uint32_t first = (rd == 1) ? 0xA40 : 0xA30;
     uint32_t second = (rd == 1) ? 0xA30 : 0xA40;
 
-    if (testOffset(first)) return true;
-    if (testOffset(second)) return true;
+    if (testOffset(first)) { s_cachedBoneOffset = first; return true; }
+    if (testOffset(second)) { s_cachedBoneOffset = second; return true; }
 
-    // 2. Test last working non-double-buffer offset
-    if (s_cachedBoneOffset != 0 && s_cachedBoneOffset != 0xA30 && s_cachedBoneOffset != 0xA40) {
-        if (testOffset(s_cachedBoneOffset)) return true;
-    }
-
-    // 3. Live transforms eval-context (0xE18 / 0xE28)
+    // 2. Live transforms eval-context (0xE18 / 0xE28)
     if (testOffset(0xE18)) { s_cachedBoneOffset = 0xE18; return true; }
     if (testOffset(0xE28)) { s_cachedBoneOffset = 0xE28; return true; }
 
@@ -788,15 +739,6 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
 
     // 4. BoneSpaceTransforms (0xC98)
     if (testOffset(0xC98)) { s_cachedBoneOffset = 0xC98; return true; }
-
-    // 5. Scan range 0x400 .. 0xF00 in steps of 8 (skipping compact 0xCA8)
-    for (uint32_t off = 0x400; off + 16 <= 0xF00; off += 8) {
-        if (off == 0xCA8) continue;
-        if (testOffset(off)) {
-            s_cachedBoneOffset = off;
-            return true;
-        }
-    }
 
     return false;
 }
@@ -1309,14 +1251,15 @@ static void ds_pubg_tick(void) {
                             return (!isnan(z) && !isinf(z)) ? z : -9999.0f;
                         };
 
-                        // Select bone map: Map G if bone 8 has higher Z than bone 6, else standard UE4 Map D
+                        // Default to standard UE4 rig (Map D: Head 6, Neck 5, Chest 4, Pelvis 1)
+                        // Only use Map G if bone 8 is demonstrably higher than bone 6 (Head is bone 8)
                         const int *bMap = kESPBoneMapD;
-                        if (needReadCount >= 62 && getBoneZ(8) > getBoneZ(6) + 5.0f) {
+                        if (needReadCount >= 62 && getBoneZ(8) > getBoneZ(6) + 8.0f) {
                             bMap = kESPBoneMapG;
                         }
 
                         uint8_t c2w[48] = {0};
-                        ds_pubg_read_c2w(meshComp, rootLoc, c2w);
+                        ds_pubg_read(meshComp + 0x208ULL, c2w, sizeof(c2w));
 
                         int okBones = 0;
                         for (int i = 0; i < 16; i++) {
@@ -1332,7 +1275,7 @@ static void ds_pubg_tick(void) {
                                 !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
                                 !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
                                 DSPUBGVector world = {};
-                                ds_pubg_bone_world_from_local(c2w, rootComp, rootLoc, &localTrans, &world);
+                                ds_pubg_bone_world_from_local(c2w, rootLoc, &localTrans, &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
                                 if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
@@ -1353,10 +1296,9 @@ static void ds_pubg_tick(void) {
                 }
             }
 
-            // Guaranteed Fallback: if live bone transforms failed or gave < 6 projected joints,
-            // construct an anatomically aligned skeleton inside the bounding box so the skeleton
-            // NEVER disappears!
-            if (!skeletonDone) {
+            // Fallback: if real bone transforms were not available or < 6 joints projected,
+            // populate proportional bounding box skeleton so skeleton is ALWAYS visible!
+            if (!skeletonDone && boxH >= 8.0f && !isnan(boxH) && !isnan(centerX) && !isnan(topY)) {
                 p.skeleton[0]  = { centerX,                 topY + boxH * 0.08f, true }; // Head
                 p.skeleton[1]  = { centerX,                 topY + boxH * 0.16f, true }; // Neck
                 p.skeleton[2]  = { centerX,                 topY + boxH * 0.28f, true }; // Chest

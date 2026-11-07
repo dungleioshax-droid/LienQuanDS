@@ -3182,27 +3182,44 @@ static void ds_hosted_apply_pubg(void) {
 
         // 7. Skeleton ESP (Hiện xương kết nối các khớp)
         if (g_pubgEspSkeleton && p.hasSkeleton && skel) {
-            UIBezierPath *skelPath = [UIBezierPath bezierPath];
-            static const int bonePairs[][2] = {
-                {1, 0}, {1, 2}, {2, 3},       // Neck->Head, Neck->Chest, Chest->Pelvis
-                {2, 4}, {4, 5}, {5, 6},       // Chest->LShoulder, LShoulder->LElbow, LElbow->LHand
-                {2, 7}, {7, 8}, {8, 9},       // Chest->RShoulder, RShoulder->RElbow, RElbow->RHand
-                {3, 10}, {10, 11}, {11, 12},  // Pelvis->LHip, LHip->LKnee, LKnee->LFoot
-                {3, 13}, {13, 14}, {14, 15}   // Pelvis->RHip, RHip->RKnee, RKnee->RFoot
-            };
-            const int boneCount = (int)(sizeof(bonePairs) / sizeof(bonePairs[0]));
-            for (int b = 0; b < boneCount; b++) {
-                int u = bonePairs[b][0];
-                int v = bonePairs[b][1];
-                if (p.skeleton[u].valid && p.skeleton[v].valid) {
-                    [skelPath moveToPoint:CGPointMake(p.skeleton[u].x, p.skeleton[u].y)];
-                    [skelPath addLineToPoint:CGPointMake(p.skeleton[v].x, p.skeleton[v].y)];
+            @try {
+                UIBezierPath *skelPath = [UIBezierPath bezierPath];
+                static const int bonePairs[][2] = {
+                    {1, 0}, {1, 2}, {2, 3},       // Neck->Head, Neck->Chest, Chest->Pelvis
+                    {2, 4}, {4, 5}, {5, 6},       // Chest->LShoulder, LShoulder->LElbow, LElbow->LHand
+                    {2, 7}, {7, 8}, {8, 9},       // Chest->RShoulder, RShoulder->RElbow, RElbow->RHand
+                    {3, 10}, {10, 11}, {11, 12},  // Pelvis->LHip, LHip->LKnee, LKnee->LFoot
+                    {3, 13}, {13, 14}, {14, 15}   // Pelvis->RHip, RHip->RKnee, RKnee->RFoot
+                };
+                const int boneCount = (int)(sizeof(bonePairs) / sizeof(bonePairs[0]));
+                int drawnLines = 0;
+                for (int b = 0; b < boneCount; b++) {
+                    int u = bonePairs[b][0];
+                    int v = bonePairs[b][1];
+                    if (p.skeleton[u].valid && p.skeleton[v].valid) {
+                        float ux = p.skeleton[u].x, uy = p.skeleton[u].y;
+                        float vx = p.skeleton[v].x, vy = p.skeleton[v].y;
+                        if (!isnan(ux) && !isinf(ux) && !isnan(uy) && !isinf(uy) &&
+                            !isnan(vx) && !isinf(vx) && !isnan(vy) && !isinf(vy) &&
+                            fabsf(ux) < 10000.0f && fabsf(uy) < 10000.0f &&
+                            fabsf(vx) < 10000.0f && fabsf(vy) < 10000.0f) {
+                            [skelPath moveToPoint:CGPointMake(ux, uy)];
+                            [skelPath addLineToPoint:CGPointMake(vx, vy)];
+                            drawnLines++;
+                        }
+                    }
                 }
+                if (drawnLines > 0) {
+                    skel.path = skelPath.CGPath;
+                    skel.strokeColor = mainColor;
+                    skel.lineWidth = 1.2;
+                    skel.hidden = NO;
+                } else {
+                    skel.hidden = YES;
+                }
+            } @catch (NSException *ex) {
+                skel.hidden = YES;
             }
-            skel.path = skelPath.CGPath;
-            skel.strokeColor = mainColor;
-            skel.lineWidth = 1.2;
-            skel.hidden = NO;
         } else if (skel) {
             skel.hidden = YES;
         }
