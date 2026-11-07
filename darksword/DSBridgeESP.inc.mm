@@ -3130,30 +3130,49 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         // 6. Text label: below box at bottom center
+        // Thứ tự: Tên ở đầu -> ID team ở giữa (dòng riêng) -> Khoảng cách ở cuối
         if (g_pubgEspName || g_pubgEspDist) {
-            CGFloat labelW = 160.0f;
-            CGFloat labelH = (g_pubgEspName && g_pubgEspDist) ? 28.0f : 16.0f;
-            info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
-
-            char labelText[128] = {0};
-            char teamPrefix[32] = {0};
+            char teamStr[48] = {0};
             if (p.teamId >= 0 && p.teamId <= 200000000) {
-                snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
+                if (ai) {
+                    snprintf(teamStr, sizeof(teamStr), "[Team %d - AI]", p.teamId);
+                } else {
+                    snprintf(teamStr, sizeof(teamStr), "[Team %d]", p.teamId);
+                }
             } else if (ai) {
-                snprintf(teamPrefix, sizeof(teamPrefix), "[AI] ");
+                snprintf(teamStr, sizeof(teamStr), "[AI]");
             }
 
             BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
             const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
 
+            char labelText[160] = {0};
+            CGFloat labelH = 16.0f;
             if (g_pubgEspName && g_pubgEspDist) {
-                snprintf(labelText, sizeof(labelText), "%s%s\n%.0fm", teamPrefix, displayName, p.distanceMeters);
+                labelH = (teamStr[0] != '\0') ? 44.0f : 30.0f;
+                if (teamStr[0] != '\0') {
+                    snprintf(labelText, sizeof(labelText), "%s\n%s\n%.0fm", displayName, teamStr, p.distanceMeters);
+                } else {
+                    snprintf(labelText, sizeof(labelText), "%s\n%.0fm", displayName, p.distanceMeters);
+                }
             } else if (g_pubgEspName) {
-                snprintf(labelText, sizeof(labelText), "%s%s", teamPrefix, displayName);
+                labelH = (teamStr[0] != '\0') ? 30.0f : 16.0f;
+                if (teamStr[0] != '\0') {
+                    snprintf(labelText, sizeof(labelText), "%s\n%s", displayName, teamStr);
+                } else {
+                    snprintf(labelText, sizeof(labelText), "%s", displayName);
+                }
             } else {
-                snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
+                labelH = (teamStr[0] != '\0') ? 30.0f : 16.0f;
+                if (teamStr[0] != '\0') {
+                    snprintf(labelText, sizeof(labelText), "%s\n%.0fm", teamStr, p.distanceMeters);
+                } else {
+                    snprintf(labelText, sizeof(labelText), "%.0fm", p.distanceMeters);
+                }
             }
 
+            CGFloat labelW = 160.0f;
+            info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
             info.string = [NSString stringWithUTF8String:labelText];
             info.foregroundColor = mainColor;
             info.hidden = NO;
@@ -3165,11 +3184,11 @@ static void ds_hosted_apply_pubg(void) {
         if (g_pubgEspSkeleton && p.hasSkeleton && skel) {
             UIBezierPath *skelPath = [UIBezierPath bezierPath];
             static const int bonePairs[][2] = {
-                {1, 0}, {1, 2}, {2, 3},
-                {1, 4}, {4, 5}, {5, 6},
-                {1, 7}, {7, 8}, {8, 9},
-                {3, 10}, {10, 11}, {11, 12},
-                {3, 13}, {13, 14}, {14, 15}
+                {1, 0}, {1, 2}, {2, 3},       // Neck->Head, Neck->Chest, Chest->Pelvis
+                {2, 4}, {4, 5}, {5, 6},       // Chest->LShoulder, LShoulder->LElbow, LElbow->LHand
+                {2, 7}, {7, 8}, {8, 9},       // Chest->RShoulder, RShoulder->RElbow, RElbow->RHand
+                {3, 10}, {10, 11}, {11, 12},  // Pelvis->LHip, LHip->LKnee, LKnee->LFoot
+                {3, 13}, {13, 14}, {14, 15}   // Pelvis->RHip, RHip->RKnee, RKnee->RFoot
             };
             const int boneCount = (int)(sizeof(bonePairs) / sizeof(bonePairs[0]));
             for (int b = 0; b < boneCount; b++) {
@@ -3577,8 +3596,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 info.actions = noAnim;
                 info.contentsScale = scale;
                 info.alignmentMode = kCAAlignmentCenter;
-                info.fontSize = 11.5;
-                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+                info.wrapped = YES;
+                info.fontSize = 11.0;
+                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
                 info.hidden = YES;
                 [g_hostedLayer addSublayer:info];
                 g_hostedPUBGInfoLabels[i] = info;

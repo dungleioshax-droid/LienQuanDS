@@ -597,6 +597,39 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     return true;
 }
 
+static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector *local, DSPUBGVector *out) {
+    float qx = 0, qy = 0, qz = 0, qw = 1;
+    float tx = 0, ty = 0, tz = 0;
+    float sx = 1, sy = 1, sz = 1;
+    memcpy(&qx, c2w + 0x0, 4);
+    memcpy(&qy, c2w + 0x4, 4);
+    memcpy(&qz, c2w + 0x8, 4);
+    memcpy(&qw, c2w + 0xC, 4);
+    memcpy(&tx, c2w + 0x10, 4);
+    memcpy(&ty, c2w + 0x14, 4);
+    memcpy(&tz, c2w + 0x18, 4);
+    memcpy(&sx, c2w + 0x20, 4);
+    memcpy(&sy, c2w + 0x24, 4);
+    memcpy(&sz, c2w + 0x28, 4);
+
+    if (isnan(sx) || isinf(sx) || sx < 0.01f || sx > 100.0f) sx = 1.0f;
+    if (isnan(sy) || isinf(sy) || sy < 0.01f || sy > 100.0f) sy = 1.0f;
+    if (isnan(sz) || isinf(sz) || sz < 0.01f || sz > 100.0f) sz = 1.0f;
+    if (isnan(qw) || isinf(qw)) qw = 1.0f;
+
+    float vx = local->X * sx, vy = local->Y * sy, vz = local->Z * sz;
+    float cx = qy * vz - qz * vy;
+    float cy = qz * vx - qx * vz;
+    float cz = qx * vy - qy * vx;
+    float ux = 2.0f * (cx + qw * vx);
+    float uy = 2.0f * (cy + qw * vy);
+    float uz = 2.0f * (cz + qw * vz);
+
+    out->X = vx + (qy * uz - qz * uy) + tx;
+    out->Y = vy + (qz * ux - qx * uz) + ty;
+    out->Z = vz + (qx * uy - qy * ux) + tz;
+}
+
 static bool ds_pubg_has_render_source(void) {
     return g_dspubgTargetActive.load(std::memory_order_acquire);
 }
@@ -1077,36 +1110,115 @@ static void ds_pubg_tick(void) {
             strncpy(p.name, isAI ? "Bot" : "Enemy", sizeof(p.name) - 1);
         }
 
-        // Humanoid Skeleton (16 joints, 15 bone links)
+        // Real Skeletal Bones (16 joints, 15 bone links)
         p.hasSkeleton = false;
-        if (g_pubgEspSkeleton) {
-            // Spine / Center line
-            p.skeleton[0] = { centerX, topY + boxH * 0.08f, true }; // Head
-            p.skeleton[1] = { centerX, topY + boxH * 0.18f, true }; // Neck
-            p.skeleton[2] = { centerX, topY + boxH * 0.35f, true }; // Chest
-            p.skeleton[3] = { centerX, topY + boxH * 0.53f, true }; // Pelvis / Waist
+        if (g_pubgEspSkeleton && meshComp && ds_pubg_valid(meshComp)) {
+            // 1. Resolve ComponentSpaceTransforms TArray<FTransform>
+            uint32_t useOff = 0xA30;
+            int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
+            if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA78ULL);
+            if (rd == 1) useOff = 0xA40;
 
-            // Left Arm
-            p.skeleton[4] = { centerX - boxW * 0.32f, topY + boxH * 0.20f, true }; // L Shoulder
-            p.skeleton[5] = { centerX - boxW * 0.44f, topY + boxH * 0.36f, true }; // L Elbow
-            p.skeleton[6] = { centerX - boxW * 0.38f, topY + boxH * 0.50f, true }; // L Hand
+            uint64_t boneData = ds_pubg_read_ptr(meshComp + useOff);
+            uint32_t bCount = ds_pubg_read_u32(meshComp + useOff + 8);
+            if (!boneData || bCount < 20 || bCount > 800) {
+                uint32_t otherOff = (useOff == 0xA30) ? 0xA40 : 0xA30;
+                boneData = ds_pubg_read_ptr(meshComp + otherOff);
+                bCount = ds_pubg_read_u32(meshComp + otherOff + 8);
+            }
+            if (!boneData || bCount < 20 || bCount > 800) {
+                boneData = ds_pubg_read_ptr(meshComp + 0xE18ULL);
+                bCount = ds_pubg_read_u32(meshComp + 0xE18ULL + 8);
+                if (!boneData || bCount < 20 || bCount > 800) {
+                    boneData = ds_pubg_read_ptr(meshComp + 0xE28ULL);
+                    bCount = ds_pubg_read_u32(meshComp + 0xE28ULL + 8);
+                }
+            }
 
-            // Right Arm
-            p.skeleton[7] = { centerX + boxW * 0.32f, topY + boxH * 0.20f, true }; // R Shoulder
-            p.skeleton[8] = { centerX + boxW * 0.44f, topY + boxH * 0.36f, true }; // R Elbow
-            p.skeleton[9] = { centerX + boxW * 0.38f, topY + boxH * 0.50f, true }; // R Hand
+            int okBones = 0;
+            if (boneData && bCount >= 20 && bCount <= 800 && ds_pubg_valid(boneData)) {
+                // Map G (ShadowTrackerExtra / PUBG Mobile rig with 67 bones):
+                // 0: Head (8), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
+                // 4: LShoulder (34), 5: LElbow (36), 6: LHand (37)
+                // 7: RShoulder (13), 8: RElbow (15), 9: RHand (16)
+                // 10: LHip (59), 11: LKnee (60), 12: LFoot (61)
+                // 13: RHip (55), 14: RKnee (56), 15: RFoot (57)
+                static const int kESPBoneMapG[16] = {
+                    8, 5, 4, 1,
+                    34, 36, 37,
+                    13, 15, 16,
+                    59, 60, 61,
+                    55, 56, 57
+                };
+                // Map D (UE4 mannequin rig):
+                static const int kESPBoneMapD[16] = {
+                    6, 5, 4, 1,
+                    8, 9, 10,
+                    12, 13, 14,
+                    15, 16, 17,
+                    19, 20, 21
+                };
 
-            // Left Leg
-            p.skeleton[10] = { centerX - boxW * 0.18f, topY + boxH * 0.55f, true }; // L Hip
-            p.skeleton[11] = { centerX - boxW * 0.22f, topY + boxH * 0.75f, true }; // L Knee
-            p.skeleton[12] = { centerX - boxW * 0.24f, topY + boxH * 0.98f, true }; // L Foot
+                const int *bMap = kESPBoneMapD;
+                if (bCount >= 62) {
+                    DSPUBGVector headLoc = {}, neckLoc = {};
+                    ds_pubg_read(boneData + 8 * 0x30ULL + 0x10ULL, &headLoc, sizeof(headLoc));
+                    ds_pubg_read(boneData + 5 * 0x30ULL + 0x10ULL, &neckLoc, sizeof(neckLoc));
+                    if (headLoc.Z > neckLoc.Z) {
+                        bMap = kESPBoneMapG;
+                    }
+                }
 
-            // Right Leg
-            p.skeleton[13] = { centerX + boxW * 0.18f, topY + boxH * 0.55f, true }; // R Hip
-            p.skeleton[14] = { centerX + boxW * 0.22f, topY + boxH * 0.75f, true }; // R Knee
-            p.skeleton[15] = { centerX + boxW * 0.24f, topY + boxH * 0.98f, true }; // R Foot
+                uint8_t c2w[48] = {0};
+                if (ds_pubg_read(meshComp + 0x208ULL, c2w, sizeof(c2w))) {
+                    for (int i = 0; i < 16; i++) {
+                        int bi = bMap[i];
+                        if (bi >= 0 && bi < (int)bCount) {
+                            DSPUBGVector localTrans = {};
+                            if (ds_pubg_read(boneData + bi * 0x30ULL + 0x10ULL, &localTrans, sizeof(localTrans))) {
+                                if (!isnan(localTrans.X) && !isinf(localTrans.X) &&
+                                    !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
+                                    !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
+                                    DSPUBGVector world = {};
+                                    ds_pubg_bone_world_from_local(c2w, &localTrans, &world);
+                                    float sx = 0, sy = 0, d = 0;
+                                    if (ds_pubg_cam_basis_project(basis, world, sx, sy, d)) {
+                                        p.skeleton[i] = { sx, sy, true };
+                                        okBones++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-            p.hasSkeleton = true;
+            if (okBones >= 6) {
+                p.hasSkeleton = true;
+                if (p.skeleton[0].valid) {
+                    p.headX = p.skeleton[0].x;
+                    p.headY = p.skeleton[0].y;
+                }
+            } else {
+                // Fallback to proportional skeleton aligned with bounding box
+                p.skeleton[0] = { centerX, topY + boxH * 0.08f, true }; // Head
+                p.skeleton[1] = { centerX, topY + boxH * 0.18f, true }; // Neck
+                p.skeleton[2] = { centerX, topY + boxH * 0.35f, true }; // Chest
+                p.skeleton[3] = { centerX, topY + boxH * 0.53f, true }; // Pelvis
+                p.skeleton[4] = { centerX - boxW * 0.32f, topY + boxH * 0.22f, true }; // L Shoulder
+                p.skeleton[5] = { centerX - boxW * 0.44f, topY + boxH * 0.38f, true }; // L Elbow
+                p.skeleton[6] = { centerX - boxW * 0.38f, topY + boxH * 0.52f, true }; // L Hand
+                p.skeleton[7] = { centerX + boxW * 0.32f, topY + boxH * 0.22f, true }; // R Shoulder
+                p.skeleton[8] = { centerX + boxW * 0.44f, topY + boxH * 0.38f, true }; // R Elbow
+                p.skeleton[9] = { centerX + boxW * 0.38f, topY + boxH * 0.52f, true }; // R Hand
+                p.skeleton[10] = { centerX - boxW * 0.18f, topY + boxH * 0.55f, true }; // L Hip
+                p.skeleton[11] = { centerX - boxW * 0.22f, topY + boxH * 0.75f, true }; // L Knee
+                p.skeleton[12] = { centerX - boxW * 0.24f, topY + boxH * 0.98f, true }; // L Foot
+                p.skeleton[13] = { centerX + boxW * 0.18f, topY + boxH * 0.55f, true }; // R Hip
+                p.skeleton[14] = { centerX + boxW * 0.22f, topY + boxH * 0.75f, true }; // R Knee
+                p.skeleton[15] = { centerX + boxW * 0.24f, topY + boxH * 0.98f, true }; // R Foot
+                p.hasSkeleton = true;
+            }
         }
 
         if (publishedCount < kDSPUBGMaxPlayers) {
