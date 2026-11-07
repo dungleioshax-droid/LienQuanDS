@@ -53,6 +53,10 @@ OBJC_EXTERN double DSBridgeProgress(void);
 /// YES while the serialized bootstrap / SpringBoard attach is running.
 OBJC_EXTERN BOOL DSBridgeIsRunning(void);
 
+/// Active game mode: 0 for Liên Quân (AOV), 1 for PUBG Mobile.
+OBJC_EXTERN int DSBridgeActiveGame(void);
+OBJC_EXTERN void DSBridgeSetActiveGame(int game);
+
 /// Posted on any DS progress / state change (observe on main queue).
 OBJC_EXTERN NSString * const DSBridgeProgressNotification;
 

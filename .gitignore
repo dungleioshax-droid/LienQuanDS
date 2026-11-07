@@ -8,6 +8,7 @@ compile_commands.json
 *.xcarchive
 *.tipa
 CameraDebug.log
+DUMP/
 Il2CppDumper-redump-20260831/
 KGVNFramework/
 myhack/

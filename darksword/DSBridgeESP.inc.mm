@@ -20,7 +20,14 @@ typedef struct {
 enum class DSDebugShmemOwner : uint8_t {
     None = 0,
     LienQuan = 1,
+    PUBG = 2,
 };
+
+static NSString * const kDSActiveGameKey = @"DSActiveGame";
+
+static inline int ds_active_game(void) {
+    return (int)[NSUserDefaults.standardUserDefaults integerForKey:kDSActiveGameKey];
+}
 
 // Mapper ownership is confined to ds_bridge_queue. Only the epoch is read by
 // the display thread, so publications can reject spans from an old target.
@@ -1175,17 +1182,29 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _hasPanelAnchor = YES;
         }
     }
-    float initialZoom = storedZoom ? (float)[storedZoom doubleValue] : 1.0f;
-    if (!isfinite(initialZoom)) initialZoom = 1.0f;
-    _zoomSlider.value = fminf(fmaxf(initialZoom, kDSHostedCamZoomMin),
-                              kDSHostedCamZoomMax);
-    ds_lq_camera_zoom_set(_enableSwitch.on, _zoomSlider.value);
-    ds_lq_auto_smite_set(_autoSmiteSwitch.on);
-    ds_lq_auto_smite_objectives_only_set(
-        _autoSmiteObjectivesOnlySwitch.on);
-    CGPoint minimapOffset = ds_hosted_minimap_offset();
-    _minimapXSlider.value = (float)minimapOffset.x;
-    _minimapYSlider.value = (float)minimapOffset.y;
+    if (ds_active_game() == 1) {
+        _titleLabel.text = @"PUBG Tools";
+        _zoomLabel.text = @"Dist";
+        _zoomSlider.minimumValue = 50.0f;
+        _zoomSlider.maximumValue = 400.0f;
+        _zoomSlider.value = g_dspubgMaxDistance;
+    } else {
+        _titleLabel.text = @"LQ Tools";
+        _zoomLabel.text = @"Zoom";
+        _zoomSlider.minimumValue = kDSHostedCamZoomMin;
+        _zoomSlider.maximumValue = kDSHostedCamZoomMax;
+        float initialZoom = storedZoom ? (float)[storedZoom doubleValue] : 1.0f;
+        if (!isfinite(initialZoom)) initialZoom = 1.0f;
+        _zoomSlider.value = fminf(fmaxf(initialZoom, kDSHostedCamZoomMin),
+                                  kDSHostedCamZoomMax);
+        ds_lq_camera_zoom_set(_enableSwitch.on, _zoomSlider.value);
+        ds_lq_auto_smite_set(_autoSmiteSwitch.on);
+        ds_lq_auto_smite_objectives_only_set(
+            _autoSmiteObjectivesOnlySwitch.on);
+        CGPoint minimapOffset = ds_hosted_minimap_offset();
+        _minimapXSlider.value = (float)minimapOffset.x;
+        _minimapYSlider.value = (float)minimapOffset.y;
+    }
 
     [self dsSetExpanded:g_hostedMenuExpanded];
     [self dsUpdateValueLabel];
@@ -1213,7 +1232,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = MIN((CGFloat)300.0, MAX((CGFloat)250.0, boundsW - 28.0));
-    CGFloat panelH = 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 112.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1256,29 +1275,82 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
                                     34.0, 34.0);
     _espLabel.frame = CGRectMake(13.0, 42.0, 90.0, 20.0);
     _espSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 37.0, 51.0, 31.0);
-    _enableLabel.frame = CGRectMake(13.0, 73.0, 90.0, 20.0);
-    _enableSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 68.0, 51.0, 31.0);
-    _autoSmiteLabel.frame = CGRectMake(13.0, 104.0, 90.0, 20.0);
-    _autoSmiteSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 99.0, 51.0, 31.0);
-    _autoSmiteObjectivesOnlyLabel.frame = CGRectMake(13.0, 135.0, 110.0, 20.0);
-    _autoSmiteObjectivesOnlySwitch.frame = CGRectMake(
-        CGRectGetWidth(panelBounds) - 62.0, 130.0, 51.0, 31.0);
-    _zoomLabel.frame = CGRectMake(13.0, 166.0, 52.0, 20.0);
-    _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 166.0, 46.0, 20.0);
-    _zoomSlider.frame = CGRectMake(66.0, 163.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
-    CGFloat panelWidth = CGRectGetWidth(panelBounds);
-    _minimapXLabel.frame = CGRectMake(13.0, 197.0, 42.0, 20.0);
-    _minimapXMinusButton.frame = CGRectMake(57.0, 193.0, 28.0, 28.0);
-    _minimapXSlider.frame = CGRectMake(89.0, 194.0, panelWidth - 168.0, 26.0);
-    _minimapXPlusButton.frame = CGRectMake(panelWidth - 75.0, 193.0, 28.0, 28.0);
-    _minimapXValueLabel.frame = CGRectMake(panelWidth - 44.0, 197.0, 34.0, 20.0);
-    _minimapYLabel.frame = CGRectMake(13.0, 228.0, 42.0, 20.0);
-    _minimapYMinusButton.frame = CGRectMake(57.0, 224.0, 28.0, 28.0);
-    _minimapYSlider.frame = CGRectMake(89.0, 225.0, panelWidth - 168.0, 26.0);
-    _minimapYPlusButton.frame = CGRectMake(panelWidth - 75.0, 224.0, 28.0, 28.0);
-    _minimapYValueLabel.frame = CGRectMake(panelWidth - 44.0, 228.0, 34.0, 20.0);
-    _resetButton.frame = CGRectMake(13.0, CGRectGetHeight(panelBounds) - 36.0,
-                                    CGRectGetWidth(panelBounds) - 26.0, 27.0);
+
+    if (ds_active_game() == 1) {
+        _titleLabel.text = @"PUBG Tools";
+        _enableLabel.hidden = YES;
+        _enableSwitch.hidden = YES;
+        _autoSmiteLabel.hidden = YES;
+        _autoSmiteSwitch.hidden = YES;
+        _autoSmiteObjectivesOnlyLabel.hidden = YES;
+        _autoSmiteObjectivesOnlySwitch.hidden = YES;
+        _minimapXLabel.hidden = YES;
+        _minimapXMinusButton.hidden = YES;
+        _minimapXSlider.hidden = YES;
+        _minimapXPlusButton.hidden = YES;
+        _minimapXValueLabel.hidden = YES;
+        _minimapYLabel.hidden = YES;
+        _minimapYMinusButton.hidden = YES;
+        _minimapYSlider.hidden = YES;
+        _minimapYPlusButton.hidden = YES;
+        _minimapYValueLabel.hidden = YES;
+        _resetButton.hidden = YES;
+
+        _zoomLabel.text = @"Dist";
+        _zoomLabel.hidden = NO;
+        _zoomValueLabel.hidden = NO;
+        _zoomSlider.hidden = NO;
+        _zoomLabel.frame = CGRectMake(13.0, 73.0, 52.0, 20.0);
+        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 73.0, 46.0, 20.0);
+        _zoomSlider.frame = CGRectMake(66.0, 70.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
+    } else {
+        _titleLabel.text = @"LQ Tools";
+        _enableLabel.hidden = NO;
+        _enableSwitch.hidden = NO;
+        _autoSmiteLabel.hidden = NO;
+        _autoSmiteSwitch.hidden = NO;
+        _autoSmiteObjectivesOnlyLabel.hidden = NO;
+        _autoSmiteObjectivesOnlySwitch.hidden = NO;
+        _minimapXLabel.hidden = NO;
+        _minimapXMinusButton.hidden = NO;
+        _minimapXSlider.hidden = NO;
+        _minimapXPlusButton.hidden = NO;
+        _minimapXValueLabel.hidden = NO;
+        _minimapYLabel.hidden = NO;
+        _minimapYMinusButton.hidden = NO;
+        _minimapYSlider.hidden = NO;
+        _minimapYPlusButton.hidden = NO;
+        _minimapYValueLabel.hidden = NO;
+        _resetButton.hidden = NO;
+
+        _enableLabel.frame = CGRectMake(13.0, 73.0, 90.0, 20.0);
+        _enableSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 68.0, 51.0, 31.0);
+        _autoSmiteLabel.frame = CGRectMake(13.0, 104.0, 90.0, 20.0);
+        _autoSmiteSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 99.0, 51.0, 31.0);
+        _autoSmiteObjectivesOnlyLabel.frame = CGRectMake(13.0, 135.0, 110.0, 20.0);
+        _autoSmiteObjectivesOnlySwitch.frame = CGRectMake(
+            CGRectGetWidth(panelBounds) - 62.0, 130.0, 51.0, 31.0);
+        _zoomLabel.text = @"Zoom";
+        _zoomLabel.hidden = NO;
+        _zoomValueLabel.hidden = NO;
+        _zoomSlider.hidden = NO;
+        _zoomLabel.frame = CGRectMake(13.0, 166.0, 52.0, 20.0);
+        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 166.0, 46.0, 20.0);
+        _zoomSlider.frame = CGRectMake(66.0, 163.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
+        CGFloat panelWidth = CGRectGetWidth(panelBounds);
+        _minimapXLabel.frame = CGRectMake(13.0, 197.0, 42.0, 20.0);
+        _minimapXMinusButton.frame = CGRectMake(57.0, 193.0, 28.0, 28.0);
+        _minimapXSlider.frame = CGRectMake(89.0, 194.0, panelWidth - 168.0, 26.0);
+        _minimapXPlusButton.frame = CGRectMake(panelWidth - 75.0, 193.0, 28.0, 28.0);
+        _minimapXValueLabel.frame = CGRectMake(panelWidth - 44.0, 197.0, 34.0, 20.0);
+        _minimapYLabel.frame = CGRectMake(13.0, 228.0, 42.0, 20.0);
+        _minimapYMinusButton.frame = CGRectMake(57.0, 224.0, 28.0, 28.0);
+        _minimapYSlider.frame = CGRectMake(89.0, 225.0, panelWidth - 168.0, 26.0);
+        _minimapYPlusButton.frame = CGRectMake(panelWidth - 75.0, 224.0, 28.0, 28.0);
+        _minimapYValueLabel.frame = CGRectMake(panelWidth - 44.0, 228.0, 34.0, 20.0);
+        _resetButton.frame = CGRectMake(13.0, CGRectGetHeight(panelBounds) - 36.0,
+                                        CGRectGetWidth(panelBounds) - 26.0, 27.0);
+    }
 }
 
 - (void)dsToggleTapped:(UIButton *)sender {
@@ -1400,6 +1472,11 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 }
 
 - (void)dsZoomSliderChanged:(UISlider *)sender {
+    if (ds_active_game() == 1) {
+        g_dspubgMaxDistance = sender.value;
+        [self dsUpdateValueLabel];
+        return;
+    }
     // Moving the slider is an explicit request to use camera zoom. Keeping the
     // switch off here made every slider event restore the stock value.
     if (!_enableSwitch.on) {
@@ -1463,6 +1540,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 }
 
 - (void)dsUpdateValueLabel {
+    if (ds_active_game() == 1) {
+        _zoomValueLabel.text = [NSString stringWithFormat:@"%.0fm", _zoomSlider.value];
+        return;
+    }
     _zoomValueLabel.text = [NSString stringWithFormat:@"%.2f", _zoomSlider.value];
     _minimapXValueLabel.text = [NSString stringWithFormat:@"%+.0f",
                                _minimapXSlider.value];
@@ -2658,6 +2739,136 @@ static void ds_hosted_apply_lq(void) {
     }
 }
 
+#pragma mark - PUBG ESP render
+
+static CAShapeLayer *g_hostedPUBGBoxLayers[kDSPUBGMaxPlayers] = {};
+static CAShapeLayer *g_hostedPUBGLineLayers[kDSPUBGMaxPlayers] = {};
+static CATextLayer *g_hostedPUBGInfoLabels[kDSPUBGMaxPlayers] = {};
+static CALayer *g_hostedPUBGHealthBgLayers[kDSPUBGMaxPlayers] = {};
+static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
+static CATextLayer *g_hostedPUBGTopCountLabel = nil;
+
+static void ds_hosted_pubg_hide_all(void) {
+    for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
+        if (g_hostedPUBGBoxLayers[i] && !g_hostedPUBGBoxLayers[i].hidden) g_hostedPUBGBoxLayers[i].hidden = YES;
+        if (g_hostedPUBGLineLayers[i] && !g_hostedPUBGLineLayers[i].hidden) g_hostedPUBGLineLayers[i].hidden = YES;
+        if (g_hostedPUBGInfoLabels[i] && !g_hostedPUBGInfoLabels[i].hidden) g_hostedPUBGInfoLabels[i].hidden = YES;
+        if (g_hostedPUBGHealthBgLayers[i] && !g_hostedPUBGHealthBgLayers[i].hidden) g_hostedPUBGHealthBgLayers[i].hidden = YES;
+        if (g_hostedPUBGHealthBarLayers[i] && !g_hostedPUBGHealthBarLayers[i].hidden) g_hostedPUBGHealthBarLayers[i].hidden = YES;
+    }
+    if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
+}
+
+static void ds_hosted_apply_pubg(void) {
+    if (!g_hostedLayer) return;
+    if (!ds_hosted_esp_enabled()) {
+        ds_hosted_pubg_hide_all();
+        return;
+    }
+    UIInterfaceOrientation orientation = ds_active_orientation();
+    if (!UIInterfaceOrientationIsLandscape(orientation)) {
+        ds_hosted_pubg_hide_all();
+        return;
+    }
+
+    DSPUBGProjectedPlayer players[kDSPUBGMaxPlayers] = {};
+    uint64_t epoch = 0;
+    int count = ds_pubg_copy_projected_players(players, &epoch);
+    if (count < 0) return;
+    if (count > kDSPUBGMaxPlayers) count = kDSPUBGMaxPlayers;
+
+    const CGFloat width = CGRectGetWidth(g_hostedLayer.bounds);
+    const CGFloat height = CGRectGetHeight(g_hostedLayer.bounds);
+
+    int activeEnemyCount = 0;
+    int activeBotCount = 0;
+
+    for (int i = 0; i < count; i++) {
+        const DSPUBGProjectedPlayer &p = players[i];
+        CAShapeLayer *box = g_hostedPUBGBoxLayers[i];
+        CAShapeLayer *line = g_hostedPUBGLineLayers[i];
+        CATextLayer *info = g_hostedPUBGInfoLabels[i];
+        CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
+        CALayer *hpBar = g_hostedPUBGHealthBarLayers[i];
+        if (!box || !line || !info || !hpBg || !hpBar) continue;
+
+        if (!p.isVisible || p.screenX < -200 || p.screenX > width + 200 ||
+            p.screenY < -200 || p.screenY > height + 200) {
+            box.hidden = YES;
+            line.hidden = YES;
+            info.hidden = YES;
+            hpBg.hidden = YES;
+            hpBar.hidden = YES;
+            continue;
+        }
+
+        if (p.isAI) activeBotCount++;
+        else activeEnemyCount++;
+
+        CGColorRef color = p.isAI
+            ? [UIColor colorWithRed:0.0 green:0.9 blue:0.45 alpha:0.9].CGColor
+            : [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:0.95].CGColor;
+
+        // Bounding Box
+        CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
+        UIBezierPath *boxPath = [UIBezierPath bezierPathWithRoundedRect:boxRect cornerRadius:2.0];
+        box.path = boxPath.CGPath;
+        box.strokeColor = color;
+        box.hidden = NO;
+
+        // Snapline from top center
+        UIBezierPath *linePath = [UIBezierPath bezierPath];
+        [linePath moveToPoint:CGPointMake(width * 0.5, 0)];
+        [linePath addLineToPoint:CGPointMake(p.headX, p.headY)];
+        line.path = linePath.CGPath;
+        line.strokeColor = color;
+        line.hidden = NO;
+
+        // Info text
+        NSString *tag = p.isAI ? @"[BOT]" : [NSString stringWithFormat:@"[T%d]", p.teamId];
+        info.string = [NSString stringWithFormat:@"%@ %.0fm | %.0fHP", tag, p.distanceMeters, p.health];
+        info.frame = CGRectMake(p.screenX - 40.0, p.screenY - 16.0, p.boxWidth + 80.0, 14.0);
+        info.foregroundColor = color;
+        info.hidden = NO;
+
+        // Health bar on left
+        CGFloat barW = 3.0;
+        CGFloat barH = p.boxHeight;
+        hpBg.frame = CGRectMake(p.screenX - barW - 3.0, p.screenY, barW, barH);
+        hpBg.hidden = NO;
+
+        float hpRatio = p.healthMax > 0 ? (p.health / p.healthMax) : 1.0f;
+        if (hpRatio < 0.0f) hpRatio = 0.0f;
+        if (hpRatio > 1.0f) hpRatio = 1.0f;
+        CGFloat fillH = barH * hpRatio;
+        hpBar.frame = CGRectMake(p.screenX - barW - 3.0, p.screenY + (barH - fillH), barW, fillH);
+        hpBar.backgroundColor = (hpRatio > 0.5f)
+            ? [UIColor colorWithRed:0.2 green:0.85 blue:0.3 alpha:1.0].CGColor
+            : ((hpRatio > 0.2f)
+               ? [UIColor colorWithRed:1.0 green:0.7 blue:0.0 alpha:1.0].CGColor
+               : [UIColor colorWithRed:1.0 green:0.1 blue:0.1 alpha:1.0].CGColor);
+        hpBar.hidden = NO;
+    }
+
+    for (int i = count; i < kDSPUBGMaxPlayers; i++) {
+        if (g_hostedPUBGBoxLayers[i]) g_hostedPUBGBoxLayers[i].hidden = YES;
+        if (g_hostedPUBGLineLayers[i]) g_hostedPUBGLineLayers[i].hidden = YES;
+        if (g_hostedPUBGInfoLabels[i]) g_hostedPUBGInfoLabels[i].hidden = YES;
+        if (g_hostedPUBGHealthBgLayers[i]) g_hostedPUBGHealthBgLayers[i].hidden = YES;
+        if (g_hostedPUBGHealthBarLayers[i]) g_hostedPUBGHealthBarLayers[i].hidden = YES;
+    }
+
+    if (g_hostedPUBGTopCountLabel) {
+        if (activeEnemyCount > 0 || activeBotCount > 0) {
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 240.0) * 0.5, 10.0, 240.0, 20.0);
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots", activeEnemyCount, activeBotCount];
+            g_hostedPUBGTopCountLabel.hidden = NO;
+        } else {
+            g_hostedPUBGTopCountLabel.hidden = YES;
+        }
+    }
+}
+
 static void ds_hosted_consume_render_snapshot(bool fallback,
                                               double timestamp,
                                               double targetTimestamp,
@@ -2684,7 +2895,13 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     ds_hosted_apply_orientation(ds_active_orientation());
-    ds_hosted_apply_lq();
+    if (ds_active_game() == 1) {
+        ds_hosted_lq_hide_all();
+        ds_hosted_apply_pubg();
+    } else {
+        ds_hosted_pubg_hide_all();
+        ds_hosted_apply_lq();
+    }
     [CATransaction commit];
 }
 
@@ -2962,6 +3179,68 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
         }
 
         ds_hosted_lq_reset_slots(YES);
+
+        // PUBG-only pool: bounding boxes, snaplines, info labels, and health bars
+        {
+            for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
+                CAShapeLayer *box = [CAShapeLayer layer];
+                box.actions = noAnim;
+                box.contentsScale = scale;
+                box.fillColor = UIColor.clearColor.CGColor;
+                box.lineWidth = 1.5;
+                box.hidden = YES;
+                [g_hostedLayer addSublayer:box];
+                g_hostedPUBGBoxLayers[i] = box;
+
+                CAShapeLayer *line = [CAShapeLayer layer];
+                line.actions = noAnim;
+                line.contentsScale = scale;
+                line.lineWidth = 1.0;
+                line.hidden = YES;
+                [g_hostedLayer addSublayer:line];
+                g_hostedPUBGLineLayers[i] = line;
+
+                CATextLayer *info = [CATextLayer layer];
+                info.actions = noAnim;
+                info.contentsScale = scale;
+                info.alignmentMode = kCAAlignmentCenter;
+                info.fontSize = 11.0;
+                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+                info.hidden = YES;
+                [g_hostedLayer addSublayer:info];
+                g_hostedPUBGInfoLabels[i] = info;
+
+                CALayer *hpBg = [CALayer layer];
+                hpBg.actions = noAnim;
+                hpBg.contentsScale = scale;
+                hpBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6].CGColor;
+                hpBg.cornerRadius = 1.0;
+                hpBg.hidden = YES;
+                [g_hostedLayer addSublayer:hpBg];
+                g_hostedPUBGHealthBgLayers[i] = hpBg;
+
+                CALayer *hpBar = [CALayer layer];
+                hpBar.actions = noAnim;
+                hpBar.contentsScale = scale;
+                hpBar.cornerRadius = 1.0;
+                hpBar.hidden = YES;
+                [g_hostedLayer addSublayer:hpBar];
+                g_hostedPUBGHealthBarLayers[i] = hpBar;
+            }
+
+            CATextLayer *topLabel = [CATextLayer layer];
+            topLabel.actions = noAnim;
+            topLabel.contentsScale = scale;
+            topLabel.alignmentMode = kCAAlignmentCenter;
+            topLabel.fontSize = 13.0;
+            topLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:13.0 weight:UIFontWeightBold];
+            topLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.85 blue:0.0 alpha:0.95].CGColor;
+            topLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.5].CGColor;
+            topLabel.cornerRadius = 4.0;
+            topLabel.hidden = YES;
+            [g_hostedLayer addSublayer:topLabel];
+            g_hostedPUBGTopCountLabel = topLabel;
+        }
     }
 
     g_hostedLayerReady.store(true, std::memory_order_release);
@@ -3000,8 +3279,13 @@ static void ds_hosted_overlay_frame(void) {
         return;
     }
 
-    ds_lq_tick();
-    snapshot.lqRenderSourceReady = ds_lq_has_render_source();
+    if (ds_active_game() == 1) {
+        ds_pubg_tick();
+        snapshot.lqRenderSourceReady = ds_pubg_has_render_source();
+    } else {
+        ds_lq_tick();
+        snapshot.lqRenderSourceReady = ds_lq_has_render_source();
+    }
 
     g_hostedPushedFrames++;
     ds_hosted_publish_render_snapshot(snapshot);
@@ -3011,6 +3295,8 @@ static void ds_hosted_overlay_start(void) {
     if (g_hostedTimer) return;
     g_hostedLastSetupTryAt = 0;
     os_unfair_lock_lock(&g_hostedSnapshotLock);
+    g_hostedSnapshots[0] = {};
+    g_hostedSnapshots[1] = {};
     g_hostedPublishedSnapshot = -1;
     g_hostedSnapshotGeneration = 0;
     g_hostedConsumedGeneration = 0;
@@ -3020,8 +3306,12 @@ static void ds_hosted_overlay_start(void) {
     g_hostedLastDisplayLinkTick.store(0.0, std::memory_order_relaxed);
     g_hostedDisplayPulse.store(0, std::memory_order_release);
     g_hostedConsumedDisplayPulse = UINT64_MAX;
-    ds_lq_overlay_reset();
-    ds_lq_prewarm_all_hero_images();
+    if (ds_active_game() == 1) {
+        ds_pubg_overlay_reset();
+    } else {
+        ds_lq_overlay_reset();
+        ds_lq_prewarm_all_hero_images();
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         unsigned contextId = ds_hosted_overlay_setup_on_main();
         unsigned menuContextId = ds_hosted_menu_setup_on_main();
@@ -3096,6 +3386,7 @@ static void ds_hosted_overlay_pause(void) {
     g_hostedDisplayPulse.store(0, std::memory_order_release);
     g_hostedConsumedDisplayPulse = UINT64_MAX;
     ds_lq_overlay_reset();
+    ds_pubg_overlay_reset();
     dispatch_async(dispatch_get_main_queue(), ^{
         [g_hostedDisplayLink invalidate];
         g_hostedDisplayLink = nil;
@@ -3105,6 +3396,7 @@ static void ds_hosted_overlay_pause(void) {
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
         ds_hosted_lq_reset_slots(YES);
+        ds_hosted_pubg_hide_all();
         [CATransaction commit];
     });
 }

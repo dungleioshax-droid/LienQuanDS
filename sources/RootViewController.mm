@@ -42,6 +42,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     BOOL _isRemoteHUDActive;
     HUDRootViewController *_localHUDRootViewController;  // Only for debugging
     UIImpactFeedbackGenerator *_impactFeedbackGenerator;
+    UISegmentedControl *_gameSegmentedControl;
 #if USE_DARKSWORD
     UIView *_dsProgressOverlay;
     UIProgressView *_dsProgressBar;
@@ -214,6 +215,37 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
         [_mainButton.centerYAnchor constraintEqualToAnchor:self.backgroundView.centerYAnchor],
     ]];
 
+    _gameSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[
+        NSLocalizedString(@"Liên Quân (AOV)", nil),
+        NSLocalizedString(@"PUBG Mobile", nil)
+    ]];
+    if (@available(iOS 13.0, *)) {
+        _gameSegmentedControl.selectedSegmentTintColor = [UIColor colorWithWhite:1.0 alpha:0.35];
+    }
+    NSDictionary *segNormal = @{
+        NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.85],
+        NSFontAttributeName: [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium],
+    };
+    NSDictionary *segSelected = @{
+        NSForegroundColorAttributeName: [UIColor whiteColor],
+        NSFontAttributeName: [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold],
+    };
+    [_gameSegmentedControl setTitleTextAttributes:segNormal forState:UIControlStateNormal];
+    [_gameSegmentedControl setTitleTextAttributes:segSelected forState:UIControlStateSelected];
+
+    NSInteger currentActiveGame = [[NSUserDefaults standardUserDefaults] integerForKey:@"DSActiveGame"];
+    _gameSegmentedControl.selectedSegmentIndex = (currentActiveGame == 1) ? 1 : 0;
+    [_gameSegmentedControl addTarget:self action:@selector(gameSegmentChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.backgroundView addSubview:_gameSegmentedControl];
+
+    [_gameSegmentedControl setTranslatesAutoresizingMaskIntoConstraints:NO];
+    [NSLayoutConstraint activateConstraints:@[
+        [_gameSegmentedControl.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
+        [_gameSegmentedControl.bottomAnchor constraintEqualToAnchor:_mainButton.topAnchor constant:-28.0f],
+        [_gameSegmentedControl.widthAnchor constraintEqualToConstant:260.0f],
+        [_gameSegmentedControl.heightAnchor constraintEqualToConstant:36.0f],
+    ]];
+
     _settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_settingsButton setTintColor:[UIColor whiteColor]];
     [_settingsButton addTarget:self action:@selector(tapSettingsButton:) forControlEvents:UIControlEventTouchUpInside];
@@ -267,11 +299,74 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     _impactFeedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
 
     [self registerNotifications];
+    [self updateGameModeVisuals];
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    [self checkInitialGameSelection];
     [self toggleHUDAfterLaunch];
+}
+
+- (void)gameSegmentChanged:(UISegmentedControl *)sender {
+    NSInteger selected = sender.selectedSegmentIndex;
+    [[NSUserDefaults standardUserDefaults] setInteger:selected forKey:@"DSActiveGame"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+#if USE_DARKSWORD
+    DSBridgeSetActiveGame((int)selected);
+#endif
+    [_impactFeedbackGenerator impactOccurred];
+    [self updateGameModeVisuals];
+}
+
+- (void)checkInitialGameSelection {
+    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"DSActiveGame"] == nil) {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Chọn Game", nil)
+                                                                       message:NSLocalizedString(@"Vui lòng chọn game bạn muốn sử dụng ESP:", nil)
+                                                                preferredStyle:UIAlertControllerStyleActionSheet];
+
+        __weak typeof(self) weakSelf = self;
+        UIAlertAction *aovAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Liên Quân Mobile (AOV)", nil)
+                                                            style:UIAlertActionStyleDefault
+                                                          handler:^(UIAlertAction * _Nonnull action) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (strongSelf) {
+                strongSelf->_gameSegmentedControl.selectedSegmentIndex = 0;
+                [strongSelf gameSegmentChanged:strongSelf->_gameSegmentedControl];
+            }
+        }];
+
+        UIAlertAction *pubgAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"PUBG Mobile", nil)
+                                                             style:UIAlertActionStyleDefault
+                                                           handler:^(UIAlertAction * _Nonnull action) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (strongSelf) {
+                strongSelf->_gameSegmentedControl.selectedSegmentIndex = 1;
+                [strongSelf gameSegmentChanged:strongSelf->_gameSegmentedControl];
+            }
+        }];
+
+        [alert addAction:aovAction];
+        [alert addAction:pubgAction];
+
+        if (alert.popoverPresentationController) {
+            alert.popoverPresentationController.sourceView = _gameSegmentedControl;
+            alert.popoverPresentationController.sourceRect = _gameSegmentedControl.bounds;
+        }
+
+        [self presentViewController:alert animated:YES completion:nil];
+    }
+}
+
+- (void)updateGameModeVisuals {
+    NSInteger game = [[NSUserDefaults standardUserDefaults] integerForKey:@"DSActiveGame"];
+    [UIView animateWithDuration:0.3 animations:^{
+        if (game == 1) {
+            self.backgroundView.backgroundColor = [UIColor colorWithRed:32/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
+        } else {
+            self.backgroundView.backgroundColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+        }
+    }];
 }
 
 - (BOOL)shouldAutorotate

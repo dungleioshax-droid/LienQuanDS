@@ -931,8 +931,35 @@ static int ds_lq_copy_projected_heroes(DSLQProjectedHero out[5],
 static int ds_lq_copy_projected_monsters(
     DSLQProjectedMonster out[kDSLQMaxMonsters], uint64_t *epochOut);
 static void ds_lq_overlay_reset(void);
+
+typedef struct {
+    float screenX;
+    float screenY;
+    float headX;
+    float headY;
+    float boxWidth;
+    float boxHeight;
+    float distanceMeters;
+    float health;
+    float healthMax;
+    int32_t teamId;
+    bool isAI;
+    bool isDead;
+    bool isVisible;
+    uint64_t actorPtr;
+    uint32_t playerKey;
+} DSPUBGProjectedPlayer;
+
+static const int kDSPUBGMaxPlayers = 40;
+static void ds_pubg_tick(void);
+static bool ds_pubg_has_render_source(void);
+static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPlayers],
+                                          uint64_t *epochOut);
+static void ds_pubg_overlay_reset(void);
+
 #include "DSBridgeESP.inc.mm"
 #include "DSBridgeLienQuan.inc.mm"
+#include "DSBridgePUBG.inc.mm"
 
 // The HUD lives in its own UIWindow anchored to SBMainWorkspace.mainWindowScene
 // Adding to whatever keyWindow we can find is
@@ -1691,4 +1718,13 @@ NSString *DSBridgeStage(void) {
     NSString *stage = [g_dsStage copy] ?: @"";
     os_unfair_lock_unlock(&g_errorLock);
     return [stage isEqualToString:@"Waiting to start"] ? ds_localized(@"Waiting to start") : stage;
+}
+
+int DSBridgeActiveGame(void) {
+    return (int)[NSUserDefaults.standardUserDefaults integerForKey:@"DSActiveGame"];
+}
+
+void DSBridgeSetActiveGame(int game) {
+    [NSUserDefaults.standardUserDefaults setInteger:game forKey:@"DSActiveGame"];
+    [NSUserDefaults.standardUserDefaults synchronize];
 }
