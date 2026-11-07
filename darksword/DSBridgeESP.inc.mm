@@ -688,6 +688,8 @@ static float ds_lq_camera_zoom_value(void);
 static void ds_lq_camera_zoom_set(bool enabled, float value);
 static void ds_lq_auto_smite_set(bool enabled);
 static void ds_lq_auto_smite_objectives_only_set(bool enabled);
+// Defined with the AOV overlay pool below; used by the ESP menu switch.
+static void ds_hosted_lq_hide_all(void);
 
 static NSString * const kDSHostedCamZoomEnabledKey = @"lq_camxa_enabled";
 static NSString * const kDSHostedCamZoomValueKey = @"lq_camxa_value";
@@ -700,6 +702,7 @@ static NSString * const kDSHostedMenuPanelXKey = @"lq_menu_panel_x";
 static NSString * const kDSHostedMenuPanelYKey = @"lq_menu_panel_y";
 static NSString * const kDSHostedMinimapOffsetXKey = @"lq_minimap_offset_x";
 static NSString * const kDSHostedMinimapOffsetYKey = @"lq_minimap_offset_y";
+static NSString * const kDSHostedEspEnabledKey = @"lq_esp_enabled";
 static const double kDSHostedMenuLevel = 10000020.0;
 static const float kDSHostedCamZoomMin = 1.0f;
 static const float kDSHostedCamZoomMax = 10.0f;
@@ -755,6 +758,43 @@ static void ds_hosted_minimap_set_offset(CGPoint offset) {
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
     [defaults setDouble:x forKey:kDSHostedMinimapOffsetXKey];
     [defaults setDouble:y forKey:kDSHostedMinimapOffsetYKey];
+}
+
+// ESP defaults to on (the overlay always rendered before the switch existed).
+static std::atomic<bool> g_hostedEspEnabled(true);
+static dispatch_once_t g_hostedEspDefaultsOnce;
+
+static bool ds_hosted_esp_enabled(void) {
+    dispatch_once(&g_hostedEspDefaultsOnce, ^{
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        id stored = [defaults objectForKey:kDSHostedEspEnabledKey];
+        if (stored) {
+            g_hostedEspEnabled.store([defaults boolForKey:kDSHostedEspEnabledKey],
+                                     std::memory_order_release);
+        }
+    });
+    return g_hostedEspEnabled.load(std::memory_order_acquire);
+}
+
+static void ds_hosted_esp_set_enabled(bool enabled) {
+    // Load the persisted value first so an explicit write below is not
+    // overwritten by the one-time defaults read.
+    (void)ds_hosted_esp_enabled();
+    g_hostedEspEnabled.store(enabled, std::memory_order_release);
+    [NSUserDefaults.standardUserDefaults setBool:enabled
+                                          forKey:kDSHostedEspEnabledKey];
+    if (enabled) return;
+    void (^hideEsp)(void) = ^{
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        ds_hosted_lq_hide_all();
+        [CATransaction commit];
+    };
+    if (NSThread.isMainThread) {
+        hideEsp();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), hideEsp);
+    }
 }
 
 static UIImage *ds_hosted_menu_toggle_image(void) {
@@ -849,6 +889,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UIButton *_toggleButton;
     UIButton *_closeButton;
     UILabel *_titleLabel;
+    UILabel *_espLabel;
+    UISwitch *_espSwitch;
     UILabel *_enableLabel;
     UISwitch *_enableSwitch;
     UILabel *_autoSmiteLabel;
@@ -920,6 +962,20 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [_closeButton addTarget:self action:@selector(dsCloseTapped:)
            forControlEvents:UIControlEventTouchUpInside];
     [_panelView addSubview:_closeButton];
+
+    _espLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _espLabel.text = @"ESP";
+    _espLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
+    _espLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+    [_panelView addSubview:_espLabel];
+
+    _espSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
+    _espSwitch.onTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+    _espSwitch.transform = CGAffineTransformMakeScale(0.8, 0.8);
+    _espSwitch.on = ds_hosted_esp_enabled();
+    [_espSwitch addTarget:self action:@selector(dsEspSwitchChanged:)
+         forControlEvents:UIControlEventValueChanged];
+    [_panelView addSubview:_espSwitch];
 
     _enableLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _enableLabel.text = @"Cam Xa";
@@ -1157,7 +1213,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = MIN((CGFloat)300.0, MAX((CGFloat)250.0, boundsW - 28.0));
-    CGFloat panelH = 284.0;
+    CGFloat panelH = 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1198,27 +1254,29 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
                                    CGRectGetWidth(panelBounds) - 58.0, 26.0);
     _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 40.0, 4.0,
                                     34.0, 34.0);
-    _enableLabel.frame = CGRectMake(13.0, 42.0, 90.0, 20.0);
-    _enableSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 37.0, 51.0, 31.0);
-    _autoSmiteLabel.frame = CGRectMake(13.0, 73.0, 90.0, 20.0);
-    _autoSmiteSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 68.0, 51.0, 31.0);
-    _autoSmiteObjectivesOnlyLabel.frame = CGRectMake(13.0, 104.0, 110.0, 20.0);
+    _espLabel.frame = CGRectMake(13.0, 42.0, 90.0, 20.0);
+    _espSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 37.0, 51.0, 31.0);
+    _enableLabel.frame = CGRectMake(13.0, 73.0, 90.0, 20.0);
+    _enableSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 68.0, 51.0, 31.0);
+    _autoSmiteLabel.frame = CGRectMake(13.0, 104.0, 90.0, 20.0);
+    _autoSmiteSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 99.0, 51.0, 31.0);
+    _autoSmiteObjectivesOnlyLabel.frame = CGRectMake(13.0, 135.0, 110.0, 20.0);
     _autoSmiteObjectivesOnlySwitch.frame = CGRectMake(
-        CGRectGetWidth(panelBounds) - 62.0, 99.0, 51.0, 31.0);
-    _zoomLabel.frame = CGRectMake(13.0, 136.0, 52.0, 20.0);
-    _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 136.0, 46.0, 20.0);
-    _zoomSlider.frame = CGRectMake(66.0, 133.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
+        CGRectGetWidth(panelBounds) - 62.0, 130.0, 51.0, 31.0);
+    _zoomLabel.frame = CGRectMake(13.0, 166.0, 52.0, 20.0);
+    _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 166.0, 46.0, 20.0);
+    _zoomSlider.frame = CGRectMake(66.0, 163.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
     CGFloat panelWidth = CGRectGetWidth(panelBounds);
-    _minimapXLabel.frame = CGRectMake(13.0, 168.0, 42.0, 20.0);
-    _minimapXMinusButton.frame = CGRectMake(57.0, 164.0, 28.0, 28.0);
-    _minimapXSlider.frame = CGRectMake(89.0, 165.0, panelWidth - 168.0, 26.0);
-    _minimapXPlusButton.frame = CGRectMake(panelWidth - 75.0, 164.0, 28.0, 28.0);
-    _minimapXValueLabel.frame = CGRectMake(panelWidth - 44.0, 168.0, 34.0, 20.0);
-    _minimapYLabel.frame = CGRectMake(13.0, 200.0, 42.0, 20.0);
-    _minimapYMinusButton.frame = CGRectMake(57.0, 196.0, 28.0, 28.0);
-    _minimapYSlider.frame = CGRectMake(89.0, 197.0, panelWidth - 168.0, 26.0);
-    _minimapYPlusButton.frame = CGRectMake(panelWidth - 75.0, 196.0, 28.0, 28.0);
-    _minimapYValueLabel.frame = CGRectMake(panelWidth - 44.0, 200.0, 34.0, 20.0);
+    _minimapXLabel.frame = CGRectMake(13.0, 197.0, 42.0, 20.0);
+    _minimapXMinusButton.frame = CGRectMake(57.0, 193.0, 28.0, 28.0);
+    _minimapXSlider.frame = CGRectMake(89.0, 194.0, panelWidth - 168.0, 26.0);
+    _minimapXPlusButton.frame = CGRectMake(panelWidth - 75.0, 193.0, 28.0, 28.0);
+    _minimapXValueLabel.frame = CGRectMake(panelWidth - 44.0, 197.0, 34.0, 20.0);
+    _minimapYLabel.frame = CGRectMake(13.0, 228.0, 42.0, 20.0);
+    _minimapYMinusButton.frame = CGRectMake(57.0, 224.0, 28.0, 28.0);
+    _minimapYSlider.frame = CGRectMake(89.0, 225.0, panelWidth - 168.0, 26.0);
+    _minimapYPlusButton.frame = CGRectMake(panelWidth - 75.0, 224.0, 28.0, 28.0);
+    _minimapYValueLabel.frame = CGRectMake(panelWidth - 44.0, 228.0, 34.0, 20.0);
     _resetButton.frame = CGRectMake(13.0, CGRectGetHeight(panelBounds) - 36.0,
                                     CGRectGetWidth(panelBounds) - 26.0, 27.0);
 }
@@ -1325,6 +1383,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     return NO;
 }
 
+- (void)dsEspSwitchChanged:(UISwitch *)sender {
+    ds_hosted_esp_set_enabled(sender.on);
+}
+
 - (void)dsEnableSwitchChanged:(UISwitch *)sender {
     ds_lq_camera_zoom_set(sender.on, _zoomSlider.value);
 }
@@ -1385,6 +1447,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
 - (void)dsResetTapped:(UIButton *)sender {
     (void)sender;
+    [_espSwitch setOn:YES animated:YES];
+    ds_hosted_esp_set_enabled(true);
     _enableSwitch.on = NO;
     _autoSmiteSwitch.on = NO;
     _autoSmiteObjectivesOnlySwitch.on = NO;
@@ -2300,6 +2364,12 @@ static void ds_hosted_lq_apply_cooldowns(const DSLQProjectedHero &hero,
 // edges instead of compacting all following heroes into different slots.
 static void ds_hosted_apply_lq(void) {
     if (!g_hostedLayer) return;
+    if (!ds_hosted_esp_enabled()) {
+        // The switch only gates the overlay visuals; ds_lq_tick keeps running
+        // so Auto TT and the camera helpers stay live while ESP is off.
+        ds_hosted_lq_hide_all();
+        return;
+    }
     UIInterfaceOrientation orientation = ds_active_orientation();
     if (!UIInterfaceOrientationIsLandscape(orientation)) {
         ds_hosted_lq_hide_all();
