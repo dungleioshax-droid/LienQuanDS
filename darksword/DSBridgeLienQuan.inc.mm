@@ -36,7 +36,7 @@ static const uint64_t kDSLienQuanBattleModulesOffset = 0xA8ULL;
 
 static const uint64_t kDSLienQuanBattleGameActorMgrOffset = 0xF8ULL;
 static const uint64_t kDSLienQuanBattleHostPlayerIdOffset = 0x88ULL;
-static const uint64_t kDSLienQuanBattleHostPlayerOffset = 0x2C8ULL;
+static const uint64_t kDSLienQuanBattleHostPlayerOffset = 0x2C0ULL;
 static const uint64_t kDSLienQuanLogicHostPlayerIdOffset = 0x10ULL;
 static const uint64_t kDSLienQuanLogicHostActorOffset = 0x20ULL;
 static const uint64_t kDSLienQuanGameActorMgrGameActorsOffset = 0x38ULL;
@@ -53,13 +53,13 @@ static const uint64_t kDSLienQuanPoolObjHandleStride = 0x10ULL;
 static const uint64_t kDSLienQuanPoolObjHandleObjectOffset = 0x08ULL;
 static const uint64_t kDSLienQuanActorRootObjectIdOffset = 0x28ULL;
 static const uint64_t kDSLienQuanActorRootMetaOffset = 0x58ULL;
-static const uint64_t kDSLienQuanActorRootLocationOffset = 0xE0ULL;
-static const uint64_t kDSLienQuanActorRootForwardOffset = 0xECULL;
-static const uint64_t kDSLienQuanActorRootControlOffset = 0x308ULL;
-static const uint64_t kDSLienQuanActorRootValueComponentOffset = 0x338ULL;
-static const uint64_t kDSLienQuanActorRootSkillControlOffset = 0x328ULL;
-static const uint64_t kDSLienQuanActorRootGameObjectOffset = 0x410ULL;
-static const uint64_t kDSLienQuanActorRootRecycledOffset = 0x420ULL;
+static const uint64_t kDSLienQuanActorRootLocationOffset = 0xD0ULL;
+static const uint64_t kDSLienQuanActorRootForwardOffset = 0xDCULL;
+static const uint64_t kDSLienQuanActorRootControlOffset = 0x2E8ULL;
+static const uint64_t kDSLienQuanActorRootValueComponentOffset = 0x318ULL;
+static const uint64_t kDSLienQuanActorRootSkillControlOffset = 0x308ULL;
+static const uint64_t kDSLienQuanActorRootGameObjectOffset = 0x3F0ULL;
+static const uint64_t kDSLienQuanActorRootRecycledOffset = 0x400ULL;
 static const uint64_t kDSLienQuanEngineGameObjectDestroyedOffset = 0x5DULL;
 // dump.cs: LEngineGameObject.m_Transform @ 0x50, LEngineTransform.position
 // @ 0x2C. The transform position is the VISUAL position updated with the
@@ -101,8 +101,8 @@ static const uint64_t kDSLienQuanBattleLogicFrameTickOffset = 0x38ULL;
 static const uint64_t kDSLienQuanManagedArrayLengthOffset = 0x10ULL;
 static const uint64_t kDSLienQuanManagedArrayDataOffset = 0x18ULL;
 static const uint64_t kDSLienQuanObjWrapperBehaviorOffset = 0x4CULL;
-static const uint64_t kDSLienQuanActorLinkerObjectIdOffset = 0x148ULL;
-static const uint64_t kDSLienQuanActorLinkerVisibleOffset = 0x1DDULL;
+static const uint64_t kDSLienQuanActorLinkerObjectIdOffset = 0x128ULL;
+static const uint64_t kDSLienQuanActorLinkerVisibleOffset = 0x1BDULL;
 static const uint64_t kDSLienQuanIl2CppClassInstanceSizeOffset = 0xF8ULL;
 static const uint64_t kDSLienQuanCameraSystemTypeInfoRva = 0x0D0B5AD8ULL;
 static const uint64_t kDSLienQuanLBattleLogicTypeInfoRva = 0x0D0BB890ULL;
@@ -1173,12 +1173,14 @@ static bool ds_lq_camera_zoom_enabled(void) {
 }
 
 static void ds_lq_auto_smite_set(bool enabled) {
+    g_dslqAutoSmiteLoadedDefaults = true;
     g_dslqAutoSmiteEnabled.store(enabled, std::memory_order_release);
     [NSUserDefaults.standardUserDefaults setBool:enabled
                                            forKey:kDSHostedAutoSmiteEnabledKey];
 }
 
 static void ds_lq_auto_smite_objectives_only_set(bool enabled) {
+    g_dslqAutoSmiteLoadedDefaults = true;
     g_dslqAutoSmiteObjectivesOnly.store(enabled, std::memory_order_release);
     [NSUserDefaults.standardUserDefaults
         setBool:enabled forKey:kDSHostedAutoSmiteObjectivesOnlyKey];
@@ -1193,6 +1195,7 @@ static float ds_lq_camera_zoom_value(void) {
 static void ds_lq_camera_zoom_set(bool enabled, float value) {
     if (!isfinite(value)) value = 1.0f;
     value = fminf(fmaxf(value, 1.0f), 10.0f);
+    g_dslqCamZoomLoadedDefaults = true;
     g_dslqCamZoomEnabled.store(enabled, std::memory_order_release);
     g_dslqCamZoomValue.store(value, std::memory_order_release);
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -1260,7 +1263,10 @@ static void ds_lq_camera_zoom_tick(CFAbsoluteTime now) {
     if (!cameraSystem) return;
     bool enabled = g_dslqCamZoomEnabled.load(std::memory_order_acquire);
     if (!enabled) {
-        // Disabling only stops further writes; it does not restore a baseline.
+        if (g_dslqCamZoomExtraContribution != 0.0f ||
+            g_dslqCamZoomExtraCamera != 0) {
+            ds_lq_camera_sync_moba_extra(cameraSystem, 0.0f);
+        }
         return;
     }
     float desired = g_dslqCamZoomValue.load(std::memory_order_acquire);
