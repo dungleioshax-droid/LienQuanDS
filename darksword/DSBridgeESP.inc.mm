@@ -3055,10 +3055,10 @@ static void ds_hosted_apply_pubg(void) {
         // Render colors:
         // Player: White 0xFFFFFFFF, width 1.5
         // AI / Bot: Warm Yellow 0xFFFFD040, width 2.0
-        // Vehicle: Cyan / Teal 0xFF00E5FF, width 1.5
+        // Vehicle: Golden Yellow 0xFFFFD700, width 1.5
         CGColorRef mainColor;
         if (vehicle) {
-            mainColor = [UIColor colorWithRed:0.0/255.0 green:229.0/255.0 blue:255.0/255.0 alpha:0.95].CGColor;
+            mainColor = [UIColor colorWithRed:255.0/255.0 green:215.0/255.0 blue:0.0/255.0 alpha:0.95].CGColor;
         } else if (ai) {
             mainColor = [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor;
         } else {
@@ -3144,9 +3144,8 @@ static void ds_hosted_apply_pubg(void) {
 
             hpBar.frame = CGRectMake(p.screenX, barY, fillW, barH);
             if (vehicle) {
-                hpBar.backgroundColor = (hpRatio >= 0.50f)
-                    ? [UIColor colorWithRed:0.0 green:229.0/255.0 blue:255.0/255.0 alpha:1.0].CGColor
-                    : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
+                // Thanh máu xe hiện màu xanh lá
+                hpBar.backgroundColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
             } else {
                 hpBar.backgroundColor = (hpRatio >= 0.60f)
                     ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
@@ -3162,17 +3161,55 @@ static void ds_hosted_apply_pubg(void) {
 
         // 6. Text label: below box at bottom center
         if (g_pubgEspName || g_pubgEspDist) {
-            char labelText[128] = {0};
+            CGFloat labelW = 160.0f;
+            CGFloat labelH = (g_pubgEspName && g_pubgEspDist) ? 28.0f : 16.0f;
+            info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
+
             if (vehicle) {
+                // Tên xe màu vàng, khoảng cách màu trắng
                 int hpPercent = (int)roundf((p.health / (p.healthMax > 0 ? p.healthMax : 1.0f)) * 100.0f);
+                NSMutableParagraphStyle *centerStyle = [[NSMutableParagraphStyle alloc] init];
+                centerStyle.alignment = NSTextAlignmentCenter;
+
+                UIFont *vNameFont = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+                UIFont *vDistFont = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
+
+                UIColor *vYellow = [UIColor colorWithRed:255.0/255.0 green:215.0/255.0 blue:0.0/255.0 alpha:1.0];
+                UIColor *vWhite = [UIColor colorWithWhite:1.0 alpha:1.0];
+
+                NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
                 if (g_pubgEspName && g_pubgEspDist) {
-                    snprintf(labelText, sizeof(labelText), "%s [%d%%]\n%.0fm", p.name, hpPercent, p.distanceMeters);
+                    NSString *nameStr = [NSString stringWithFormat:@"%s [%d%%]\n", p.name, hpPercent];
+                    NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
+                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
+                        NSForegroundColorAttributeName: vYellow,
+                        NSFontAttributeName: vNameFont,
+                        NSParagraphStyleAttributeName: centerStyle
+                    }]];
+                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
+                        NSForegroundColorAttributeName: vWhite,
+                        NSFontAttributeName: vDistFont,
+                        NSParagraphStyleAttributeName: centerStyle
+                    }]];
                 } else if (g_pubgEspName) {
-                    snprintf(labelText, sizeof(labelText), "%s [%d%%]", p.name, hpPercent);
+                    NSString *nameStr = [NSString stringWithFormat:@"%s [%d%%]", p.name, hpPercent];
+                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
+                        NSForegroundColorAttributeName: vYellow,
+                        NSFontAttributeName: vNameFont,
+                        NSParagraphStyleAttributeName: centerStyle
+                    }]];
                 } else {
-                    snprintf(labelText, sizeof(labelText), "%.0fm", p.distanceMeters);
+                    NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
+                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
+                        NSForegroundColorAttributeName: vWhite,
+                        NSFontAttributeName: vDistFont,
+                        NSParagraphStyleAttributeName: centerStyle
+                    }]];
                 }
+                info.string = attr;
+                info.hidden = NO;
             } else {
+                char labelText[128] = {0};
                 char teamPrefix[32] = {0};
                 if (p.teamId >= 0 && p.teamId <= 200000000) {
                     snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
@@ -3190,14 +3227,11 @@ static void ds_hosted_apply_pubg(void) {
                 } else {
                     snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
                 }
-            }
 
-            info.string = [NSString stringWithUTF8String:labelText];
-            CGFloat labelW = 160.0f;
-            CGFloat labelH = (g_pubgEspName && g_pubgEspDist) ? 28.0f : 16.0f;
-            info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
-            info.foregroundColor = mainColor;
-            info.hidden = NO;
+                info.string = [NSString stringWithUTF8String:labelText];
+                info.foregroundColor = mainColor;
+                info.hidden = NO;
+            }
         } else {
             info.hidden = YES;
         }
