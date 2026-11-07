@@ -599,35 +599,207 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     return true;
 }
 
-static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector &rootFallback, const DSPUBGVector *local, DSPUBGVector *out) {
+// Map G (ShadowTrackerExtra / PUBG Mobile rig with 67 bones):
+// 0: Head (8), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
+// 4: LShoulder (34), 5: LElbow (36), 6: LHand (37)
+// 7: RShoulder (13), 8: RElbow (15), 9: RHand (16)
+// 10: LHip (59), 11: LKnee (60), 12: LFoot (61)
+// 13: RHip (55), 14: RKnee (56), 15: RFoot (57)
+static const int kESPBoneMapG[16] = {
+    8, 5, 4, 1,
+    34, 36, 37,
+    13, 15, 16,
+    59, 60, 61,
+    55, 56, 57
+};
+// Map D (UE4 mannequin rig fallback for bCount < 58):
+static const int kESPBoneMapD[16] = {
+    6, 5, 4, 1,
+    8, 9, 10,
+    12, 13, 14,
+    15, 16, 17,
+    19, 20, 21
+};
+
+static inline float ds_pubg_bone_dist(const DSPUBGVector &a, const DSPUBGVector &b) {
+    float dx = a.X - b.X;
+    float dy = a.Y - b.Y;
+    float dz = a.Z - b.Z;
+    return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+// Anatomical plausibility validator (ported from DarkPubg ESPEngine ESPBoneMapPlausible):
+// Checks human body proportions (Head-Pelvis 40..150cm, Neck <=50cm, arm & leg lengths,
+// shoulder separation 18..90cm, and bilateral symmetry).
+// This strictly rejects raw BoneSpaceTransforms (0xC98) and non-bone TArrays.
+static bool ds_pubg_bone_map_plausible(const DSPUBGVector *joints) {
+    if (!joints) return false;
+    for (int i = 0; i < 16; i++) {
+        if (isnan(joints[i].X) || isinf(joints[i].X) ||
+            isnan(joints[i].Y) || isinf(joints[i].Y) ||
+            isnan(joints[i].Z) || isinf(joints[i].Z)) return false;
+        if (fabsf(joints[i].X) > 500.0f || fabsf(joints[i].Y) > 500.0f || fabsf(joints[i].Z) > 500.0f) {
+            return false;
+        }
+    }
+
+    // 1. Head to Pelvis: 40cm .. 150cm
+    float hp = ds_pubg_bone_dist(joints[0], joints[3]);
+    if (hp < 40.0f || hp > 150.0f) return false;
+
+    // 2. Head to Neck: 2cm .. 50cm
+    float hn = ds_pubg_bone_dist(joints[0], joints[1]);
+    if (hn > 50.0f || hn < 2.0f) return false;
+
+    // 3. Neck to Chest: 2cm .. 50cm
+    float nc = ds_pubg_bone_dist(joints[1], joints[2]);
+    if (nc > 50.0f || nc < 2.0f) return false;
+
+    // 4. Arms
+    for (int side = 0; side < 2; side++) {
+        int sh = side ? 7 : 4;  // RShoulder / LShoulder
+        int el = side ? 8 : 5;  // RElbow / LElbow
+        int hd = side ? 9 : 6;  // RHand / LHand
+        if (ds_pubg_bone_dist(joints[sh], joints[2]) > 65.0f) return false;
+        float ua = ds_pubg_bone_dist(joints[sh], joints[el]);
+        if (ua < 10.0f || ua > 65.0f) return false;
+        float fa = ds_pubg_bone_dist(joints[el], joints[hd]);
+        if (fa < 10.0f || fa > 65.0f) return false;
+    }
+
+    // 5. Legs
+    for (int side = 0; side < 2; side++) {
+        int hpj = side ? 13 : 10; // RHip / LHip
+        int kn  = side ? 14 : 11; // RKnee / LKnee
+        int ft  = side ? 15 : 12; // RFoot / LFoot
+        if (ds_pubg_bone_dist(joints[hpj], joints[3]) > 45.0f) return false;
+        float th = ds_pubg_bone_dist(joints[hpj], joints[kn]);
+        if (th < 10.0f || th > 85.0f) return false;
+        float cf = ds_pubg_bone_dist(joints[kn], joints[ft]);
+        if (cf < 10.0f || cf > 85.0f) return false;
+    }
+
+    // 6. Shoulder separation: 18cm .. 90cm
+    float shSep = ds_pubg_bone_dist(joints[4], joints[7]);
+    if (shSep < 18.0f || shSep > 90.0f) return false;
+
+    // 7. Hip separation: >= 5cm
+    float hipSep = ds_pubg_bone_dist(joints[10], joints[13]);
+    if (hipSep < 5.0f || hipSep > 60.0f) return false;
+
+    // 8. Bilateral symmetry
+    float lArm = ds_pubg_bone_dist(joints[4], joints[5]);
+    float rArm = ds_pubg_bone_dist(joints[7], joints[8]);
+    float maxArm = fmaxf(lArm, rArm);
+    if (maxArm > 1.0f && fabsf(lArm - rArm) > 0.40f * maxArm) return false;
+
+    float lThigh = ds_pubg_bone_dist(joints[10], joints[11]);
+    float rThigh = ds_pubg_bone_dist(joints[13], joints[14]);
+    float maxThigh = fmaxf(lThigh, rThigh);
+    if (maxThigh > 1.0f && fabsf(lThigh - rThigh) > 0.40f * maxThigh) return false;
+
+    return true;
+}
+
+// Locate ComponentToWorld FTransform (tests 0x208, 0x210, 0x200 with unit quat and translation near rootLoc)
+static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, uint8_t *outC2W) {
+    if (!meshComp || !outC2W) return false;
+    static const uint32_t kCandidates[] = { 0x208, 0x210, 0x200 };
+    for (uint32_t off : kCandidates) {
+        uint8_t buf[48];
+        if (!ds_pubg_read(meshComp + (uint64_t)off, buf, sizeof(buf))) continue;
+        float qx = 0, qy = 0, qz = 0, qw = 1.0f;
+        float tx = 0, ty = 0, tz = 0;
+        float sx = 1.0f, sy = 1.0f, sz = 1.0f;
+        memcpy(&qx, buf + 0x0, 4);
+        memcpy(&qy, buf + 0x4, 4);
+        memcpy(&qz, buf + 0x8, 4);
+        memcpy(&qw, buf + 0xC, 4);
+        memcpy(&tx, buf + 0x10, 4);
+        memcpy(&ty, buf + 0x14, 4);
+        memcpy(&tz, buf + 0x18, 4);
+        memcpy(&sx, buf + 0x20, 4);
+        memcpy(&sy, buf + 0x24, 4);
+        memcpy(&sz, buf + 0x28, 4);
+
+        float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
+        if (qlen2 < 0.2f || qlen2 > 5.0f || isnan(qlen2) || isinf(qlen2)) continue;
+        if (sx < 0.1f || sx > 10.0f || sy < 0.1f || sy > 10.0f || sz < 0.1f || sz > 10.0f) continue;
+        float dX = tx - rootLoc.X;
+        float dY = ty - rootLoc.Y;
+        if (dX * dX + dY * dY > (800.0f * 800.0f)) continue;
+
+        memcpy(outC2W, buf, 48);
+        return true;
+    }
+    return ds_pubg_read(meshComp + 0x208ULL, outC2W, 48);
+}
+
+static void ds_pubg_bone_world_from_local(const uint8_t *c2w, uint64_t rootComp, const DSPUBGVector &rootFallback, const DSPUBGVector *local, DSPUBGVector *out) {
     float qx = 0, qy = 0, qz = 0, qw = 1.0f;
     float tx = 0, ty = 0, tz = 0;
     float sx = 1.0f, sy = 1.0f, sz = 1.0f;
-    memcpy(&qx, c2w + 0x0, 4);
-    memcpy(&qy, c2w + 0x4, 4);
-    memcpy(&qz, c2w + 0x8, 4);
-    memcpy(&qw, c2w + 0xC, 4);
-    memcpy(&tx, c2w + 0x10, 4);
-    memcpy(&ty, c2w + 0x14, 4);
-    memcpy(&tz, c2w + 0x18, 4);
-    memcpy(&sx, c2w + 0x20, 4);
-    memcpy(&sy, c2w + 0x24, 4);
-    memcpy(&sz, c2w + 0x28, 4);
+    if (c2w) {
+        memcpy(&qx, c2w + 0x0, 4);
+        memcpy(&qy, c2w + 0x4, 4);
+        memcpy(&qz, c2w + 0x8, 4);
+        memcpy(&qw, c2w + 0xC, 4);
+        memcpy(&tx, c2w + 0x10, 4);
+        memcpy(&ty, c2w + 0x14, 4);
+        memcpy(&tz, c2w + 0x18, 4);
+        memcpy(&sx, c2w + 0x20, 4);
+        memcpy(&sy, c2w + 0x24, 4);
+        memcpy(&sz, c2w + 0x28, 4);
+    }
 
     if (isnan(sx) || isinf(sx) || sx < 0.01f || sx > 100.0f) sx = 1.0f;
     if (isnan(sy) || isinf(sy) || sy < 0.01f || sy > 100.0f) sy = 1.0f;
     if (isnan(sz) || isinf(sz) || sz < 0.01f || sz > 100.0f) sz = 1.0f;
 
     float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
-    if (isnan(qlen2) || isinf(qlen2) || qlen2 < 0.01f || qlen2 > 10.0f) {
+    bool quatValid = (!isnan(qlen2) && !isinf(qlen2) && qlen2 >= 0.2f && qlen2 <= 5.0f);
+    if (quatValid) {
+        float qlen = sqrtf(qlen2);
+        qx /= qlen; qy /= qlen; qz /= qlen; qw /= qlen;
+    } else if (rootComp && ds_pubg_valid(rootComp)) {
+        // Fallback: derive rotation quaternion from RootComponent (CapsuleComponent)
+        // RootComponent.RelativeRotation is at 0x1F0 (FRotator: Pitch, Yaw, Roll)
+        // In UE4 Character, Mesh is attached with RelativeRotation(0, -90, 0), so MeshYaw = ActorYaw - 90
+        DSPUBGRotator actorRot = {};
+        if (ds_pubg_read(rootComp + 0x1F0ULL, &actorRot, sizeof(actorRot)) &&
+            !isnan(actorRot.Yaw) && !isinf(actorRot.Yaw)) {
+            const float kDegToRad = 3.141592653589793f / 180.0f;
+            float radPitch = (actorRot.Pitch) * kDegToRad * 0.5f;
+            float radYaw   = (actorRot.Yaw - 90.0f) * kDegToRad * 0.5f;
+            float radRoll  = (actorRot.Roll) * kDegToRad * 0.5f;
+
+            float SP = sinf(radPitch), CP = cosf(radPitch);
+            float SY = sinf(radYaw),   CY = cosf(radYaw);
+            float SR = sinf(radRoll),  CR = cosf(radRoll);
+
+            qx = CR * SP * SY - SR * CP * CY;
+            qy = -CR * SP * CY - SR * CP * SY;
+            qz = CR * CP * SY - SR * SP * CY;
+            qw = CR * CP * CY + SR * SP * SY;
+
+            float qlen = sqrtf(qx * qx + qy * qy + qz * qz + qw * qw);
+            if (qlen > 0.001f) {
+                qx /= qlen; qy /= qlen; qz /= qlen; qw /= qlen;
+            } else {
+                qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
+            }
+        } else {
+            qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
+        }
+    } else {
         qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
     }
 
-    // If c2w translation is uninitialized, local relative, or excessively far from actor root, anchor to rootFallback
+    // Translation validation: if c2w translation is uninitialized, local relative, or excessively far from actor root, anchor to rootFallback
     float dX = tx - rootFallback.X;
     float dY = ty - rootFallback.Y;
     float distSq = dX * dX + dY * dY;
-    if (isnan(tx) || isinf(tx) || (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (2000.0f * 2000.0f)) {
+    if (isnan(tx) || isinf(tx) || (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (1500.0f * 1500.0f)) {
         tx = rootFallback.X;
         ty = rootFallback.Y;
         tz = rootFallback.Z;
@@ -647,8 +819,9 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector
 }
 
 // Dynamically locates live ComponentSpaceTransforms TArray<FTransform> on USkeletalMeshComponent.
-// Tests verified double buffer offsets (0xA30/0xA40), eval-context (0xE18/0xE28), cached (0xCE0/0xCD0),
-// bone-space (0xC98), and range scans 0x400..0xF00.
+// Tests verified double buffer offsets (0xA30/0xA40), eval-context (0xE18/0xE28), cached (0xCE0),
+// and range scans 0x400..0xF00 (skipping 0xC98 bone-space and 0xCA8 compact).
+// Requires candidates to pass ds_pubg_bone_map_plausible to prevent misinterpreting bone-space or garbage arrays.
 static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32_t *outCount, uint32_t *outOffset) {
     if (!meshComp || !ds_pubg_valid(meshComp)) return false;
 
@@ -665,6 +838,32 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
         d &= 0x0000FFFFFFFFFFFFULL;
         if (!ds_pubg_valid(d) || (d & 0x7ULL) != 0) return false;
         if (c < 20 || c > 800 || maxc < c || maxc > 2000) return false;
+
+        const int *bMap = (c >= 58) ? kESPBoneMapG : kESPBoneMapD;
+        int maxIndex = 0;
+        for (int i = 0; i < 16; i++) {
+            if (bMap[i] > maxIndex) maxIndex = bMap[i];
+        }
+        if (maxIndex >= (int)c || maxIndex >= 256) return false;
+
+        uint8_t sampleBuf[64 * 48];
+        size_t toRead = (size_t)(maxIndex + 1) * 48;
+        if (toRead > sizeof(sampleBuf)) toRead = sizeof(sampleBuf);
+        if (!ds_pubg_read(d, sampleBuf, toRead)) return false;
+
+        DSPUBGVector testJoints[16];
+        for (int i = 0; i < 16; i++) {
+            int bi = bMap[i];
+            if (bi * 48 + 28 > (int)toRead) return false;
+            memcpy(&testJoints[i].X, sampleBuf + bi * 48 + 16, 4);
+            memcpy(&testJoints[i].Y, sampleBuf + bi * 48 + 20, 4);
+            memcpy(&testJoints[i].Z, sampleBuf + bi * 48 + 24, 4);
+        }
+
+        if (!ds_pubg_bone_map_plausible(testJoints)) {
+            return false;
+        }
+
         if (outData) *outData = d;
         if (outCount) *outCount = c;
         if (outOffset) *outOffset = off;
@@ -672,8 +871,11 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
     };
 
     // 0. Test last working offset first
-    if (s_cachedBoneOffset != 0 && testOffset(s_cachedBoneOffset)) {
-        return true;
+    if (s_cachedBoneOffset != 0) {
+        if (testOffset(s_cachedBoneOffset)) {
+            return true;
+        }
+        s_cachedBoneOffset = 0;
     }
 
     // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
@@ -689,16 +891,12 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
     if (testOffset(0xE18)) { s_cachedBoneOffset = 0xE18; return true; }
     if (testOffset(0xE28)) { s_cachedBoneOffset = 0xE28; return true; }
 
-    // 3. CachedComponentSpaceTransforms (0xCE0) & CachedBoneSpaceTransforms (0xCD0)
+    // 3. CachedComponentSpaceTransforms (0xCE0)
     if (testOffset(0xCE0)) { s_cachedBoneOffset = 0xCE0; return true; }
-    if (testOffset(0xCD0)) { s_cachedBoneOffset = 0xCD0; return true; }
 
-    // 4. BoneSpaceTransforms (0xC98)
-    if (testOffset(0xC98)) { s_cachedBoneOffset = 0xC98; return true; }
-
-    // 5. Scan range 0x400 .. 0xF00 in steps of 8 (skipping compact 0xCA8)
+    // 4. Scan range 0x400 .. 0xF00 in steps of 8 (skipping compact 0xCA8 and bone-space 0xC98/0xCD0)
     for (uint32_t off = 0x400; off + 16 <= 0xF00; off += 8) {
-        if (off == 0xCA8) continue;
+        if (off == 0xCA8 || off == 0xC98 || off == 0xCD0) continue;
         if (testOffset(off)) {
             s_cachedBoneOffset = off;
             return true;
@@ -1203,28 +1401,6 @@ static void ds_pubg_tick(void) {
             if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
                 g_dspubgLastBoneOff = resolvedOff;
 
-                // Map G (ShadowTrackerExtra / PUBG Mobile rig with 67 bones):
-                // 0: Head (8), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
-                // 4: LShoulder (34), 5: LElbow (36), 6: LHand (37)
-                // 7: RShoulder (13), 8: RElbow (15), 9: RHand (16)
-                // 10: LHip (59), 11: LKnee (60), 12: LFoot (61)
-                // 13: RHip (55), 14: RKnee (56), 15: RFoot (57)
-                static const int kESPBoneMapG[16] = {
-                    8, 5, 4, 1,
-                    34, 36, 37,
-                    13, 15, 16,
-                    59, 60, 61,
-                    55, 56, 57
-                };
-                // Map D (UE4 mannequin rig fallback for bCount < 58):
-                static const int kESPBoneMapD[16] = {
-                    6, 5, 4, 1,
-                    8, 9, 10,
-                    12, 13, 14,
-                    15, 16, 17,
-                    19, 20, 21
-                };
-
                 const int *bMap = (bCount >= 58) ? kESPBoneMapG : kESPBoneMapD;
                 int maxIndex = 0;
                 for (int i = 0; i < 16; i++) {
@@ -1237,7 +1413,7 @@ static void ds_pubg_tick(void) {
                     size_t readSize = (size_t)needCount * 48;
                     if (ds_pubg_read(boneData, boneBuf, readSize)) {
                         uint8_t c2w[48] = {0};
-                        ds_pubg_read(meshComp + 0x208ULL, c2w, sizeof(c2w));
+                        ds_pubg_read_c2w(meshComp, rootLoc, c2w);
 
                         int okBones = 0;
                         for (int i = 0; i < 16; i++) {
@@ -1253,7 +1429,7 @@ static void ds_pubg_tick(void) {
                                 !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
                                 !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
                                 DSPUBGVector world = {};
-                                ds_pubg_bone_world_from_local(c2w, rootLoc, &localTrans, &world);
+                                ds_pubg_bone_world_from_local(c2w, rootComp, rootLoc, &localTrans, &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
                                 if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
