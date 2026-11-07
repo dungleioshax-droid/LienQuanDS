@@ -861,27 +861,9 @@ static void ds_pubg_tick(void) {
         if (!veh || !ds_pubg_valid(veh)) return;
         if (!g_pubgEspVehicle) return;
         if (veh == localPawn) return;
-        if (localPawn) {
-            uint64_t myVeh = ds_pubg_read_ptr(localPawn + kDSPUBGCharacterVehicleOffset);
-            if (myVeh && veh == myVeh) return;
-        }
         for (uint64_t seen : seenPawns) {
             if (seen == veh) return;
         }
-
-        // Vehicle type range check: valid vehicle types in PUBG Mobile are 1..55
-        if (vehType == 0 || vehType > 55) return;
-
-        // Read HP and Fuel from UVehicleCommonComponent
-        float hpMax = ds_pubg_read_f32(vehCommon + 0x350ULL);
-        float hp = ds_pubg_read_f32(vehCommon + 0x354ULL);
-        float fuelMax = ds_pubg_read_f32(vehCommon + 0x438ULL);
-        float fuel = ds_pubg_read_f32(vehCommon + 0x43CULL);
-
-        if (isnan(hp) || isinf(hp) || isnan(hpMax) || isinf(hpMax)) return;
-        if (hp <= 0.0f) return; // Discard destroyed / exploded vehicles
-        if (hpMax < 100.0f || hpMax > 15000.0f) return; // Discard invalid/debris actors
-        if (hp > hpMax) hp = hpMax;
 
         uint64_t rootComp = ds_pubg_read_ptr(veh + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(veh + 0x180ULL);
@@ -903,6 +885,16 @@ static void ds_pubg_tick(void) {
             }
         }
 
+        // Read HP and Fuel from UVehicleCommonComponent
+        float hpMax = ds_pubg_read_f32(vehCommon + 0x350ULL);
+        float hp = ds_pubg_read_f32(vehCommon + 0x354ULL);
+        float fuelMax = ds_pubg_read_f32(vehCommon + 0x438ULL);
+        float fuel = ds_pubg_read_f32(vehCommon + 0x43CULL);
+
+        if (hp <= 0.0f || isnan(hp) || isinf(hp)) return; // Destroyed vehicle
+        if (hpMax < 50.0f || hpMax > 20000.0f || isnan(hpMax) || isinf(hpMax)) hpMax = 1000.0f;
+        if (hp > hpMax) hp = hpMax;
+
         float fuelPct = (fuelMax > 0.0f && fuel >= 0.0f) ? ((fuel / fuelMax) * 100.0f) : 100.0f;
         if (fuelPct > 100.0f) fuelPct = 100.0f;
 
@@ -923,7 +915,7 @@ static void ds_pubg_tick(void) {
             dist = okB ? bd : td;
         }
 
-        if (dist > g_dspubgMaxDistance || dist < 1.0f) return;
+        if (dist > g_dspubgMaxDistance || dist < 0.5f) return;
 
         float topY = 0, bottomY = 0, boxH = 0, centerX = 0;
         if (okB && okT) {
@@ -939,8 +931,8 @@ static void ds_pubg_tick(void) {
             centerX = sx;
         }
 
-        if (boxH < 8.0f) boxH = 8.0f;
-        if (boxH > screenH * 1.5f) return;
+        if (boxH < 6.0f) boxH = 6.0f;
+        if (boxH > screenH * 2.0f) return;
         float boxW = boxH * 1.35f;
         float boxX = centerX - boxW * 0.5f;
 
@@ -980,55 +972,23 @@ static void ds_pubg_tick(void) {
             if (seen == pawn) return;
         }
 
-        // Reject local player's own attachments, weapons, projectiles
+        // Reject local player's own bullets, weapons, projectiles
         uint64_t owner = ds_pubg_read_ptr(pawn + 0x140ULL);
         uint64_t instigator = ds_pubg_read_ptr(pawn + 0x138ULL);
         if (localPawn && (owner == localPawn || instigator == localPawn)) {
             return;
         }
 
-        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
-        if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
-        if (!rootComp || !ds_pubg_valid(rootComp)) return;
-
-        // Character identity verification:
-        // In UE4 ACharacter, CapsuleComponent is at 0x520 and equals RootComponent.
-        // Mesh is at 0x510 and CharacterMovement is at 0x518.
-        uint64_t capsuleComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterCapsuleOffset);
-        uint64_t moveComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMovementOffset);
+        // Character verification:
+        // Must have valid PlayerState OR character skeletal mesh with human extent (30..160)
         uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
+        float extZ = (meshComp && ds_pubg_valid(meshComp)) ? ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset) : 0.0f;
         uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
 
-        bool isRealChar = false;
-        if (ps && ds_pubg_valid(ps)) {
-            isRealChar = true;
-        } else if (capsuleComp == rootComp && ds_pubg_valid(moveComp) && ds_pubg_valid(meshComp)) {
-            isRealChar = true;
-        }
-
+        bool isRealChar = (ps && ds_pubg_valid(ps)) ||
+                          (meshComp && ds_pubg_valid(meshComp) && extZ >= 30.0f && extZ <= 160.0f);
         if (!isRealChar) {
-            return; // Discard bullets, weapon projectiles, loot items, and level debris!
-        }
-
-        // Dead check - STExtraCharacter.bDead at 0xE7C
-        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
-        if (isDead) {
-            return; // Discard dead players / corpses!
-        }
-
-        // Health reading
-        float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
-        float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
-
-        if (healthMax < 50.0f || healthMax > 500.0f || isnan(healthMax) || isinf(healthMax)) {
-            if (!psHint) return; // Non-PlayerArray actors without valid healthMax are not characters
-            healthMax = 100.0f;
-        }
-        if (health <= 0.0f || isnan(health) || isinf(health)) {
-            return; // Dead or invalid health -> discard
-        }
-        if (health > healthMax) {
-            health = healthMax;
+            return; // Discard bullets, weapon projectiles, and level debris!
         }
 
         seenPawns.push_back(pawn);
@@ -1038,6 +998,26 @@ static void ds_pubg_tick(void) {
         if (localTeamId > 0 && teamId == localTeamId) {
             return;
         }
+
+        // Dead check - STExtraCharacter.bDead at 0xE7C
+        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
+
+        // Health reading with resilient defaults
+        float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
+        float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
+
+        if (healthMax < 10.0f || healthMax > 500.0f || isnan(healthMax) || isinf(healthMax)) {
+            healthMax = 100.0f;
+        }
+        if (health <= 0.0f || health > healthMax || isnan(health) || isinf(health)) {
+            if (isDead) return;
+            health = healthMax;
+        }
+        if (isDead && health <= 0.0f) return;
+
+        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
+        if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
+        if (!rootComp) return;
 
         DSPUBGVector rootLoc = {};
         if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
@@ -1057,9 +1037,8 @@ static void ds_pubg_tick(void) {
             }
         }
 
-        float extZ = (meshComp && ds_pubg_valid(meshComp)) ? ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset) : 0.0f;
         float actorH = 175.0f;
-        if (extZ >= 25.0f && extZ <= 150.0f) {
+        if (extZ >= 30.0f && extZ <= 160.0f) {
             actorH = extZ * 2.0f;
         }
 
