@@ -3,6 +3,9 @@ name: Build Release
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+      - master
     tags:
       - "v*.*"
       - "v*.*.*"
@@ -16,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    name: Build and upload DarkSpeed IPA
+    name: Build and upload DarkPubg IPA
     runs-on: macos-14
 
     steps:
@@ -40,27 +43,33 @@ jobs:
 
       - name: Collect symbols
         run: |
-          zip -qry packages/DarkSpeed_${{ env.PKG_VERSION }}_symbols.zip DarkSpeed.xcarchive/dSYMs
+          if [ -d "DarkPubg.xcarchive/dSYMs" ]; then
+            zip -qry packages/DarkPubg_${{ env.PKG_VERSION }}_symbols.zip DarkPubg.xcarchive/dSYMs
+          elif [ -d "DarkSpeed.xcarchive/dSYMs" ]; then
+            zip -qry packages/DarkSpeed_${{ env.PKG_VERSION }}_symbols.zip DarkSpeed.xcarchive/dSYMs
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: DarkSpeed_${{ env.PKG_VERSION }}
+          name: LienQuanDS_${{ env.PKG_VERSION }}
           path: |
-            packages/DarkSpeed_*.ipa
+            packages/*.ipa
 
       - name: Upload symbols
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
-          name: DarkSpeed_${{ env.PKG_VERSION }}_symbols
+          name: LienQuanDS_${{ env.PKG_VERSION }}_symbols
           path: |
-            packages/DarkSpeed_${{ env.PKG_VERSION }}_symbols.zip
+            packages/*_symbols.zip
 
       - name: Upload release
         uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           tag_name: v${{ env.PKG_VERSION }}
           body_path: README.md
           files: |
-            packages/DarkSpeed_*.ipa
-            packages/DarkSpeed_${{ env.PKG_VERSION }}_symbols.zip
+            packages/*.ipa
+            packages/*_symbols.zip

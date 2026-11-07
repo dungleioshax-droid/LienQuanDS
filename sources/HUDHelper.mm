@@ -46,24 +46,15 @@ BOOL IsHUDEnabled(void)
     pid_t task_pid;
     const char *args[] = { executablePath, "-check", NULL };
     rc = posix_spawn(&task_pid, executablePath, NULL, &attr, (char **)args, environ);
-    if (rc != 0) {
-        log_debug(OS_LOG_DEFAULT, "posix_spawn error %s", strerror(rc));
-    }
-
     posix_spawnattr_destroy(&attr);
 
     if (rc != 0) {
         return NO;
     }
 
-    log_debug(OS_LOG_DEFAULT, "spawned %{public}s -check pid = %{public}d", executablePath, task_pid);
-    
     int status;
     do {
-        if (waitpid(task_pid, &status, 0) != -1)
-        {
-            log_debug(OS_LOG_DEFAULT, "child status %d", WEXITSTATUS(status));
-        }
+        waitpid(task_pid, &status, 0);
     } while (!WIFEXITED(status) && !WIFSIGNALED(status));
 
     return WEXITSTATUS(status) != 0;
@@ -77,11 +68,7 @@ void SetHUDEnabled(BOOL isEnabled)
     // On success the bridge owns the spawn; otherwise fall through to the
     // stock TrollStore persona_np flow.
     if (DSBridgeSetHUDEnabled(isEnabled)) {
-        log_debug(OS_LOG_DEFAULT, "DSBridge handled SetHUDEnabled(%{public}d)", isEnabled);
         return;
-    }
-    if (DSBridgeCompiledIn() && DSBridgeLastError().length > 0) {
-        log_debug(OS_LOG_DEFAULT, "DSBridge fallback: %{public}@", DSBridgeLastError());
     }
 
     posix_spawnattr_t attr;
@@ -108,17 +95,11 @@ void SetHUDEnabled(BOOL isEnabled)
         pid_t task_pid;
         const char *args[] = { executablePath, "-hud", NULL };
         rc = posix_spawn(&task_pid, executablePath, NULL, &attr, (char **)args, environ);
-        if (rc != 0) {
-            log_debug(OS_LOG_DEFAULT, "posix_spawn error %s", strerror(rc));
-        }
-
         posix_spawnattr_destroy(&attr);
 
         if (rc != 0) {
             return;
         }
-
-        log_debug(OS_LOG_DEFAULT, "spawned %{public}s -hud pid = %{public}d", executablePath, task_pid);
 
         int unused;
         waitpid(task_pid, &unused, WNOHANG);
@@ -131,24 +112,15 @@ void SetHUDEnabled(BOOL isEnabled)
         pid_t task_pid;
         const char *args[] = { executablePath, "-exit", NULL };
         rc = posix_spawn(&task_pid, executablePath, NULL, &attr, (char **)args, environ);
-        if (rc != 0) {
-            log_debug(OS_LOG_DEFAULT, "posix_spawn error %s", strerror(rc));
-        }
-
         posix_spawnattr_destroy(&attr);
 
         if (rc != 0) {
             return;
         }
 
-        log_debug(OS_LOG_DEFAULT, "spawned %{public}s -exit pid = %{public}d", executablePath, task_pid);
-
         int status;
         do {
-            if (waitpid(task_pid, &status, 0) != -1)
-            {
-                log_debug(OS_LOG_DEFAULT, "child status %d", WEXITSTATUS(status));
-            }
+            waitpid(task_pid, &status, 0);
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
 }

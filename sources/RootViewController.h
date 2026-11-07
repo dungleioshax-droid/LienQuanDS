@@ -6,7 +6,7 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "DarkSpeed-Swift.h"
+#import "DarkPubg-Swift.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

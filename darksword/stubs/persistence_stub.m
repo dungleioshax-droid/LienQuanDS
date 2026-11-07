@@ -9,11 +9,9 @@
 #import <stdio.h>
 
 bool transfer_krw_to_launchd(void) {
-    printf("(persist-stub) transfer_krw_to_launchd skipped\n");
     return false;
 }
 
 bool recover_krw_primitives(void) {
-    printf("(persist-stub) recover_krw_primitives unavailable\n");
     return false;
 }

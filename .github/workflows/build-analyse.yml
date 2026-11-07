@@ -1,10 +1,8 @@
 name: Xcode - Build and Analyze
 
+# Manual trigger only to save macOS runner minutes
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   XCODE_VERSION: '15.4'

@@ -1,32 +1,42 @@
 //
 //  DSBridge.mm
-//  DarkSpeed
+//  DarkPubg
 //
 
 #import "DSBridge.h"
 #import "HUDHelper.h"
 #import "HUDPresetPosition.h"
 #import "SpringBoardServices.h"
+#import "FBSOrientationObserver.h"
+#import "FBSOrientationUpdate.h"
+
+#import <objc/runtime.h>
+#import <objc/message.h>
 
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
-#import <ifaddrs.h>
-#import <net/if.h>
+#import <mach/mach.h>
+#import <mach-o/loader.h>
 #import <notify.h>
 #import <os/lock.h>
 #import <os/log.h>
 
+#import <array>
+#import <unordered_map>
+#import <vector>
+
 #include <atomic>
 #include <errno.h>
 #include <fcntl.h>
+#include <math.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
-extern "C" CFIndex CARenderServerGetDirtyFrameCount(void *);
-
-NSString * const DSBridgeProgressNotification = @"com.huami.darkspeed.dsbridge.progress";
+NSString * const DSBridgeProgressNotification = @"com.huami.darkpubg.dsbridge.progress";
 
 static os_unfair_lock g_errorLock = OS_UNFAIR_LOCK_INIT;
 static NSString *g_dsLastError = @"";
@@ -44,39 +54,10 @@ static NSString *ds_localized(NSString *key) {
 }
 
 static void ds_post_progress(void) {
-    notify_post("com.huami.darkspeed.dsbridge.progress");
+    notify_post("com.huami.darkpubg.dsbridge.progress");
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:DSBridgeProgressNotification object:nil];
     });
-}
-
-static NSString *ds_checkpoint_log_path(void) {
-    NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(
-        NSLibraryDirectory, NSUserDomainMask, YES);
-    NSString *library = paths.firstObject;
-    return library.length ? [library stringByAppendingPathComponent:@"DSBridge.log"] : nil;
-}
-
-static void ds_append_checkpoint(NSString *message) {
-    NSString *path = ds_checkpoint_log_path();
-    if (!path.length || !message.length) return;
-    NSString *line = [NSString stringWithFormat:@"%@  %@\n", NSDate.date, message];
-    NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
-    if (!data) return;
-    NSFileManager *fm = NSFileManager.defaultManager;
-    if (![fm fileExistsAtPath:path]) {
-        [data writeToFile:path options:NSDataWritingAtomic error:nil];
-        return;
-    }
-    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
-    if (!handle) return;
-    @try {
-        [handle seekToEndOfFile];
-        [handle writeData:data];
-        [handle synchronizeFile];
-    } @catch (__unused NSException *exception) {
-    }
-    [handle closeFile];
 }
 
 #if USE_DARKSWORD
@@ -85,8 +66,6 @@ static void ds_set_stage(NSString *stage) {
     os_unfair_lock_lock(&g_errorLock);
     g_dsStage = next;
     os_unfair_lock_unlock(&g_errorLock);
-    os_log(OS_LOG_DEFAULT, "[DSBridge] stage: %{public}@", next);
-    ds_append_checkpoint(next);
     ds_post_progress();
 }
 #endif
@@ -97,8 +76,6 @@ static void ds_set_error(NSString *message) {
     g_dsLastError = next;
     os_unfair_lock_unlock(&g_errorLock);
     if (next.length > 0) {
-        os_log_error(OS_LOG_DEFAULT, "[DSBridge] %{public}@", next);
-        ds_append_checkpoint([ds_localized(@"Error: ") stringByAppendingString:next]);
         notify_post(NOTIFY_RELOAD_APP);
     }
     ds_post_progress();
@@ -115,13 +92,26 @@ extern "C" {
 #import "utils.h"
 }
 
+struct vmshmem {
+    uint64_t port;
+    uint64_t remoteAddress;
+    uint64_t localAddress;
+    bool used;
+};
+
+extern "C" struct vmshmem vmmapremotepage(uint64_t vmMap, uint64_t address);
+extern "C" struct vmshmem vmmapremotepagefromentry(uint64_t entryAddress,
+                                                    uint64_t address);
+extern "C" kern_return_t mach_vm_deallocate(task_t task,
+                                            mach_vm_address_t address,
+                                            mach_vm_size_t size);
+
 static const NSInteger kDSSpringBoardHUDTag = 0x54534844; // "TSHD"
 static const CGFloat kDSHUDMinFontSize = 9.0;
 static const CGFloat kDSHUDMaxFontSize = 10.0;
 static const CGFloat kDSHUDMinCornerRadius = 4.5;
 static const CGFloat kDSHUDMaxCornerRadius = 5.0;
 static const CGFloat kDSHUDInactiveOpacity = 0.667;
-static const NSTimeInterval kDSHUDFocusDuration = 3.0;
 static const double kDSHUDWindowLevel = 10000010.0;
 static const CACornerMask kDSCornerMaskBottom =
     kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner;
@@ -139,19 +129,24 @@ static uint64_t g_remoteSecureCanvas = 0;
 static uint64_t g_remoteWindow = 0;
 static uint64_t g_remoteWindowScene = 0;
 static pid_t g_remoteWindowPid = 0;
+// The remote scene's own coordinate-space bounds — the only layout geometry
+// that follows rotation. The local app's bounds stay frozen while backgrounded.
+static CGRect g_remoteSceneBounds = CGRectNull;
+static double g_windowRotation = 0.0;
+static CGRect g_windowContentBounds = CGRectNull;
+// Active interface orientation, tracked via FBSOrientationObserver (the same
+// mechanism cccc/TrollSpeed use): it follows the foreground app even while
+// this process is backgrounded.
+static id g_orientationObserver = nil;
+static std::atomic<int> g_activeOrientation(UIInterfaceOrientationUnknown);
 static dispatch_source_t g_rateTimer = nil;
 static AVAudioPlayer *g_keepAlivePlayer = nil;
-static uint64_t g_previousInput = 0;
-static uint64_t g_previousOutput = 0;
-static CFAbsoluteTime g_previousSampleTime = 0;
-static CFAbsoluteTime g_focusUntil = 0;
-static CFIndex g_previousDirtyFrameCount = 0;
-static BOOL g_needsFPSBaselineReset = YES;
 static std::atomic<int> g_remoteOrientation(UIInterfaceOrientationUnknown);
 static int g_reloadHUDToken = -1;
 static int g_lockStateToken = -1;
 static NSUInteger g_lastPresentationSignature = 0;
 static CGRect g_lastWindowFrame = CGRectNull;
+static CGRect g_lastHUDContentFrame = CGRectNull;
 static CGRect g_lastLabelFrame = CGRectNull;
 static BOOL g_lastWindowHidden = NO;
 static CGFloat g_lastContainerAlpha = -1.0;
@@ -167,11 +162,44 @@ static dispatch_group_t g_networkWarmupGroup = nil;
 static const NSTimeInterval kDSNetworkWarmupTimeout = 180.0;
 static const NSTimeInterval kDSNetworkRetryDelay = 3.0;
 
+// Stability knobs (respring hardening). Each remote_msg into SpringBoard is a
+// hijacked-thread exception round trip; the fewer per tick and the less they
+// block, the smaller the chance of wedging SpringBoard's main thread.
+static const NSUInteger kDSRemoteTextRingSize = 6;      // delayed-release slots for remote NSStrings
+static const NSUInteger kDSRemoteFailureLimit = 3;      // consecutive failures before updates stop
+static uint64_t g_remoteTextRing[kDSRemoteTextRingSize] = {0};
+static NSUInteger g_remoteTextRingIndex = 0;
+static NSUInteger g_remoteFailureCount = 0;
+static BOOL g_pendingWindowLevelReapply = NO;
+static NSString *g_lastAppliedText = nil;
+static BOOL g_fastTickActive = NO;
+
+// ═══ Hosted overlay window (AssistiveTouch mechanism) ═══
+// A real UIWindow in OUR process rendered locally at full frame rate; the
+// registration is performed INSIDE SpringBoard over the existing RemoteCall
+// channel, so the entitlement check sees SpringBoard itself as the caller.
+static UIWindow *g_hostedWindow = nil;
+static UIView   *g_hostedESPView = nil;
+static CALayer  *g_hostedLayer = nil;
+static uint64_t  g_hostedRemoteController = 0;  // SBSAccessibilityWindowHostingController inside SpringBoard
+static pid_t     g_hostedSBPid = 0;             // SpringBoard generation that owns the registration
+static dispatch_source_t g_hostedTimer = nil;
+static CGRect   g_hostedContentBounds = CGRectNull;
+static int      g_hostedLastOrientation = 0;
+static CFAbsoluteTime g_hostedLastSetupTryAt = 0;
+static unsigned g_hostedContextId = 0;
+static int      g_hostedSetupAttempts = 0;
+static int      g_hostedPushedFrames = 0;
+
 static const uint64_t kDSRemoteTextScratchOffset = 0x1000;
 static const size_t kDSRemoteTextScratchCapacity = 0x800;
-
 static void ds_update_rate(void);
 static void ds_stop_keepalive(void);
+static CGRect ds_scene_bounds(void);
+static CGRect ds_content_bounds(void);
+static CGRect ds_hud_screen_bounds(void);
+static void ds_hosted_overlay_stop(void);
+static void ds_hosted_overlay_start(void);
 
 typedef struct {
     BOOL landscape;
@@ -183,7 +211,6 @@ typedef struct {
     BOOL inverted;
     BOOL followsRotation;
     BOOL hideAtSnapshot;
-    BOOL displayFPS;
     BOOL passthrough;
     CGFloat fontSize;
     CGFloat cornerRadius;
@@ -200,251 +227,12 @@ static dispatch_queue_t ds_bridge_queue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.huami.darkspeed.darksword", DISPATCH_QUEUE_SERIAL);
+        queue = dispatch_queue_create("com.huami.darkpubg.darksword", DISPATCH_QUEUE_SERIAL);
     });
     return queue;
 }
 
-static void ds_bridge_log(const char *message) {
-    if (message && message[0]) {
-        os_log(OS_LOG_DEFAULT, "[DSBridge] %{public}s", message);
-    }
-}
-
-// Feed the native progress callback into the controller UI so startup shows
-// measured progress instead of an indeterminate spinner.
-static void ds_bridge_progress(double progress) {
-    g_dsProgress.store(progress);
-    ds_post_progress();
-}
-
-static uint64_t ds_env_u64(const char *name) {
-    const char *value = getenv(name);
-    return value && value[0] ? strtoull(value, NULL, 0) : 0;
-}
-
-static int ds_env_int(const char *name, int fallback) {
-    const char *value = getenv(name);
-    return value && value[0] ? (int)strtol(value, NULL, 0) : fallback;
-}
-
-static BOOL ds_has_symbol_offsets(void) {
-    return kernel_symbol_offsets_are_current();
-}
-
-static dispatch_group_t ds_kernel_prefetch_group(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        g_kernelPrefetchGroup = dispatch_group_create();
-    });
-    return g_kernelPrefetchGroup;
-}
-
-static dispatch_group_t ds_network_warmup_group(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        g_networkWarmupGroup = dispatch_group_create();
-    });
-    return g_networkWarmupGroup;
-}
-
-static BOOL ds_mark_network_warmup_ready(void) {
-    int expected = 1;
-    if (!g_networkWarmupState.compare_exchange_strong(expected, 2)) return NO;
-    dispatch_group_leave(ds_network_warmup_group());
-    return YES;
-}
-
-static void ds_start_kernel_prefetch(BOOL retryFailed) {
-    BOOL hasBuiltinOffsets = install_builtin_kernel_symbol_offsets();
-    if (hasBuiltinOffsets || ds_has_symbol_offsets()) {
-        g_kernelPrefetchState.store(2);
-        ds_set_stage(ds_localized(@"System data is ready"));
-        return;
-    }
-
-    int state = g_kernelPrefetchState.load();
-    while (state != 1 && state != 2) {
-        if (state == 3 && !retryFailed) return;
-        if (g_kernelPrefetchState.compare_exchange_weak(state, 1)) break;
-    }
-    if (state == 1 || state == 2) return;
-
-    ds_set_error(@"");
-    ds_set_stage(ds_localized(@"Caching kernelcache"));
-    dispatch_group_t group = ds_kernel_prefetch_group();
-    dispatch_group_enter(group);
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        BOOL ready = dlkcache();
-        g_kernelPrefetchState.store(ready ? 2 : 3);
-        if (ready) {
-            os_log(OS_LOG_DEFAULT, "[DSBridge] kernelcache prefetch ready");
-            ds_mark_network_warmup_ready();
-            ds_set_error(@"");
-            ds_set_stage(ds_localized(@"Kernelcache cached"));
-        } else {
-            os_log_error(OS_LOG_DEFAULT, "[DSBridge] kernelcache prefetch failed");
-            if (g_networkWarmupState.load() == 1) {
-                ds_set_stage(ds_localized(@"Requesting network access"));
-            } else {
-                ds_set_stage(ds_localized(@"Kernelcache cache failed"));
-            }
-        }
-        dispatch_group_leave(group);
-    });
-}
-
-static BOOL ds_wait_for_kernel_attempt(CFAbsoluteTime deadline) {
-    if (ds_has_symbol_offsets()) return YES;
-    if (g_kernelPrefetchState.load() != 1) return NO;
-
-    NSTimeInterval remaining = MAX(0.0, deadline - CFAbsoluteTimeGetCurrent());
-    if (remaining <= 0.0) return NO;
-    long waitResult = dispatch_group_wait(
-        ds_kernel_prefetch_group(),
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(remaining * NSEC_PER_SEC)));
-    if (waitResult != 0) {
-        os_log_error(OS_LOG_DEFAULT, "[DSBridge] kernelcache prefetch timed out");
-        return NO;
-    }
-    return ds_has_symbol_offsets();
-}
-
-static BOOL ds_wait_for_kernel_prefetch(NSTimeInterval timeout, BOOL retryFailed) {
-    BOOL hasBuiltinOffsets = install_builtin_kernel_symbol_offsets();
-    if (hasBuiltinOffsets || ds_has_symbol_offsets()) {
-        g_kernelPrefetchState.store(2);
-        return YES;
-    }
-
-    CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + timeout;
-    DSBridgeWarmUpNetworkAndPrefetchKernelCache();
-    ds_start_kernel_prefetch(retryFailed);
-    if (ds_wait_for_kernel_attempt(deadline)) return YES;
-
-    // Some regions show a first-network-access prompt while others do not.
-    // Only wait for that optional path after a real kernelcache request has
-    // failed; a successful real request is authoritative on every device.
-    if (g_networkWarmupState.load() == 1) {
-        NSTimeInterval remaining = MAX(0.0, deadline - CFAbsoluteTimeGetCurrent());
-        if (remaining <= 0.0) return NO;
-        long networkWaitResult = dispatch_group_wait(
-            ds_network_warmup_group(),
-            dispatch_time(DISPATCH_TIME_NOW, (int64_t)(remaining * NSEC_PER_SEC)));
-        if (networkWaitResult != 0) {
-            os_log_error(OS_LOG_DEFAULT,
-                         "[DSBridge] network warm-up timed out while enabling HUD");
-            return NO;
-        }
-    }
-    if (ds_has_symbol_offsets()) return YES;
-    if (g_networkWarmupState.load() != 2) return NO;
-
-    ds_start_kernel_prefetch(retryFailed);
-    return ds_wait_for_kernel_attempt(deadline);
-}
-
-static void ds_probe_network_until_ready(CFAbsoluteTime startedAt, NSUInteger attempt) {
-    if (g_networkWarmupState.load() != 1) return;
-
-    NSTimeInterval elapsed = MAX(0.0, CFAbsoluteTimeGetCurrent() - startedAt);
-    ds_set_stage([NSString stringWithFormat:ds_localized(@"Waiting for network (%.0f seconds, attempt %lu)"),
-                  elapsed, (unsigned long)attempt]);
-
-    NSMutableURLRequest *request = [NSMutableURLRequest
-        requestWithURL:[NSURL URLWithString:@"https://api.appledb.dev/ios/main.json.xz"]
-        cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
-        timeoutInterval:8.0];
-    request.HTTPMethod = @"HEAD";
-    [[[NSURLSession sharedSession] dataTaskWithRequest:request
-        completionHandler:^(__unused NSData *data, NSURLResponse *response, NSError *error) {
-            NSHTTPURLResponse *httpResponse =
-                [response isKindOfClass:NSHTTPURLResponse.class] ? (NSHTTPURLResponse *)response : nil;
-            BOOL httpOK = !httpResponse ||
-                (httpResponse.statusCode >= 200 && httpResponse.statusCode < 400);
-            if (!error && response && httpOK) {
-                if (!ds_mark_network_warmup_ready()) return;
-                os_log(OS_LOG_DEFAULT, "[DSBridge] network access ready after %.0fs",
-                       CFAbsoluteTimeGetCurrent() - startedAt);
-                ds_set_error(@"");
-                ds_set_stage(ds_localized(@"Network connected; preparing kernelcache"));
-                ds_start_kernel_prefetch(YES);
-                return;
-            }
-
-            NSTimeInterval totalElapsed = MAX(0.0, CFAbsoluteTimeGetCurrent() - startedAt);
-            if (g_networkWarmupState.load() != 1) return;
-            if (totalElapsed >= kDSNetworkWarmupTimeout) {
-                int expected = 1;
-                if (!g_networkWarmupState.compare_exchange_strong(expected, 3)) return;
-                NSString *detail = error.localizedDescription;
-                if (!detail.length && httpResponse) {
-                    detail = [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode];
-                }
-                if (!detail.length) detail = ds_localized(@"No valid response");
-                os_log_error(OS_LOG_DEFAULT,
-                             "[DSBridge] network warm-up timed out: %{public}@", detail);
-                ds_set_stage(ds_localized(@"Network wait timed out"));
-                ds_set_error([NSString stringWithFormat:
-                    ds_localized(@"Could not connect after waiting %.0f seconds: %@\nCheck DarkSpeed network access and your connection, then retry."),
-                    totalElapsed, detail]);
-                dispatch_group_leave(ds_network_warmup_group());
-                return;
-            }
-
-            ds_set_stage([NSString stringWithFormat:
-                ds_localized(@"Network is not ready; waited %.0f seconds. Retrying in %.0f seconds"),
-                totalElapsed, kDSNetworkRetryDelay]);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,
-                                         (int64_t)(kDSNetworkRetryDelay * NSEC_PER_SEC)),
-                           dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-                ds_probe_network_until_ready(startedAt, attempt + 1);
-            });
-        }] resume];
-}
-
-void DSBridgeWarmUpNetworkAndPrefetchKernelCache(void) {
-    BOOL hasBuiltinOffsets = install_builtin_kernel_symbol_offsets();
-    if (hasBuiltinOffsets || ds_has_symbol_offsets()) {
-        g_kernelPrefetchState.store(2);
-        ds_set_error(@"");
-        ds_set_stage(ds_localized(@"System data is ready"));
-        return;
-    }
-
-    BOOL shouldStartProbe = NO;
-    int expected = 0;
-    if (g_networkWarmupState.compare_exchange_strong(expected, 1)) {
-        shouldStartProbe = YES;
-    } else if (expected == 3) {
-        expected = 3;
-        shouldStartProbe = g_networkWarmupState.compare_exchange_strong(expected, 1);
-    }
-
-    if (shouldStartProbe) {
-        ds_set_error(@"");
-        ds_set_stage(ds_localized(@"Requesting network access"));
-        dispatch_group_enter(ds_network_warmup_group());
-        ds_probe_network_until_ready(CFAbsoluteTimeGetCurrent(), 1);
-    }
-
-    // The real request is the source of truth. Devices that do not present a
-    // regional network prompt can proceed immediately instead of being gated
-    // on the separate permission/connectivity probe.
-    ds_start_kernel_prefetch(YES);
-}
-
-static void ds_fail_enable(NSString *reason) {
-    os_log_error(OS_LOG_DEFAULT, "[DSBridge] enable failed: %{public}@", reason);
-    g_hudRequested.store(false);
-    g_hudActive.store(false);
-    g_dsRunning.store(false);
-    g_dsProgress.store(0.0);
-    ds_stop_keepalive();
-    ds_set_stage(ds_localized(@"Startup failed"));
-    ds_set_error(reason ?: @"");
-    ds_post_progress();
-}
+#include "DSBridgeExploit.inc.mm"
 
 static NSDictionary *ds_hud_preferences(void) {
     NSMutableDictionary *preferences = [[NSDictionary
@@ -468,112 +256,6 @@ static NSDictionary *ds_hud_preferences(void) {
     return preferences;
 }
 
-static void ds_append_wav_value(NSMutableData *data, const void *value, NSUInteger size) {
-    [data appendBytes:value length:size];
-}
-
-static NSURL *ds_silent_wav_url(void) {
-    NSURL *cache = [[NSFileManager defaultManager] URLsForDirectory:NSCachesDirectory
-                                                          inDomains:NSUserDomainMask].firstObject;
-    return [cache URLByAppendingPathComponent:@"darkspeed-silent.wav"];
-}
-
-static BOOL ds_write_silent_wav(NSURL *url, NSError **error) {
-    const uint32_t sampleRate = 8000;
-    const uint16_t channels = 1;
-    const uint16_t bitsPerSample = 16;
-    const uint16_t blockAlign = channels * (bitsPerSample / 8);
-    const uint32_t byteRate = sampleRate * blockAlign;
-    const uint32_t dataSize = sampleRate * blockAlign;
-    const uint32_t riffSize = 36 + dataSize;
-    const uint32_t formatSize = 16;
-    const uint16_t pcmFormat = 1;
-
-    NSMutableData *wav = [NSMutableData dataWithCapacity:44 + dataSize];
-    [wav appendBytes:"RIFF" length:4];
-    ds_append_wav_value(wav, &riffSize, sizeof(riffSize));
-    [wav appendBytes:"WAVEfmt " length:8];
-    ds_append_wav_value(wav, &formatSize, sizeof(formatSize));
-    ds_append_wav_value(wav, &pcmFormat, sizeof(pcmFormat));
-    ds_append_wav_value(wav, &channels, sizeof(channels));
-    ds_append_wav_value(wav, &sampleRate, sizeof(sampleRate));
-    ds_append_wav_value(wav, &byteRate, sizeof(byteRate));
-    ds_append_wav_value(wav, &blockAlign, sizeof(blockAlign));
-    ds_append_wav_value(wav, &bitsPerSample, sizeof(bitsPerSample));
-    [wav appendBytes:"data" length:4];
-    ds_append_wav_value(wav, &dataSize, sizeof(dataSize));
-    [wav increaseLengthBy:dataSize];
-    return [wav writeToURL:url options:NSDataWritingAtomic error:error];
-}
-
-static BOOL ds_start_keepalive(void) {
-    __block BOOL started = NO;
-    dispatch_sync(dispatch_get_main_queue(), ^{
-        if (g_keepAlivePlayer.playing) {
-            started = YES;
-            return;
-        }
-
-        NSError *error = nil;
-        AVAudioSession *session = AVAudioSession.sharedInstance;
-        if (![session setCategory:AVAudioSessionCategoryPlayback
-                             mode:AVAudioSessionModeDefault
-                          options:AVAudioSessionCategoryOptionMixWithOthers
-                            error:&error] ||
-            ![session setActive:YES error:&error]) {
-            ds_set_error([NSString stringWithFormat:ds_localized(@"Background keep-alive failed: %@"), error.localizedDescription]);
-            return;
-        }
-
-        NSURL *wavURL = ds_silent_wav_url();
-        if (![[NSFileManager defaultManager] fileExistsAtPath:wavURL.path] &&
-            !ds_write_silent_wav(wavURL, &error)) {
-            ds_set_error([NSString stringWithFormat:ds_localized(@"Background resource preparation failed: %@"), error.localizedDescription]);
-            return;
-        }
-
-        g_keepAlivePlayer = [[AVAudioPlayer alloc] initWithContentsOfURL:wavURL error:&error];
-        g_keepAlivePlayer.numberOfLoops = -1;
-        g_keepAlivePlayer.volume = 0.0f;
-        [g_keepAlivePlayer prepareToPlay];
-        started = [g_keepAlivePlayer play];
-        if (!started) {
-            ds_set_error([NSString stringWithFormat:ds_localized(@"Background keep-alive playback failed: %@"), error.localizedDescription]);
-            g_keepAlivePlayer = nil;
-        }
-    });
-    return started;
-}
-
-static void ds_stop_keepalive(void) {
-    dispatch_sync(dispatch_get_main_queue(), ^{
-        [g_keepAlivePlayer stop];
-        g_keepAlivePlayer = nil;
-        [AVAudioSession.sharedInstance setActive:NO
-                                     withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation
-                                           error:nil];
-    });
-}
-
-static void ds_read_network_bytes(uint64_t *input, uint64_t *output) {
-    *input = 0;
-    *output = 0;
-    struct ifaddrs *interfaces = NULL;
-    if (getifaddrs(&interfaces) != 0) return;
-
-    for (struct ifaddrs *interface = interfaces; interface; interface = interface->ifa_next) {
-        if (!interface->ifa_name || !interface->ifa_addr || !interface->ifa_data) continue;
-        if (interface->ifa_addr->sa_family != AF_LINK) continue;
-        if (!(interface->ifa_flags & IFF_UP) && !(interface->ifa_flags & IFF_RUNNING)) continue;
-        if (strncmp(interface->ifa_name, "en", 2) && strncmp(interface->ifa_name, "pdp_ip", 6)) continue;
-
-        struct if_data *data = (struct if_data *)interface->ifa_data;
-        *input += data->ifi_ibytes;
-        *output += data->ifi_obytes;
-    }
-    freeifaddrs(interfaces);
-}
-
 static BOOL ds_pref_bool(NSDictionary *preferences, HUDUserDefaultsKey key) {
     return [preferences[key] boolValue];
 }
@@ -584,29 +266,14 @@ static CGFloat ds_pref_double(NSDictionary *preferences, HUDUserDefaultsKey key,
     return number ? number.doubleValue : fallback;
 }
 
-static NSString *ds_format_speed(double bytes, BOOL bitrate, BOOL focused) {
-    double value = bitrate ? bytes * 8.0 : bytes;
-    double kilo = bitrate ? 1000.0 : 1024.0;
-    double mega = kilo * kilo;
-    double giga = mega * kilo;
-    NSString *suffix = focused ? @"" : @"/s";
-    NSString *kiloUnit = bitrate ? @"Kb" : @"KB";
-    NSString *megaUnit = bitrate ? @"Mb" : @"MB";
-    NSString *gigaUnit = bitrate ? @"Gb" : @"GB";
-
-    if (value < kilo) {
-        return [NSString stringWithFormat:@"0\u00a0%@%@", kiloUnit, suffix];
-    }
-    if (value < mega) {
-        return [NSString stringWithFormat:@"%.0f\u00a0%@%@", value / kilo, kiloUnit, suffix];
-    }
-    if (value < giga) {
-        return [NSString stringWithFormat:@"%.2f\u00a0%@%@", value / mega, megaUnit, suffix];
-    }
-    return [NSString stringWithFormat:@"%.2f\u00a0%@%@", value / giga, gigaUnit, suffix];
-}
-
 static UIInterfaceOrientation ds_interface_orientation(void) {
+    // Aspect of the content space is the most reliable signal —
+    // SBMainWorkspace's interfaceOrientation may lag or stay portrait.
+    CGRect content = ds_content_bounds();
+    if (CGRectGetWidth(content) > 0.0) {
+        return CGRectGetWidth(content) > CGRectGetHeight(content)
+            ? UIInterfaceOrientationLandscapeRight : UIInterfaceOrientationPortrait;
+    }
     UIInterfaceOrientation remoteOrientation =
         (UIInterfaceOrientation)g_remoteOrientation.load();
     if (remoteOrientation != UIInterfaceOrientationUnknown) {
@@ -646,38 +313,17 @@ static void ds_screen_geometry(CGRect *bounds, UIEdgeInsets *safeInsets) {
     if (safeInsets) *safeInsets = currentInsets;
 }
 
-static NSString *ds_display_text(NSDictionary *preferences,
-                                 BOOL centered,
-                                 BOOL focused,
-                                 double down,
-                                 double up) {
-    if (ds_pref_bool(preferences, HUDUserDefaultsKeyDisplayMode)) {
-        CFIndex current = CARenderServerGetDirtyFrameCount(NULL);
-        if (g_needsFPSBaselineReset) {
-            g_previousDirtyFrameCount = current;
-            g_needsFPSBaselineReset = NO;
-            return @"0 FPS";
-        }
-        CFIndex frameDiff = MAX((CFIndex)0, current - g_previousDirtyFrameCount);
-        g_previousDirtyFrameCount = current;
-        CGFloat maximumFPS = UIScreen.mainScreen.maximumFramesPerSecond;
-        return [NSString stringWithFormat:@"%.0f FPS", MIN((CGFloat)frameDiff, maximumFPS)];
-    }
-
-    BOOL bitrate = ds_pref_bool(preferences, HUDUserDefaultsKeyUsesBitrate);
-    BOOL alternateArrows = ds_pref_bool(preferences, HUDUserDefaultsKeyUsesArrowPrefixes);
-    BOOL incomingOnly = ds_pref_bool(preferences, HUDUserDefaultsKeySingleLineMode);
-    NSString *downloadPrefix = alternateArrows ? @"↓" : @"▼";
-    NSString *uploadPrefix = alternateArrows ? @"↑" : @"▲";
-    NSString *download = [NSString stringWithFormat:@"%@\u00a0%@",
-                          downloadPrefix, ds_format_speed(down, bitrate, focused)];
-    if (incomingOnly) return download;
-
-    NSString *upload = [NSString stringWithFormat:@"%@\u00a0%@",
-                        uploadPrefix, ds_format_speed(up, bitrate, focused)];
-    return centered
-        ? [NSString stringWithFormat:@"%@\t%@", download, upload]
-        : [NSString stringWithFormat:@"%@\n%@", upload, download];
+static NSString *ds_full_display_text(NSDictionary *preferences,
+                                      BOOL centered,
+                                      BOOL focused,
+                                      double down,
+                                      double up) {
+    (void)preferences;
+    (void)centered;
+    (void)focused;
+    (void)down;
+    (void)up;
+    return @"";
 }
 
 static DSHUDPresentation ds_hud_presentation(NSDictionary *preferences,
@@ -702,7 +348,6 @@ static DSHUDPresentation ds_hud_presentation(NSDictionary *preferences,
     presentation.inverted = ds_pref_bool(preferences, HUDUserDefaultsKeyUsesInvertedColor);
     presentation.followsRotation = ds_pref_bool(preferences, HUDUserDefaultsKeyUsesRotation);
     presentation.hideAtSnapshot = ds_pref_bool(preferences, HUDUserDefaultsKeyHideAtSnapshot);
-    presentation.displayFPS = ds_pref_bool(preferences, HUDUserDefaultsKeyDisplayMode);
     presentation.passthrough = ds_pref_bool(preferences, HUDUserDefaultsKeyPassthroughMode);
 
     BOOL customFont = ds_pref_bool(preferences, HUDUserDefaultsKeyUsesCustomFontSize);
@@ -716,7 +361,7 @@ static DSHUDPresentation ds_hud_presentation(NSDictionary *preferences,
         presentation.cornerRadius = large ? kDSHUDMaxCornerRadius : kDSHUDMinCornerRadius;
     }
     presentation.inactiveOpacity = presentation.inverted ? 1.0 : kDSHUDInactiveOpacity;
-    presentation.numberOfLines = presentation.centered || presentation.singleLine ? 1 : 2;
+    presentation.numberOfLines = 0;
     presentation.alignment = presentation.centered ? NSTextAlignmentCenter : NSTextAlignmentLeft;
     presentation.maskedCorners =
         presentation.centeredMost && !presentation.landscape
@@ -735,9 +380,9 @@ static DSHUDPresentation ds_hud_presentation(NSDictionary *preferences,
     if (labelSize.height < 1) labelSize.height = ceil(font.lineHeight);
     CGSize hudSize = CGSizeMake(labelSize.width + 8.0, labelSize.height + 4.0);
 
-    CGRect screenBounds;
+    CGRect screenBounds = ds_hud_screen_bounds();
     UIEdgeInsets safeInsets;
-    ds_screen_geometry(&screenBounds, &safeInsets);
+    ds_screen_geometry(NULL, &safeInsets);
     CGFloat realOffsetX = 0;
     CGFloat realOffsetY = 0;
     if (ds_pref_bool(preferences, HUDUserDefaultsKeyUsesCustomOffset)) {
@@ -848,17 +493,41 @@ static BOOL ds_perform_on_springboard_main(RemoteCall *process, uint64_t target,
     return process.trojanMem != 0;
 }
 
+// setText: is posted asynchronously (waitUntilDone:NO) and the replaced
+// string is released only after kDSRemoteTextRingSize more ticks, once
+// SpringBoard's main runloop has certainly consumed it. This removes both the
+// per-second blocking wait on SpringBoard's main thread and the alloc/release
+// heap churn inside SpringBoard every second — the two main respring sources
+// of the previous implementation.
 static BOOL ds_remote_set_text_on_main(RemoteCall *process, uint64_t label,
                                        NSString *text) {
+    if (!process || !process.trojanMem || !label || !text) return NO;
+
+    NSUInteger slot = g_remoteTextRingIndex % kDSRemoteTextRingSize;
+    uint64_t retired = g_remoteTextRing[slot];
+
     uint64_t remoteText = ds_remote_create_string(process, text);
     if (!remoteText) return NO;
+
+    g_remoteTextRing[slot] = remoteText;
+    g_remoteTextRingIndex++;
+
     BOOL sent = ds_perform_on_springboard_main(
-        process, label, ds_remote_sel(process, "setText:"), remoteText, YES);
+        process, label, ds_remote_sel(process, "setText:"), remoteText, NO);
     uint64_t release = ds_remote_sel(process, "release");
-    if (release && process.trojanMem) {
-        remote_msg(process, remoteText, release, 0, 0, 0, 0);
+    if (!sent) {
+        // Never queued: safe to release the new string immediately, keep the
+        // previous occupant for a later release attempt.
+        if (release && process.trojanMem) {
+            remote_msg(process, remoteText, release, 0, 0, 0, 0);
+        }
+        g_remoteTextRing[slot] = retired;
+        return NO;
     }
-    return sent;
+    if (retired && release && process.trojanMem) {
+        remote_msg(process, retired, release, 0, 0, 0, 0);
+    }
+    return YES;
 }
 
 typedef struct {
@@ -876,7 +545,8 @@ static BOOL ds_remote_invoke_on_main_result(RemoteCall *process, uint64_t target
                                             const DSRemoteArgument *arguments,
                                             NSUInteger argumentCount,
                                             void *result,
-                                            NSUInteger resultSize) {
+                                            NSUInteger resultSize,
+                                            BOOL waitUntilDone) {
     if (!process || !target || !selector || !process.trojanMem) return NO;
 
     uint64_t poolClass = ds_remote_class(process, "NSAutoreleasePool");
@@ -924,9 +594,9 @@ static BOOL ds_remote_invoke_on_main_result(RemoteCall *process, uint64_t target
     }
 
     ds_perform_on_springboard_main(process, invocation,
-                                   ds_remote_sel(process, "invoke"), 0, YES);
+                                   ds_remote_sel(process, "invoke"), 0, waitUntilDone);
     if (!process.trojanMem) return NO;
-    if (result && resultSize > 0) {
+    if (waitUntilDone && result && resultSize > 0) {
         uint64_t resultScratch = process.trojanMem + 0xC00;
         memset(result, 0, resultSize);
         if (![process remote_write:resultScratch from:result size:resultSize]) return NO;
@@ -948,7 +618,20 @@ static BOOL ds_remote_invoke_on_main(RemoteCall *process, uint64_t target,
                                      const DSRemoteArgument *arguments,
                                      NSUInteger argumentCount) {
     return ds_remote_invoke_on_main_result(process, target, selector,
-                                           arguments, argumentCount, NULL, 0);
+                                           arguments, argumentCount, NULL, 0, YES);
+}
+
+// Async variant: the invocation is built fresh on the call thread and queued
+// to SpringBoard's main runloop without waiting for it. Nothing shared is
+// touched afterwards (unlike the broken cached-invocation attempt), so there
+// is no cross-thread race — and the bridge queue never stalls behind a busy
+// SpringBoard main thread.
+static BOOL ds_remote_invoke_on_main_async(RemoteCall *process, uint64_t target,
+                                           uint64_t selector,
+                                           const DSRemoteArgument *arguments,
+                                           NSUInteger argumentCount) {
+    return ds_remote_invoke_on_main_result(process, target, selector,
+                                           arguments, argumentCount, NULL, 0, NO);
 }
 
 static BOOL ds_remote_invoke_noarg_on_main(RemoteCall *process, uint64_t target,
@@ -962,7 +645,7 @@ static uint64_t ds_remote_get_object_on_main(RemoteCall *process, uint64_t targe
     uint64_t result = 0;
     BOOL invoked = ds_remote_invoke_on_main_result(
         process, target, ds_remote_sel(process, selectorName), NULL, 0,
-        &result, sizeof(result));
+        &result, sizeof(result), YES);
     return invoked ? result : 0;
 }
 
@@ -972,7 +655,7 @@ static uint64_t ds_remote_get_retained_object_on_main(
     uint64_t result = 0;
     BOOL invoked = ds_remote_invoke_on_main_result(
         process, target, ds_remote_sel(process, selectorName),
-        arguments, argumentCount, &result, sizeof(result));
+        arguments, argumentCount, &result, sizeof(result), YES);
     if (!invoked || !result || !process.trojanMem) return 0;
 
     // Retain immediately after the synchronous main-thread return. This keeps
@@ -994,7 +677,7 @@ static uint64_t ds_remote_get_u64_on_main(RemoteCall *process, uint64_t target,
     uint64_t result = 0;
     BOOL invoked = ds_remote_invoke_on_main_result(
         process, target, ds_remote_sel(process, selectorName), NULL, 0,
-        &result, sizeof(result));
+        &result, sizeof(result), YES);
     return invoked ? result : 0;
 }
 
@@ -1010,6 +693,38 @@ static BOOL ds_remote_set_rect_on_main(RemoteCall *process, uint64_t target,
     DSRemoteArgument argument = { &value, sizeof(value) };
     return ds_remote_invoke_on_main(process, target, ds_remote_sel(process, selectorName),
                                     &argument, 1);
+}
+
+static BOOL ds_remote_set_point_on_main(RemoteCall *process, uint64_t target,
+                                        const char *selectorName, CGPoint value) {
+    DSRemoteArgument argument = { &value, sizeof(value) };
+    return ds_remote_invoke_on_main(process, target, ds_remote_sel(process, selectorName),
+                                    &argument, 1);
+}
+
+static BOOL ds_remote_set_transform_on_main(RemoteCall *process, uint64_t target,
+                                            CGAffineTransform value) {
+    DSRemoteArgument argument = { &value, sizeof(value) };
+    return ds_remote_invoke_on_main(process, target, ds_remote_sel(process, "setTransform:"),
+                                    &argument, 1);
+}
+
+// Async setters for the per-frame aim-line path: never block on SpringBoard's
+// main runloop, which is what lets the tick reach frame rate.
+static BOOL ds_remote_set_rect_async(RemoteCall *process, uint64_t target,
+                                     const char *selectorName, CGRect value) {
+    DSRemoteArgument argument = { &value, sizeof(value) };
+    return ds_remote_invoke_on_main_async(process, target,
+                                          ds_remote_sel(process, selectorName),
+                                          &argument, 1);
+}
+
+static BOOL ds_remote_set_transform_async(RemoteCall *process, uint64_t target,
+                                          CGAffineTransform value) {
+    DSRemoteArgument argument = { &value, sizeof(value) };
+    return ds_remote_invoke_on_main_async(process, target,
+                                          ds_remote_sel(process, "setTransform:"),
+                                          &argument, 1);
 }
 
 static uint64_t ds_remote_font(RemoteCall *process, CGFloat size, BOOL medium) {
@@ -1039,7 +754,7 @@ static uint64_t ds_remote_secure_canvas(RemoteCall *process, uint64_t textField)
         uint64_t view = 0;
         if (!ds_remote_invoke_on_main_result(
                 process, subviews, ds_remote_sel(process, "objectAtIndex:"),
-                &argument, 1, &view, sizeof(view)) || !view) {
+                &argument, 1, &view, sizeof(view), YES) || !view) {
             continue;
         }
         uint64_t viewClass = ds_remote_get_object_on_main(process, view, "class");
@@ -1061,11 +776,163 @@ static BOOL ds_apply_snapshot_container(RemoteCall *process, BOOL hideAtSnapshot
                                    ds_remote_sel(process, "addSubview:"),
                                    g_remoteContainer, YES);
     g_lastHideAtSnapshot = hideAtSnapshot;
-    if (hideAtSnapshot && !canHide) {
-        ds_append_checkpoint(ds_localized(@"Screenshot-hiding container unavailable; using normal display"));
-    }
     return !hideAtSnapshot || canHide;
 }
+
+static CGRect ds_scene_bounds(void) {
+    if (!CGRectIsNull(g_remoteSceneBounds) &&
+        CGRectGetWidth(g_remoteSceneBounds) > 0.0 &&
+        CGRectGetHeight(g_remoteSceneBounds) > 0.0) {
+        return g_remoteSceneBounds;
+    }
+    CGRect bounds;
+    ds_screen_geometry(&bounds, NULL);
+    return bounds;
+}
+
+// The orientation actually shown on screen: FBSOrientationObserver first
+// (follows the foreground app), physical device orientation as fallback.
+static UIInterfaceOrientation ds_active_orientation(void) {
+    int fbs = g_activeOrientation.load();
+    if (fbs != UIInterfaceOrientationUnknown) return (UIInterfaceOrientation)fbs;
+    switch (UIDevice.currentDevice.orientation) {
+        case UIDeviceOrientationLandscapeLeft:  return UIInterfaceOrientationLandscapeRight;
+        case UIDeviceOrientationLandscapeRight: return UIInterfaceOrientationLandscapeLeft;
+        case UIDeviceOrientationPortraitUpsideDown: return UIInterfaceOrientationPortraitUpsideDown;
+        default: return UIInterfaceOrientationPortrait;
+    }
+}
+
+// Space the window's subviews lay out in: the scene space, swapped to
+// landscape when the active orientation is landscape but the scene did not
+// follow (SpringBoard's scene ignores the foreground app's orientation).
+static CGRect ds_content_bounds(void) {
+    CGRect scene = ds_scene_bounds();
+    BOOL scenePortrait = CGRectGetHeight(scene) >= CGRectGetWidth(scene);
+    if (!scenePortrait) return scene;
+    if (UIInterfaceOrientationIsLandscape(ds_active_orientation())) {
+        return CGRectMake(0, 0, CGRectGetHeight(scene), CGRectGetWidth(scene));
+    }
+    return scene;
+}
+
+static CGRect ds_hud_screen_bounds(void) {
+    return ds_content_bounds();
+}
+
+static CGRect ds_remote_window_frame(void) {
+    return ds_scene_bounds();
+}
+
+// Rotates the HUD window by hand whenever the scene space mismatches the
+// physical device orientation. Cheap: remote calls fire only on change.
+static void ds_update_window_rotation(RemoteCall *process) {
+    if (!process || !process.trojanMem || !g_remoteWindow) return;
+
+    CGRect scene = ds_scene_bounds();
+    UIInterfaceOrientation active = ds_active_orientation();
+    BOOL scenePortrait = CGRectGetHeight(scene) >= CGRectGetWidth(scene);
+
+    // cccc orientationAngle(): landscape-left = -90°, landscape-right = +90°,
+    // upside-down = 180°. Only compensate when the scene itself didn't rotate.
+    double angle = 0.0;
+    CGRect content = scene;
+    if (scenePortrait && active == UIInterfaceOrientationLandscapeLeft) {
+        angle = -M_PI_2;
+        content = CGRectMake(0, 0, CGRectGetHeight(scene), CGRectGetWidth(scene));
+    } else if (scenePortrait && active == UIInterfaceOrientationLandscapeRight) {
+        angle = M_PI_2;
+        content = CGRectMake(0, 0, CGRectGetHeight(scene), CGRectGetWidth(scene));
+    } else if (scenePortrait && active == UIInterfaceOrientationPortraitUpsideDown) {
+        angle = M_PI;
+    }
+    if (angle == g_windowRotation && CGRectEqualToRect(content, g_windowContentBounds)) return;
+
+    g_windowRotation = angle;
+    g_windowContentBounds = content;
+    CGPoint center = CGPointMake(CGRectGetMidX(scene), CGRectGetMidY(scene));
+    ds_remote_set_rect_on_main(process, g_remoteWindow, "setBounds:", content);
+    ds_remote_set_point_on_main(process, g_remoteWindow, "setCenter:", center);
+    ds_remote_set_transform_on_main(process, g_remoteWindow,
+                                    CGAffineTransformMakeRotation(angle));
+}
+
+static CGRect ds_remote_window_bounds(CGRect windowFrame) {
+    return CGRectMake(0, 0, CGRectGetWidth(windowFrame), CGRectGetHeight(windowFrame));
+}
+
+static CGRect ds_hud_content_frame(const DSHUDPresentation *presentation,
+                                   CGRect windowFrame) {
+    if (!presentation) return CGRectZero;
+    return CGRectMake(round(CGRectGetMinX(presentation->windowFrame) - CGRectGetMinX(windowFrame)),
+                      round(CGRectGetMinY(presentation->windowFrame) - CGRectGetMinY(windowFrame)),
+                      CGRectGetWidth(presentation->windowFrame),
+                      CGRectGetHeight(presentation->windowFrame));
+}
+
+static void ds_lq_tick(void);
+static bool ds_lq_has_render_source(void);
+typedef struct {
+    float u;
+    float v;
+    uint32_t configId;
+    uint32_t playerId;
+    uint64_t actor;
+    int32_t hp;
+    bool hpSampleValid;
+    int32_t ultimateCooldown;
+    int32_t talentCooldown;
+    bool ultimateCooldownValid;
+    bool talentCooldownValid;
+    bool minimapValid;
+    float minimapCenterXPx;
+    float minimapCenterYPx;
+    float minimapWidthPx;
+    float minimapHeightPx;
+    float minimapScreenWidthPx;
+    float minimapScreenHeightPx;
+    float minimapFormCameraViewport[4];
+    float minimapAnchorXPx;
+    float minimapAnchorYPx;
+    int32_t minimapStorePosMode;
+    float minimapX;
+    float minimapY;
+    int32_t minimapRoomType;
+    bool visible;
+} DSLQProjectedHero;
+typedef struct {
+    float u;
+    float v;
+    uint32_t configId;
+    uint64_t actor;
+    int32_t hp;
+    bool hpSampleValid;
+    bool minimapValid;
+    float minimapCenterXPx;
+    float minimapCenterYPx;
+    float minimapWidthPx;
+    float minimapHeightPx;
+    float minimapScreenWidthPx;
+    float minimapScreenHeightPx;
+    float minimapFormCameraViewport[4];
+    float minimapAnchorXPx;
+    float minimapAnchorYPx;
+    int32_t minimapStorePosMode;
+    float minimapX;
+    float minimapY;
+    int32_t minimapRoomType;
+    bool visible;
+} DSLQProjectedMonster;
+static const int kDSLQMaxHeroes = 10;
+static const int kDSLQMaxEnemies = 5;
+static const int kDSLQMaxMonsters = 64;
+static int ds_lq_copy_projected_heroes(DSLQProjectedHero out[5],
+                                       uint64_t *epochOut);
+static int ds_lq_copy_projected_monsters(
+    DSLQProjectedMonster out[kDSLQMaxMonsters], uint64_t *epochOut);
+static void ds_lq_overlay_reset(void);
+#include "DSBridgeESP.inc.mm"
+#include "DSBridgeLienQuan.inc.mm"
 
 // The HUD lives in its own UIWindow anchored to SBMainWorkspace.mainWindowScene
 // Adding to whatever keyWindow we can find is
@@ -1073,12 +940,18 @@ static BOOL ds_apply_snapshot_container(RemoteCall *process, BOOL hideAtSnapshot
 static uint64_t ds_create_springboard_hud(RemoteCall *process) {
     NSDictionary *preferences = ds_hud_preferences();
     DSHUDPresentation probe = ds_hud_presentation(preferences, @"0");
-    NSString *text = ds_display_text(preferences, probe.centered, YES, 0, 0);
+    NSString *text = ds_full_display_text(preferences, probe.centered, YES, 0, 0);
     DSHUDPresentation presentation = ds_hud_presentation(preferences, text);
 
     uint64_t alloc = ds_remote_sel(process, "alloc");
     uint64_t workspaceClass = ds_remote_class(process, "SBMainWorkspace");
-    uint64_t windowClass = ds_remote_class(process, "UIWindow");
+    // _UIDebugIdentifierWindow is a stock UIWindow subclass whose
+    // -_ignoresHitTest returns YES (verified in UIKitCore disassembly), so the
+    // window server excludes it from hit regions and touches fall through to
+    // any app — not just SpringBoard. Plain -[UIWindow init] skips its
+    // initWithWindowScene:, so the debug identifier label is never created.
+    uint64_t windowClass = ds_remote_class(process, "_UIDebugIdentifierWindow");
+    if (!windowClass) windowClass = ds_remote_class(process, "UIWindow");
     uint64_t viewClass = ds_remote_class(process, "UIView");
     uint64_t labelClass = ds_remote_class(process, "UILabel");
     uint64_t textFieldClass = ds_remote_class(process, "UITextField");
@@ -1092,6 +965,22 @@ static uint64_t ds_create_springboard_hud(RemoteCall *process) {
         ? ds_remote_get_object_on_main(process, workspace, "mainWindowScene")
         : 0;
     if (!scene) return 0;
+
+    // Adopt the remote scene's geometry immediately so the first layout is
+    // already correct for the current rotation.
+    uint64_t coordSpace = ds_remote_get_object_on_main(process, scene, "coordinateSpace");
+    if (coordSpace) {
+        CGRect sceneBounds = remote_getCGRect(process, coordSpace,
+                                              ds_remote_sel(process, "bounds"));
+        if (!CGRectIsNull(sceneBounds) && CGRectGetWidth(sceneBounds) > 0.0 &&
+            CGRectGetHeight(sceneBounds) > 0.0) {
+            g_remoteSceneBounds = sceneBounds;
+        }
+    }
+
+    CGRect windowFrame = ds_remote_window_frame();
+    CGRect windowBounds = ds_remote_window_bounds(windowFrame);
+    CGRect contentFrame = ds_hud_content_frame(&presentation, windowFrame);
 
     uint64_t window = remote_msg(process, windowClass, alloc, 0, 0, 0, 0);
     uint64_t container = remote_msg(process, viewClass, alloc, 0, 0, 0, 0);
@@ -1110,7 +999,7 @@ static uint64_t ds_create_springboard_hud(RemoteCall *process) {
         return 0;
     }
 
-    ds_remote_set_rect_on_main(process, window, "setFrame:", presentation.windowFrame);
+    ds_remote_set_rect_on_main(process, window, "setFrame:", windowFrame);
     ds_perform_on_springboard_main(process, window, ds_remote_sel(process, "setWindowScene:"), scene, YES);
     // Match the original hosted HUD. Status-bar level is below SpringBoard's
     // CoverSheet, so it disappears as soon as the device enters the lock UI.
@@ -1118,10 +1007,10 @@ static uint64_t ds_create_springboard_hud(RemoteCall *process) {
     ds_remote_set_u64_on_main(process, window, "setUserInteractionEnabled:", 0);
     ds_remote_set_u64_on_main(process, window, "setOpaque:", 0);
 
-    ds_remote_set_rect_on_main(process, container, "setFrame:", presentation.blurFrame);
+    ds_remote_set_rect_on_main(process, container, "setFrame:", contentFrame);
     ds_remote_set_rect_on_main(process, blurView, "setFrame:", presentation.blurFrame);
     ds_remote_set_rect_on_main(process, label, "setFrame:", presentation.labelFrame);
-    ds_remote_set_rect_on_main(process, secureField, "setFrame:", presentation.blurFrame);
+    ds_remote_set_rect_on_main(process, secureField, "setFrame:", windowBounds);
 
     uint64_t clear = ds_remote_get_object_on_main(process, colorClass, "clearColor");
     uint64_t white = ds_remote_get_object_on_main(process, colorClass, "whiteColor");
@@ -1141,7 +1030,7 @@ static uint64_t ds_create_springboard_hud(RemoteCall *process) {
                                    ds_remote_sel(process, "setBackgroundColor:"), clear, YES);
     ds_perform_on_springboard_main(process, blurView,
                                    ds_remote_sel(process, "setBackgroundColor:"),
-                                   presentation.inverted ? white : safeBackground, YES);
+                                   clear, YES);
     ds_remote_set_u64_on_main(process, container, "setTag:", (uint64_t)kDSSpringBoardHUDTag);
     ds_remote_set_u64_on_main(process, container, "setHidden:", 0);
     ds_remote_set_u64_on_main(process, container, "setUserInteractionEnabled:", 0);
@@ -1158,7 +1047,7 @@ static uint64_t ds_create_springboard_hud(RemoteCall *process) {
                                    presentation.inverted ? black : white, YES);
     ds_remote_set_u64_on_main(process, label, "setNumberOfLines:",
                               (uint64_t)presentation.numberOfLines);
-    ds_remote_set_u64_on_main(process, label, "setHidden:", 0);
+    ds_remote_set_u64_on_main(process, label, "setHidden:", 1);
     uint64_t font = ds_remote_font(process, presentation.fontSize,
                                    presentation.inverted);
     if (!font) return 0;
@@ -1191,36 +1080,34 @@ static uint64_t ds_create_springboard_hud(RemoteCall *process) {
 
     g_remoteWindow = window;
     g_remoteContainer = container;
+    g_remoteBlurView = blurView;
     g_remoteSecureField = secureField;
     g_remoteSecureCanvas = ds_remote_secure_canvas(process, secureField);
+    g_remoteWindowScene = scene;
+    g_remoteWindowPid = process.pid;
     ds_apply_snapshot_container(process, presentation.hideAtSnapshot);
     ds_remote_set_u64_on_main(process, window, "setHidden:", 0);
 
-    g_remoteWindowScene = scene;
-    g_remoteWindowPid = process.pid;
-    g_remoteBlurView = blurView;
     g_remoteBlurEffect = 0;
     g_lastPresentationSignature = preferences.description.hash ^
                                   (NSUInteger)ds_interface_orientation();
-    g_lastWindowFrame = presentation.windowFrame;
+    g_lastWindowFrame = windowFrame;
+    g_lastHUDContentFrame = contentFrame;
     g_lastLabelFrame = presentation.labelFrame;
     g_lastWindowHidden = NO;
     g_lastContainerAlpha = 1.0;
     g_lastFontSize = presentation.fontSize;
     g_lastInverted = presentation.inverted;
-    g_focusUntil = CFAbsoluteTimeGetCurrent() + kDSHUDFocusDuration;
     return label;
 }
 
-// Never release remote UIViews: dealloc on a hijacked thread crashes SpringBoard
-// (same CA main-thread assert). removeFromSuperview + hide, and intentionally
-// leak the tiny view hierarchy for the lifetime of the remote session.
+// Never release remote UIViews: dealloc on a hijacked thread crashes
+// SpringBoard (same CA main-thread assert). The hierarchy stays alive inside
+// SpringBoard across toggles — disable only hides the window, and the next
+// enable unhides it instead of paying for remote window/label creation again
+// (that burst of remote_msg round trips was the visible ~1s progress crawl).
 static void ds_remove_springboard_hud(RemoteCall *process) {
     if (!g_remoteWindow || g_remoteWindowPid != process.pid) return;
-    if (g_remoteContainer) {
-        ds_perform_on_springboard_main(process, g_remoteContainer,
-                                       ds_remote_sel(process, "removeFromSuperview"), 0, YES);
-    }
     ds_remote_set_u64_on_main(process, g_remoteWindow, "setHidden:", 1);
 }
 
@@ -1234,18 +1121,23 @@ static BOOL ds_apply_remote_presentation(RemoteCall *process,
         return NO;
     }
 
-    if (!CGRectEqualToRect(g_lastWindowFrame, presentation->windowFrame)) {
-        ds_remote_set_rect_on_main(process, g_remoteWindow, "setFrame:",
-                                   presentation->windowFrame);
-        ds_remote_set_rect_on_main(process, g_remoteContainer, "setFrame:",
-                                   presentation->blurFrame);
-        ds_remote_set_rect_on_main(process, g_remoteBlurView, "setFrame:",
-                                   presentation->blurFrame);
+    // Window geometry is owned by ds_update_window_rotation() (bounds/center/
+    // transform); here only the content space matters for subviews.
+    CGRect contentBounds = ds_content_bounds();
+    CGRect contentFrame = ds_hud_content_frame(presentation, contentBounds);
+    if (!CGRectEqualToRect(g_lastWindowFrame, contentBounds)) {
         if (g_remoteSecureField) {
             ds_remote_set_rect_on_main(process, g_remoteSecureField, "setFrame:",
-                                       presentation->blurFrame);
+                                       contentBounds);
         }
-        g_lastWindowFrame = presentation->windowFrame;
+        g_lastWindowFrame = contentBounds;
+    }
+    if (!CGRectEqualToRect(g_lastHUDContentFrame, contentFrame)) {
+        ds_remote_set_rect_on_main(process, g_remoteContainer, "setFrame:",
+                                   contentFrame);
+        ds_remote_set_rect_on_main(process, g_remoteBlurView, "setFrame:",
+                                   presentation->blurFrame);
+        g_lastHUDContentFrame = contentFrame;
     }
     if (!CGRectEqualToRect(g_lastLabelFrame, presentation->labelFrame)) {
         ds_remote_set_rect_on_main(process, g_remoteLabel, "setFrame:",
@@ -1270,16 +1162,16 @@ static BOOL ds_apply_remote_presentation(RemoteCall *process,
             ? ds_remote_get_object_on_main(process, colorClass, "whiteColor") : 0;
         uint64_t black = colorClass
             ? ds_remote_get_object_on_main(process, colorClass, "blackColor") : 0;
-        uint64_t darkGray = colorClass
-            ? ds_remote_get_object_on_main(process, colorClass, "darkGrayColor") : 0;
+        uint64_t clearColor = colorClass
+            ? ds_remote_get_object_on_main(process, colorClass, "clearColor") : 0;
         uint64_t textColor = presentation->inverted ? black : white;
-        uint64_t backgroundColor = presentation->inverted ? white : darkGray;
-        if (textColor && backgroundColor) {
+        if (textColor && clearColor) {
             ds_perform_on_springboard_main(process, g_remoteLabel,
                                            ds_remote_sel(process, "setTextColor:"), textColor, YES);
+            // Bubble stays transparent: floating text, no pill background.
             ds_perform_on_springboard_main(process, g_remoteBlurView,
                                            ds_remote_sel(process, "setBackgroundColor:"),
-                                           backgroundColor, YES);
+                                           clearColor, YES);
         }
 
         if (fabs(g_lastFontSize - presentation->fontSize) > 0.001 ||
@@ -1318,62 +1210,77 @@ static BOOL ds_apply_remote_presentation(RemoteCall *process,
 static void ds_update_rate(void) {
     if (!g_hudRequested.load() || !g_hudActive.load() || !g_springBoard || !g_remoteLabel) return;
 
-    uint64_t input = 0;
-    uint64_t output = 0;
-    ds_read_network_bytes(&input, &output);
-    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
-    double interval = g_previousSampleTime > 0 ? MAX(now - g_previousSampleTime, 0.1) : 1.0;
-    double down = g_previousSampleTime > 0 && input >= g_previousInput ? (input - g_previousInput) / interval : 0;
-    double up = g_previousSampleTime > 0 && output >= g_previousOutput ? (output - g_previousOutput) / interval : 0;
-    g_previousInput = input;
-    g_previousOutput = output;
-    g_previousSampleTime = now;
-
-    if (g_remoteWindowScene) {
-        uint64_t orientation = ds_remote_get_u64_on_main(
-            g_springBoard, g_remoteWindowScene, "interfaceOrientation");
-        if (orientation <= UIInterfaceOrientationLandscapeRight) {
-            g_remoteOrientation.store((int)orientation);
-        }
+    // Circuit breaker: once the trojan region is gone, the hijacked thread
+    // state is unreliable. Never keep calling into a possibly-wedged
+    // SpringBoard — each further call is a respring lottery.
+    if (!g_springBoard.trojanMem) {
+        ds_set_error(ds_localized(@"Lost the SpringBoard connection; HUD updates stopped. Toggle the HUD off and on to rebuild it."));
+        g_hudActive.store(false);
+        return;
     }
 
     NSDictionary *preferences = ds_hud_preferences();
     DSHUDPresentation probe = ds_hud_presentation(preferences, @"0");
-    BOOL focused = now < g_focusUntil;
-    NSString *text = ds_display_text(
-        preferences, probe.centered, focused,
-        focused ? (double)input : down,
-        focused ? (double)output : up);
+    BOOL focused = NO;
+    NSString *text = ds_full_display_text(
+        preferences, probe.centered, focused, 0.0, 0.0);
     DSHUDPresentation presentation = ds_hud_presentation(preferences, text);
     NSUInteger presentationSignature = preferences.description.hash ^
                                        (NSUInteger)ds_interface_orientation();
     BOOL applyStyle = presentationSignature != g_lastPresentationSignature;
 
-    @try {
-        if (!ds_apply_remote_presentation(
-                g_springBoard, &presentation, text, focused, applyStyle)) {
-            @throw [NSException exceptionWithName:@"DSRemoteHUDUpdate"
-                                           reason:@"remote presentation update failed"
-                                         userInfo:nil];
+    // The hosted CAShapeLayer overlay owns all ESP rendering.
+    ds_update_window_rotation(g_springBoard);
+
+    // The text is permanently empty, so regular ticks avoid SpringBoard work
+    // unless layout/style or lock-state handling actually changed.
+    if (!applyStyle && !focused && !g_pendingWindowLevelReapply &&
+        g_lastAppliedText && [g_lastAppliedText isEqualToString:text]) {
+        return;
+    }
+
+    // Deferred from the lock-state handler; never do this mid-transition.
+    if (g_pendingWindowLevelReapply) {
+        g_pendingWindowLevelReapply = NO;
+        if (g_remoteWindow) {
+            ds_remote_set_double_on_main(g_springBoard, g_remoteWindow,
+                                         "setWindowLevel:", kDSHUDWindowLevel);
         }
-        g_lastPresentationSignature = presentationSignature;
+    }
+
+    BOOL applied = NO;
+    @try {
+        applied = ds_apply_remote_presentation(
+            g_springBoard, &presentation, text, focused, applyStyle);
     } @catch (NSException *exception) {
-        ds_set_error([NSString stringWithFormat:@"SpringBoard HUD update failed: %@", exception.reason]);
-        g_hudActive.store(false);
+        applied = NO;
+        (void)exception;
+    }
+
+    if (applied) {
+        g_remoteFailureCount = 0;
+        g_lastAppliedText = [text copy];
+        g_lastPresentationSignature = presentationSignature;
+    } else {
+        g_remoteFailureCount++;
+        if (g_remoteFailureCount >= kDSRemoteFailureLimit || !g_springBoard.trojanMem) {
+            // Stop hammering SpringBoard. The frozen HUD view stays in place
+            // until the user explicitly rebuilds it by toggling the HUD.
+            ds_set_error(ds_localized(@"SpringBoard HUD update failed repeatedly; updates stopped. Toggle the HUD off and on to rebuild it."));
+            g_hudActive.store(false);
+        }
     }
 }
 
 static void ds_start_rate_timer(void) {
     if (g_rateTimer) return;
-    g_previousInput = 0;
-    g_previousOutput = 0;
-    g_previousSampleTime = 0;
-    g_previousDirtyFrameCount = 0;
-    g_needsFPSBaselineReset = YES;
     g_rateTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, ds_bridge_queue());
+    // This timer only applies preference/lock-state changes. Orientation comes
+    // from FBSOrientationObserver; the hosted ESP has its own display timer.
+    g_fastTickActive = NO;
     dispatch_source_set_timer(g_rateTimer,
-                              dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC),
-                              NSEC_PER_SEC, 100 * NSEC_PER_MSEC);
+                              dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 4),
+                              NSEC_PER_SEC / 4, 50 * NSEC_PER_MSEC);
     dispatch_source_set_event_handler(g_rateTimer, ^{
         @autoreleasepool {
             ds_update_rate();
@@ -1386,6 +1293,7 @@ static void ds_stop_rate_timer(void) {
     if (!g_rateTimer) return;
     dispatch_source_cancel(g_rateTimer);
     g_rateTimer = nil;
+    g_fastTickActive = NO;
 }
 
 static void ds_unregister_hud_notifications(void) {
@@ -1405,16 +1313,6 @@ static void ds_register_hud_notifications(void) {
                              ds_bridge_queue(), ^(int token) {
         (void)token;
         if (!g_hudActive.load()) return;
-        NSDictionary *preferences = ds_hud_preferences();
-        ds_append_checkpoint([NSString stringWithFormat:
-            @"HUD settings refreshed position=%@ size=%@ snapshot=%@",
-            preferences[UIInterfaceOrientationIsLandscape(ds_interface_orientation())
-                ? HUDUserDefaultsKeySelectedModeLandscape
-                : HUDUserDefaultsKeySelectedMode] ?: @"default",
-            preferences[HUDUserDefaultsKeyUsesLargeFont] ?: @NO,
-            preferences[HUDUserDefaultsKeyHideAtSnapshot] ?: @NO]);
-        g_focusUntil = CFAbsoluteTimeGetCurrent() + kDSHUDFocusDuration;
-        g_needsFPSBaselineReset = YES;
         ds_update_rate();
     });
 
@@ -1429,142 +1327,84 @@ static void ds_register_hud_notifications(void) {
         (void)passcodeSet;
         if (!g_hudActive.load() || !g_springBoard || !g_remoteWindow) return;
 
-        // Keep the SpringBoard-hosted HUD above CoverSheet while locked.
-        // Reapply the level during the transition because SpringBoard may
-        // reorder its own windows as the lock scene becomes active.
-        ds_remote_set_double_on_main(g_springBoard, g_remoteWindow,
-                                     "setWindowLevel:", kDSHUDWindowLevel);
+        // Keep the SpringBoard-hosted HUD above CoverSheet while locked, but
+        // never hijack a thread during the lock transition itself — that is
+        // exactly when SpringBoard's main thread is busiest and a remote call
+        // is most likely to wedge it (respring). Defer everything to the next
+        // regular rate tick, which runs within ~1s anyway.
+        g_pendingWindowLevelReapply = YES;
         if (!locked) {
-            g_previousInput = 0;
-            g_previousOutput = 0;
-            g_previousSampleTime = 0;
-            g_needsFPSBaselineReset = YES;
-            g_focusUntil = CFAbsoluteTimeGetCurrent() + kDSHUDFocusDuration;
         }
         g_lastWindowHidden = YES;
-        ds_update_rate();
+        g_lastAppliedText = nil;  // force a full reapply on the next tick
     });
-}
-
-BOOL DSBridgeCompiledIn(void) {
-    return YES;
-}
-
-BOOL DSBridgeIsReady(void) {
-    return g_dsReady.load() && ds_is_ready();
-}
-
-BOOL DSBridgeAdoptFromEnvironment(void) {
-    int control = ds_env_int("DS_CTRL_FD", ds_env_int("DS_HELPER_CTRL_FD", -1));
-    int readWrite = ds_env_int("DS_RW_FD", ds_env_int("DS_HELPER_RW_FD", -1));
-    uint64_t kernelBase = ds_env_u64("DS_KBASE");
-    if (!kernelBase) kernelBase = ds_env_u64("DS_HELPER_KBASE");
-    uint64_t kernelSlide = ds_env_u64("DS_KSLIDE");
-    if (!kernelSlide) kernelSlide = ds_env_u64("DS_HELPER_KSLIDE");
-    if (control < 0 || readWrite < 0 || !kernelBase) return NO;
-
-    const char *lock = getenv("DS_XPROC_LOCK");
-    if (!lock || !lock[0]) lock = getenv("DS_HELPER_DOCS");
-    if (lock && lock[0]) {
-        NSString *path = @(lock);
-        if (![path.pathExtension isEqualToString:@"lock"]) {
-            path = [path stringByAppendingPathComponent:@".darksword-krw.lock"];
-        }
-        ds_set_xproc_lock_path(path.fileSystemRepresentation);
-    }
-
-    if (!ds_adopt_krw(control, readWrite, kernelBase, kernelSlide)) {
-        ds_set_error(ds_localized(@"Could not adopt the DarkSpeed environment."));
-        return NO;
-    }
-
-    init_offsets();
-    offsets_init();
-    install_builtin_kernel_symbol_offsets();
-    if (!ds_has_symbol_offsets() && !emergencyfixfunctiontobereplacedlateronquestionmark()) {
-        ds_set_error(ds_localized(@"DarkSpeed system data is unavailable."));
-        return NO;
-    }
-    g_dsReady.store(true);
-    ds_set_stage(ds_localized(@"DarkSpeed initialization complete"));
-    ds_set_error(@"");
-    os_log(OS_LOG_DEFAULT, "[DSBridge] adopted DarkSword KRW for SpringBoard HUD");
-    return YES;
-}
-
-BOOL DSBridgeBootstrap(void) {
-    if (DSBridgeIsReady()) return YES;
-    if (DSBridgeAdoptFromEnvironment()) return YES;
-
-    ds_set_log_callback(ds_bridge_log);
-    ds_set_progress_callback(ds_bridge_progress);
-    os_log(OS_LOG_DEFAULT, "[DSBridge] running DarkSword chain off-main-thread");
-
-    // offsets_init() must run BEFORE ds_run() — pe_v1() needs the socket/inpcb
-    // offsets to find the corrupted socket. Without this, the search runs with
-    // all offsets = 0 and retries forever (stuck at ~50%).
-    init_offsets();
-    offsets_init();
-    // Exact build-scoped symbol offsets must be available before ds_run():
-    // its final self-proc lookup already needs kernproc/allproc.
-    install_builtin_kernel_symbol_offsets();
-
-    ds_set_stage(ds_localized(@"Initializing DarkSpeed"));
-    int result = ds_run();
-    if (result != 0 || !ds_is_ready()) {
-        ds_set_error([NSString stringWithFormat:ds_localized(@"DarkSpeed initialization failed (%d)"), result]);
-        return NO;
-    }
-
-    g_dsReady.store(true);
-    ds_set_stage(ds_localized(@"DarkSpeed initialization complete"));
-    ds_set_error(@"");
-    os_log(OS_LOG_DEFAULT, "[DSBridge] DarkSword ready");
-    return YES;
 }
 
 static void ds_finish_disable(void) {
     ds_set_stage(ds_localized(@"Closing HUD"));
     ds_unregister_hud_notifications();
     ds_stop_rate_timer();
-    RemoteCall *process = g_springBoard;
-    g_springBoard = nil;
+    // Pause (not stop): keep the local window + CAContext + the SpringBoard
+    // registration alive so the next enable needs no channel at all.
+    ds_hosted_overlay_pause();
     g_hudActive.store(false);
-    if (process) {
+    // Keep the SpringBoard RemoteCall channel alive across toggles (DarkPlay
+    // pattern). RemoteCall init/destroy and every remote_msg are
+    // hijacked-thread round trips inside SpringBoard; repeating them per
+    // toggle corrupts thread state (threads-zone UAF -> delayed kernel panic)
+    // and is what made every re-enable crawl through the progress bar. The
+    // channel is rebuilt only when SpringBoard's pid changes (respring), in
+    // ds_finish_enable().
+    if (g_springBoard) {
         @try {
-            ds_remove_springboard_hud(process);
-        } @catch (NSException *exception) {
-            os_log_error(OS_LOG_DEFAULT, "[DSBridge] HUD remove exception: %{public}@", exception.reason);
+            ds_remove_springboard_hud(g_springBoard);
+        } @catch (__unused NSException *exception) {
         }
         @try {
-            [process destroyRemoteCall];
-        } @catch (NSException *exception) {
-            os_log_error(OS_LOG_DEFAULT, "[DSBridge] destroyRemoteCall exception: %{public}@", exception.reason);
+            // Release the text ring now that nothing references the strings.
+            uint64_t releaseSel = ds_remote_sel(g_springBoard, "release");
+            for (NSUInteger i = 0; i < kDSRemoteTextRingSize; i++) {
+                if (g_remoteTextRing[i] && releaseSel && g_springBoard.trojanMem) {
+                    remote_msg(g_springBoard, g_remoteTextRing[i], releaseSel, 0, 0, 0, 0);
+                }
+                g_remoteTextRing[i] = 0;
+            }
+            g_remoteTextRingIndex = 0;
+        } @catch (__unused NSException *exception) {
         }
     }
-    g_remoteContainer = 0;
-    g_remoteBlurView = 0;
-    g_remoteBlurEffect = 0;
-    g_remoteLabel = 0;
-    g_remoteSecureField = 0;
-    g_remoteSecureCanvas = 0;
-    g_remoteWindow = 0;
-    g_remoteWindowScene = 0;
-    g_remoteWindowPid = 0;
+    // Keep the remote window/label pointers: the hierarchy is still alive
+    // inside SpringBoard (disable only hid it) and the next enable reuses it.
+    g_activeOrientation.store(UIInterfaceOrientationUnknown);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [g_orientationObserver invalidate];
+        g_orientationObserver = nil;
+    });
     g_remoteOrientation.store(UIInterfaceOrientationUnknown);
     g_lastPresentationSignature = 0;
     g_lastWindowFrame = CGRectNull;
+    g_lastHUDContentFrame = CGRectNull;
     g_lastLabelFrame = CGRectNull;
+    // Game còn sống thì giải phóng hẳn các page đã map (an toàn); game chết
+    // rồi thì leak như cũ để tránh panic trong teardown.
+    ds_debug_shmem_flush_ex(ds_debug_target_alive());
     g_lastWindowHidden = NO;
     g_lastContainerAlpha = -1.0;
     g_lastFontSize = -1.0;
     g_lastInverted = NO;
     g_lastHideAtSnapshot = NO;
-    ds_reset_remote_symbol_cache();
-    ds_stop_keepalive();
+    g_lastAppliedText = nil;
+    g_remoteFailureCount = 0;
+    g_pendingWindowLevelReapply = NO;
+    // Keep the selector/class cache too: it belongs to the live channel and
+    // makes the next enable skip every remote symbol lookup.
+    // Keep the keepalive running while the SpringBoard channel exists: only a
+    // background-RUNNING (not suspended) process gets applicationWillTerminate:,
+    // which is where the channel is torn down. Suspending here would lose that
+    // callback and leave the hijacked thread behind -> respring on swipe-kill.
+    if (!g_springBoard) ds_stop_keepalive();
     ds_set_stage(ds_localized(@"HUD closed"));
     notify_post(NOTIFY_RELOAD_APP);
-    os_log(OS_LOG_DEFAULT, "[DSBridge] SpringBoard HUD disabled");
 }
 
 static void ds_finish_enable(void) {
@@ -1573,6 +1413,23 @@ static void ds_finish_enable(void) {
     g_dsProgress.store(0.0);
     ds_set_stage(ds_localized(@"Preparing startup"));
     ds_post_progress();
+
+    // Active-interface-orientation tracking (the same FBSOrientationObserver
+    // mechanism cccc/TrollSpeed run in their HUD process): it follows the
+    // foreground app even while this process is backgrounded.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (g_orientationObserver) return;
+        Class observerClass = objc_getClass("FBSOrientationObserver");
+        if (!observerClass) return;
+        g_orientationObserver = [[observerClass alloc] init];
+        [g_orientationObserver setHandler:^(FBSOrientationUpdate *update) {
+            if (update) g_activeOrientation.store((int)update.orientation);
+        }];
+        long long current = [g_orientationObserver activeInterfaceOrientation];
+        if (current != UIInterfaceOrientationUnknown) {
+            g_activeOrientation.store((int)current);
+        }
+    });
 
     if (!ds_start_keepalive()) {
         g_hudRequested.store(false);
@@ -1592,7 +1449,7 @@ static void ds_finish_enable(void) {
     }
 
     if (!DSBridgeBootstrap() || !g_hudRequested.load()) {
-        ds_fail_enable(ds_localized(@"DarkSpeed startup failed. Retry or reinstall over the existing app; restart the device only as a last resort."));
+        ds_fail_enable(ds_localized(@"DarkPubg startup failed. Retry or reinstall over the existing app; restart the device only as a last resort."));
         return;
     }
 
@@ -1604,32 +1461,83 @@ static void ds_finish_enable(void) {
         ds_fail_enable(ds_localized(@"SpringBoard is not ready, so the HUD cannot be created. Retry or reinstall over the existing app; restart the device only as a last resort."));
         return;
     }
+    uint32_t sbPidEarly = off_proc_p_pid ? ds_kread32(sbProc + off_proc_p_pid) : 0;
 
+    // One-shot channel design: after the first successful enable the overlay
+    // registration lives inside SpringBoard but the hijacked thread/exception
+    // ports are already torn down. Same SpringBoard generation => re-enable
+    // is fully local: resume rendering into our own CAContext, zero hijack.
+    if (sbPidEarly && g_hostedRemoteController &&
+        g_hostedMenuRemoteController &&
+        g_hostedSBPid == (pid_t)sbPidEarly && g_hostedLayer &&
+        g_hostedMenuWindow) {
+        g_hudActive.store(true);
+        g_dsRunning.store(false);
+        g_dsProgress.store(1.0);
+        ds_set_stage(ds_localized(@"SpringBoard HUD started"));
+        ds_set_error(@"");
+        notify_post(NOTIFY_LAUNCHED_HUD);
+        ds_post_progress();
+        ds_hosted_overlay_start();
+        return;
+    }
+
+    BOOL createdChannel = NO;
     @try {
-        os_log(OS_LOG_DEFAULT, "[DSBridge] SpringBoard proc=0x%llx self=0x%llx — starting RemoteCall",
-               (unsigned long long)sbProc, (unsigned long long)ds_get_our_proc());
         g_dsProgress.store(0.98);
         ds_set_stage(ds_localized(@"Connecting to SpringBoard"));
-        ds_reset_remote_symbol_cache();
-        g_springBoard = [[RemoteCall alloc] initWithProcess:@"SpringBoard" useMigFilterBypass:NO];
-        if (!g_springBoard || !g_springBoard.trojanMem || g_springBoard.pid <= 1) {
-            NSString *remoteError = [RemoteCall lastInitError];
-            if (remoteError.length == 0 && g_springBoard) remoteError = g_springBoard.lastError;
-            if (remoteError.length == 0) remoteError = @"RemoteCall init failed (no detail)";
-            ds_append_checkpoint([ds_localized(@"SpringBoard connection failed: ") stringByAppendingString:remoteError]);
+        uint32_t sbPid = off_proc_p_pid ? ds_kread32(sbProc + off_proc_p_pid) : 0;
+        if (g_springBoard && g_springBoard.trojanMem && sbPid &&
+            g_springBoard.pid == (int)sbPid) {
+            // Same SpringBoard as last enable: reuse the channel as-is — zero
+            // new thread injections, near-instant re-enable (DarkPlay pattern).
+        } else {
+            // First enable, or SpringBoard resprung while the HUD was off.
+            // Drop the stale channel WITHOUT destroyRemoteCall: its restore
+            // writes would target a dead process's kernel structures. The old
+            // hosting controller died with the old SpringBoard anyway.
             g_springBoard = nil;
-            ds_fail_enable([NSString stringWithFormat:
-                ds_localized(@"SpringBoard connection failed: %@\nRetry or reinstall over the existing app; restart the device only as a last resort."),
-                remoteError]);
-            return;
+            g_hostedRemoteController = 0;
+            g_hostedMenuRemoteController = 0;
+            ds_reset_remote_symbol_cache();
+            g_springBoard = [[RemoteCall alloc] initWithProcess:@"SpringBoard" useMigFilterBypass:NO];
+            if (!g_springBoard || !g_springBoard.trojanMem || g_springBoard.pid <= 1) {
+                NSString *remoteError = [RemoteCall lastInitError];
+                if (remoteError.length == 0 && g_springBoard) remoteError = g_springBoard.lastError;
+                if (remoteError.length == 0) remoteError = @"RemoteCall init failed (no detail)";
+                g_springBoard = nil;
+                ds_fail_enable([NSString stringWithFormat:
+                    ds_localized(@"SpringBoard connection failed: %@\nRetry or reinstall over the existing app; restart the device only as a last resort."),
+                    remoteError]);
+                return;
+            }
+            createdChannel = YES;
         }
 
         g_dsProgress.store(0.99);
         ds_set_stage(ds_localized(@"Creating SpringBoard HUD"));
-        g_remoteLabel = ds_create_springboard_hud(g_springBoard);
+        if (g_remoteWindow && g_remoteLabel && g_remoteWindowPid == (pid_t)sbPid) {
+            // The HUD hierarchy from the previous enable is still alive inside
+            // SpringBoard: unhide it and force one full presentation re-apply
+            // instead of recreating every remote view.
+            ds_remote_set_u64_on_main(g_springBoard, g_remoteWindow, "setHidden:", 0);
+            g_lastWindowHidden = NO;
+            g_lastPresentationSignature = 0;
+            g_pendingWindowLevelReapply = YES;
+        } else {
+            g_remoteLabel = ds_create_springboard_hud(g_springBoard);
+        }
         if (!g_remoteLabel) {
-            [g_springBoard destroyRemoteCall];
-            g_springBoard = nil;
+            // Only tear down a channel THIS enable created; a reused channel
+            // stays alive for the next toggle.
+            if (createdChannel) {
+                RemoteCall *process = g_springBoard;
+                g_springBoard = nil;
+                @try {
+                    [process destroyRemoteCall];
+                } @catch (__unused NSException *exception) {
+                }
+            }
             ds_fail_enable(ds_localized(@"SpringBoard HUD creation failed. Retry or reinstall over the existing app; restart the device only as a last resort."));
             return;
         }
@@ -1646,11 +1554,41 @@ static void ds_finish_enable(void) {
     g_dsProgress.store(1.0);
     ds_set_stage(ds_localized(@"SpringBoard HUD started"));
     ds_set_error(@"");
-    ds_start_rate_timer();
     ds_register_hud_notifications();
+
+    // One-shot: register both hosted windows while the channel exists, then
+    // tear the channel down — no hijacked thread or exception ports are left
+    // inside SpringBoard while the ESP runs (the long-run panic source).
+    __block unsigned hostedContextId = 0;
+    __block unsigned menuContextId = 0;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        hostedContextId = ds_hosted_overlay_setup_on_main();
+        menuContextId = ds_hosted_menu_setup_on_main();
+    });
+    if (hostedContextId) {
+        ds_hosted_overlay_register(hostedContextId);
+    }
+    if (menuContextId) {
+        ds_hosted_menu_register(menuContextId);
+    }
+    if (g_hostedRemoteController && g_hostedMenuRemoteController) {
+        RemoteCall *process = g_springBoard;
+        g_springBoard = nil;
+        @try {
+            [process destroyRemoteCall];
+        } @catch (__unused NSException *exception) {
+        }
+        // Nothing remote left to update; the 4 Hz rate timer only exists for
+        // channel-driven presentation work.
+        ds_stop_rate_timer();
+    } else {
+        // A registration failed: keep the channel so the overlay/menu retry
+        // loop can try again, and keep the rate timer as before.
+        ds_start_rate_timer();
+    }
     notify_post(NOTIFY_LAUNCHED_HUD);
     ds_post_progress();
-    os_log(OS_LOG_DEFAULT, "[DSBridge] SpringBoard HUD active (SpringBoard pid=%d)", g_springBoard.pid);
+    ds_hosted_overlay_start();
 }
 
 BOOL DSBridgeSetHUDEnabled(BOOL enabled) {
@@ -1672,6 +1610,43 @@ BOOL DSBridgeHUDEnabled(void) {
     return g_hudActive.load();
 }
 
+void DSBridgeTeardownForTermination(void) {
+    // applicationWillTerminate runs on main. Hide both local CAContexts before
+    // any queued teardown so SpringBoard cannot retain their last frame/icon.
+    g_hostedMenuExpanded = NO;
+    g_hostedMenuWindow.hidden = YES;
+    g_hostedWindow.hidden = YES;
+    [CATransaction flush];
+    // Called from applicationWillTerminate: on the main thread. The keepalive
+    // keeps us background-RUNNING (not suspended), so this really fires on a
+    // swipe-kill. Serialize with the bridge queue, but never call helpers that
+    // dispatch_sync to the main thread from here (it is blocked in this call).
+    dispatch_sync(ds_bridge_queue(), ^{
+        @autoreleasepool {
+            ds_stop_rate_timer();
+            if (g_hostedTimer) {
+                dispatch_source_cancel(g_hostedTimer);
+                g_hostedTimer = nil;
+            }
+            RemoteCall *process = g_springBoard;
+            g_springBoard = nil;
+            g_hostedRemoteController = 0;
+            g_hostedMenuRemoteController = 0;
+            g_hostedContextId = 0;
+            g_hostedMenuContextId = 0;
+            g_hudRequested.store(false);
+            g_hudActive.store(false);
+            if (process) {
+                @try {
+                    // Restores/exits the hijacked SpringBoard thread.
+                    [process destroyRemoteCall];
+                } @catch (__unused NSException *exception) {
+                }
+            }
+        }
+    });
+}
+
 double DSBridgeProgress(void) {
     return g_dsProgress.load();
 }
@@ -1686,17 +1661,18 @@ BOOL DSBridgeCompiledIn(void) { return NO; }
 BOOL DSBridgeIsReady(void) { return NO; }
 void DSBridgeWarmUpNetworkAndPrefetchKernelCache(void) {}
 BOOL DSBridgeAdoptFromEnvironment(void) {
-    ds_set_error(ds_localized(@"DarkSpeed is not enabled in this build."));
+    ds_set_error(ds_localized(@"DarkPubg is not enabled in this build."));
     return NO;
 }
 BOOL DSBridgeBootstrap(void) {
-    ds_set_error(ds_localized(@"DarkSpeed is not enabled in this build."));
+    ds_set_error(ds_localized(@"DarkPubg is not enabled in this build."));
     return NO;
 }
 BOOL DSBridgeSetHUDEnabled(BOOL enabled) {
     (void)enabled;
     return NO;
 }
+void DSBridgeTeardownForTermination(void) {}
 BOOL DSBridgeHUDEnabled(void) { return NO; }
 double DSBridgeProgress(void) { return 0.0; }
 BOOL DSBridgeIsRunning(void) { return NO; }

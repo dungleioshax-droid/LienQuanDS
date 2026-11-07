@@ -7,6 +7,13 @@ _site/
 compile_commands.json
 *.xcarchive
 *.tipa
+CameraDebug.log
+Il2CppDumper-redump-20260831/
+KGVNFramework/
+myhack/
+ESP.h
+__pycache__/
+*.log
 
 # Created by https://www.toptal.com/developers/gitignore/api/swift,macos,xcode
 # Edit at https://www.toptal.com/developers/gitignore?templates=swift,macos,xcode

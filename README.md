@@ -1,17 +1,17 @@
-# DarkSpeed
+# DarkPubg
 
 [简体中文](README_ZH.md) · [Original TrollSpeed](README_TrollSpeed.md) · [Repository](https://github.com/huami1314/DarkSpeed)
 
 Current version: **1.0-1**
 
-DarkSpeed is an IPA-only network-speed HUD for SpringBoard. It retains TrollSpeed's familiar display and settings while providing its own signed-app runtime and SpringBoard renderer.
+DarkPubg is an IPA-only network-speed HUD for SpringBoard. It retains TrollSpeed's familiar display and settings while providing its own signed-app runtime and SpringBoard renderer.
 
 The HUD supports live upload and download speeds, left/center/right placement, configurable size and units, lock-screen display, rotation, FPS text, and optional screenshot hiding. Presentation settings update while the HUD is running.
 
 > [!WARNING]
-> DarkSpeed uses experimental low-level techniques. Compatibility depends on the exact device and iOS build. Back up important data before testing. DarkSpeed never restarts the device automatically.
+> DarkPubg uses experimental low-level techniques. Compatibility depends on the exact device and iOS build. Back up important data before testing. DarkPubg never restarts the device automatically.
 
-DarkSpeed must be signed with a valid certificate and provisioning profile before installation. After enabling the HUD, you can return to the Home Screen and use other apps; DarkSpeed remains alive in the background. Do not force-quit or swipe DarkSpeed away while the HUD is enabled.
+DarkPubg must be signed with a valid certificate and provisioning profile before installation. After enabling the HUD, you can return to the Home Screen and use other apps; DarkPubg remains alive in the background. Do not force-quit or swipe DarkPubg away while the HUD is enabled.
 
 ## Support
 
@@ -28,12 +28,12 @@ DarkSpeed must be signed with a valid certificate and provisioning profile befor
 
 Compatibility issues may still occur on iOS 18.7 and 18.7.1. “Supported” means the required path is implemented; it does not guarantee that every device/build combination has been tested.
 
-DarkSpeed supports all devices supported by DarkSword. It will not work on M5, A19, or A19 Pro devices due to MTE. The iOS support table applies only to compatible hardware.
+DarkPubg supports all devices supported by DarkSword. It will not work on M5, A19, or A19 Pro devices due to MTE. The iOS support table applies only to compatible hardware.
 
 ## First launch
 
 - On CH/A devices, allow network access when prompted.
-- After the DarkSpeed HUD starts successfully, do not close or force-quit the app.
+- After the DarkPubg HUD starts successfully, do not close or force-quit the app.
 
 ## Build
 
@@ -51,7 +51,7 @@ For an unsigned IPA that will be signed later:
 DARKSPEED_UNSIGNED=1 ./build-darkspeed.sh
 ```
 
-The output is `packages/DarkSpeed_1.0-1.ipa`. Version `1.0-1` maps to marketing version `1.0` and build `1`.
+The output is `packages/DarkPubg_1.0-1.ipa`. Version `1.0-1` maps to marketing version `1.0` and build `1`.
 
 ## Credits
 

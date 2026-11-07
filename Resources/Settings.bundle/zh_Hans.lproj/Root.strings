@@ -7,3 +7,13 @@
 "Custom Offset" = "自定义偏移位置";
 
 "Uses Custom Offset" = "使用自定义偏移位置";
+
+"AOV Diagnostics" = "AOV 诊断";
+
+"Instrumentation" = "检测级别";
+
+"Off" = "关闭";
+
+"Timing" = "性能计时";
+
+"Full" = "完整记录";

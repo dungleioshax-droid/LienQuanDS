@@ -2,7 +2,7 @@
 
 set -eu
 
-project_file="DarkSpeed.xcodeproj/project.pbxproj"
+project_file="DarkPubg.xcodeproj/project.pbxproj"
 marketing_version=$(awk -F ' = ' '/MARKETING_VERSION =/ {
     value = $2
     sub(/;.*/, "", value)
@@ -17,7 +17,7 @@ build_version=$(awk -F ' = ' '/CURRENT_PROJECT_VERSION =/ {
 }' "$project_file")
 
 if [ -z "$marketing_version" ] || [ -z "$build_version" ]; then
-    echo "Unable to read the DarkSpeed version from $project_file" >&2
+    echo "Unable to read the DarkPubg version from $project_file" >&2
     exit 1
 fi
 

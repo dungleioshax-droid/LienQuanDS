@@ -107,7 +107,7 @@
 "Large" = "Large";
 
 /* No comment provided by engineer. */
-"DarkSpeed by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82" = "DarkSpeed by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82";
+"DarkPubg by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82" = "DarkPubg by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82";
 
 /* No comment provided by engineer. */
 "Memory Pressure" = "Memory Pressure";
@@ -163,7 +163,7 @@
 /* No comment provided by engineer. */
 "You can quit this app now.\nThe HUD will persist on your screen." = "You can quit this app now.\nThe HUD will persist on your screen.";
 
-"DarkSpeed is running in the background.\nDo not force-quit it after enabling the HUD." = "DarkSpeed is running in the background.\nDo not force-quit it after enabling the HUD.";
+"DarkPubg is running in the background.\nDo not force-quit it after enabling the HUD." = "DarkPubg is running in the background.\nDo not force-quit it after enabling the HUD.";
 
 /* No comment provided by engineer. */
 "↑↓" = "↑↓";
@@ -171,18 +171,18 @@
 /* No comment provided by engineer. */
 "▲▼" = "▲▼";
 
-/* DarkSpeed startup and SpringBoard bridge */
+/* DarkPubg startup and SpringBoard bridge */
 "Error: " = "Error: ";
 "System data is ready" = "System data is ready";
 "Caching kernelcache" = "Caching kernelcache";
 "Kernelcache cached" = "Kernelcache cached";
 "Kernelcache cache failed" = "Kernelcache cache failed";
-"Kernelcache download or parsing failed. Check DarkSpeed network access and your connection, then retry. If it still fails, reinstall over the existing app; restart the device only as a last resort." = "Kernelcache download or parsing failed. Check DarkSpeed network access and your connection, then retry. If it still fails, reinstall over the existing app; restart the device only as a last resort.";
+"Kernelcache download or parsing failed. Check DarkPubg network access and your connection, then retry. If it still fails, reinstall over the existing app; restart the device only as a last resort." = "Kernelcache download or parsing failed. Check DarkPubg network access and your connection, then retry. If it still fails, reinstall over the existing app; restart the device only as a last resort.";
 "Waiting for network (%.0f seconds, attempt %lu)" = "Waiting for network (%.0f seconds, attempt %lu)";
 "Network connected; preparing kernelcache" = "Network connected; preparing kernelcache";
 "No valid response" = "No valid response";
 "Network wait timed out" = "Network wait timed out";
-"Could not connect after waiting %.0f seconds: %@\nCheck DarkSpeed network access and your connection, then retry." = "Could not connect after waiting %.0f seconds: %@\nCheck DarkSpeed network access and your connection, then retry.";
+"Could not connect after waiting %.0f seconds: %@\nCheck DarkPubg network access and your connection, then retry." = "Could not connect after waiting %.0f seconds: %@\nCheck DarkPubg network access and your connection, then retry.";
 "Network is not ready; waited %.0f seconds. Retrying in %.0f seconds" = "Network is not ready; waited %.0f seconds. Retrying in %.0f seconds";
 "Requesting network access" = "Requesting network access";
 "Startup failed" = "Startup failed";
@@ -190,19 +190,19 @@
 "Background resource preparation failed: %@" = "Background resource preparation failed: %@";
 "Background keep-alive playback failed: %@" = "Background keep-alive playback failed: %@";
 "Screenshot-hiding container unavailable; using normal display" = "Screenshot-hiding container unavailable; using normal display";
-"Could not adopt the DarkSpeed environment." = "Could not adopt the DarkSpeed environment.";
-"DarkSpeed system data is unavailable." = "DarkSpeed system data is unavailable.";
-"DarkSpeed initialization complete" = "DarkSpeed initialization complete";
-"Initializing DarkSpeed" = "Initializing DarkSpeed";
-"DarkSpeed initialization failed (%d)" = "DarkSpeed initialization failed (%d)";
-"DarkSpeed initialization failed" = "DarkSpeed initialization failed";
+"Could not adopt the DarkPubg environment." = "Could not adopt the DarkPubg environment.";
+"DarkPubg system data is unavailable." = "DarkPubg system data is unavailable.";
+"DarkPubg initialization complete" = "DarkPubg initialization complete";
+"Initializing DarkPubg" = "Initializing DarkPubg";
+"DarkPubg initialization failed (%d)" = "DarkPubg initialization failed (%d)";
+"DarkPubg initialization failed" = "DarkPubg initialization failed";
 "Unknown error" = "Unknown error";
 "Closing HUD" = "Closing HUD";
 "HUD closed" = "HUD closed";
 "Preparing startup" = "Preparing startup";
 "Preparing system data" = "Preparing system data";
 "Kernelcache download or parsing failed. Network access may still be pending. Check network access and retry; if it still fails, reinstall over the existing app. Restart the device only as a last resort." = "Kernelcache download or parsing failed. Network access may still be pending. Check network access and retry; if it still fails, reinstall over the existing app. Restart the device only as a last resort.";
-"DarkSpeed startup failed. Retry or reinstall over the existing app; restart the device only as a last resort." = "DarkSpeed startup failed. Retry or reinstall over the existing app; restart the device only as a last resort.";
+"DarkPubg startup failed. Retry or reinstall over the existing app; restart the device only as a last resort." = "DarkPubg startup failed. Retry or reinstall over the existing app; restart the device only as a last resort.";
 "Locating SpringBoard" = "Locating SpringBoard";
 "SpringBoard is not ready, so the HUD cannot be created. Retry or reinstall over the existing app; restart the device only as a last resort." = "SpringBoard is not ready, so the HUD cannot be created. Retry or reinstall over the existing app; restart the device only as a last resort.";
 "Connecting to SpringBoard" = "Connecting to SpringBoard";
@@ -212,5 +212,5 @@
 "SpringBoard HUD creation failed. Retry or reinstall over the existing app; restart the device only as a last resort." = "SpringBoard HUD creation failed. Retry or reinstall over the existing app; restart the device only as a last resort.";
 "SpringBoard HUD exception: %@\nRetry or reinstall over the existing app; restart the device only as a last resort." = "SpringBoard HUD exception: %@\nRetry or reinstall over the existing app; restart the device only as a last resort.";
 "SpringBoard HUD started" = "SpringBoard HUD started";
-"DarkSpeed is not enabled in this build." = "DarkSpeed is not enabled in this build.";
+"DarkPubg is not enabled in this build." = "DarkPubg is not enabled in this build.";
 "Waiting to start" = "Waiting to start";

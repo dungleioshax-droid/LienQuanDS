@@ -1,6 +1,6 @@
 // Objective-C++ compatible public surface for the bundled RemoteCall implementation.
 // The full header uses @import and also repeats a C symbol from utils.h;
-// DarkSpeed only needs this smaller ABI-compatible interface.
+// DarkPubg only needs this smaller ABI-compatible interface.
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>

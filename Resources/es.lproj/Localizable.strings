@@ -107,7 +107,7 @@
 "Large" = "Grande";
 
 /* No comment provided by engineer. */
-"DarkSpeed by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82" = "DarkSpeed por @GITHUB@huami1314\nBasado en TrollSpeed de @GITHUB@i_82";
+"DarkPubg by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82" = "DarkPubg por @GITHUB@huami1314\nBasado en TrollSpeed de @GITHUB@i_82";
 
 /* No comment provided by engineer. */
 "Memory Pressure" = "Presión en la memoria";
@@ -163,7 +163,7 @@
 /* No comment provided by engineer. */
 "You can quit this app now.\nThe HUD will persist on your screen." = "Puedes salir de esta aplicación ahora.\nEl HUD persistirá en tu pantalla.";
 
-"DarkSpeed is running in the background.\nDo not force-quit it after enabling the HUD." = "DarkSpeed seguirá ejecutándose en segundo plano.\nNo fuerces el cierre después de activar el HUD.";
+"DarkPubg is running in the background.\nDo not force-quit it after enabling the HUD." = "DarkPubg seguirá ejecutándose en segundo plano.\nNo fuerces el cierre después de activar el HUD.";
 
 /* No comment provided by engineer. */
 "↑↓" = "↑↓";
@@ -171,7 +171,7 @@
 /* No comment provided by engineer. */
 "▲▼" = "▲▼";
 
-/* DarkSpeed startup and SpringBoard bridge */
+/* DarkPubg startup and SpringBoard bridge */
 "Error: " = "Error: ";
 "System data is ready" = "Los datos del sistema están listos";
 "Caching kernelcache" = "Guardando kernelcache";
@@ -184,12 +184,12 @@
 "Network is not ready; waited %.0f seconds. Retrying in %.0f seconds" = "La red aún no está lista; se esperaron %.0f segundos. Reintentando en %.0f segundos";
 "Requesting network access" = "Solicitando acceso a la red";
 "Startup failed" = "Error de inicio";
-"Could not adopt the DarkSpeed environment." = "No se pudo adoptar el entorno de DarkSpeed.";
-"DarkSpeed system data is unavailable." = "Los datos del sistema de DarkSpeed no están disponibles.";
-"DarkSpeed initialization complete" = "Inicialización de DarkSpeed completada";
-"Initializing DarkSpeed" = "Inicializando DarkSpeed";
-"DarkSpeed initialization failed (%d)" = "Error al inicializar DarkSpeed (%d)";
-"DarkSpeed initialization failed" = "Error al inicializar DarkSpeed";
+"Could not adopt the DarkPubg environment." = "No se pudo adoptar el entorno de DarkPubg.";
+"DarkPubg system data is unavailable." = "Los datos del sistema de DarkPubg no están disponibles.";
+"DarkPubg initialization complete" = "Inicialización de DarkPubg completada";
+"Initializing DarkPubg" = "Inicializando DarkPubg";
+"DarkPubg initialization failed (%d)" = "Error al inicializar DarkPubg (%d)";
+"DarkPubg initialization failed" = "Error al inicializar DarkPubg";
 "Unknown error" = "Error desconocido";
 "Closing HUD" = "Cerrando HUD";
 "HUD closed" = "HUD cerrado";
@@ -199,6 +199,6 @@
 "Connecting to SpringBoard" = "Conectando con SpringBoard";
 "Creating SpringBoard HUD" = "Creando HUD de SpringBoard";
 "SpringBoard HUD started" = "HUD de SpringBoard iniciado";
-"DarkSpeed startup failed. Retry or reinstall over the existing app; restart the device only as a last resort." = "DarkSpeed no pudo iniciarse. Vuelve a intentarlo o reinstala sobre la aplicación existente; reinicia el dispositivo solo como último recurso.";
-"DarkSpeed is not enabled in this build." = "El entorno de DarkSpeed no está activado en esta compilación.";
+"DarkPubg startup failed. Retry or reinstall over the existing app; restart the device only as a last resort." = "DarkPubg no pudo iniciarse. Vuelve a intentarlo o reinstala sobre la aplicación existente; reinicia el dispositivo solo como último recurso.";
+"DarkPubg is not enabled in this build." = "El entorno de DarkPubg no está activado en esta compilación.";
 "Waiting to start" = "Esperando para iniciar";

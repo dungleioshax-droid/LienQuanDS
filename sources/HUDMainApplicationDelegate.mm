@@ -21,17 +21,12 @@
 
 - (instancetype)init
 {
-    if (self = [super init])
-    {
-        log_debug(OS_LOG_DEFAULT, "- [HUDMainApplicationDelegate init]");
-    }
+    self = [super init];
     return self;
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary <UIApplicationLaunchOptionsKey, id> *)launchOptions
 {
-    log_debug(OS_LOG_DEFAULT, "- [HUDMainApplicationDelegate application:%{public}@ didFinishLaunchingWithOptions:%{public}@]", application, launchOptions);
-
     _rootViewController = [[HUDRootViewController alloc] init];
 
     self.window = [[HUDMainWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];

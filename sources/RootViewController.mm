@@ -274,6 +274,21 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     [self toggleHUDAfterLaunch];
 }
 
+- (BOOL)shouldAutorotate
+{
+    return NO;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations
+{
+    return UIInterfaceOrientationMaskPortrait;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation
+{
+    return UIInterfaceOrientationPortrait;
+}
+
 - (void)toggleHUDNotificationReceived:(NSNotification *)notification {
     NSString *toggleAction = notification.userInfo[kToggleHUDAfterLaunchNotificationActionKey];
     if (!toggleAction) {
@@ -362,12 +377,8 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
 
 - (void)saveUserDefaults
 {
-    BOOL saved = [_userDefaults writeToFile:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH)) atomically:YES];
-    if (!saved) {
-        log_error(OS_LOG_DEFAULT, "Failed to save HUD preferences at %{public}@",
-                  JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH));
-        return;
-    }
+    if (![_userDefaults writeToFile:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH))
+                         atomically:YES]) return;
     notify_post(NOTIFY_RELOAD_HUD);
 }
 
@@ -572,7 +583,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
             NSParagraphStyleAttributeName: creditsParaStyle,
         };
 
-        NSString *hintText = NSLocalizedString(@"DarkSpeed is running in the background.\nDo not force-quit it after enabling the HUD.", nil);
+        NSString *hintText = NSLocalizedString(@"DarkPubg is running in the background.\nDo not force-quit it after enabling the HUD.", nil);
         hintAttributedString = [[NSAttributedString alloc] initWithString:hintText attributes:defaultAttributes];
 
         NSTextAttachment *githubIcon = [NSTextAttachment textAttachmentWithImage:[UIImage imageNamed:@"github-mark-white"]];
@@ -582,7 +593,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
         NSMutableAttributedString *githubIconTextFull = [[NSMutableAttributedString alloc] initWithAttributedString:githubIconText];
         [githubIconTextFull appendAttributedString:[[NSAttributedString alloc] initWithString:@" " attributes:creditsAttributes]];
 
-        NSString *creditsText = NSLocalizedString(@"DarkSpeed by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82", nil);
+        NSString *creditsText = NSLocalizedString(@"DarkPubg by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82", nil);
         NSMutableAttributedString *creditsAttributedText = [[NSMutableAttributedString alloc] initWithString:creditsText attributes:creditsAttributes];
 
         // replace all "@GITHUB@" with github icon
@@ -656,21 +667,18 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
 
 - (void)tapTopLeftButton:(UIButton *)sender
 {
-    log_debug(OS_LOG_DEFAULT, "- [RootViewController tapTopLeftButton:%{public}@]", sender);
     [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopLeft];
     [self reloadModeButtonState];
 }
 
 - (void)tapTopRightButton:(UIButton *)sender
 {
-    log_debug(OS_LOG_DEFAULT, "- [RootViewController tapTopRightButton:%{public}@]", sender);
     [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopRight];
     [self reloadModeButtonState];
 }
 
 - (void)tapTopCenterButton:(UIButton *)sender
 {
-    log_debug(OS_LOG_DEFAULT, "- [RootViewController tapTopCenterButton:%{public}@]", sender);
     HUDPresetPosition selectedMode = [self selectedModeForCurrentOrientation];
     BOOL isCenteredMost = (selectedMode == HUDPresetPositionTopCenterMost);
     if (!sender.isSelected || !_supportsCenterMost) {
@@ -690,8 +698,6 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
 
 - (void)tapMainButton:(UIButton *)sender
 {
-    log_debug(OS_LOG_DEFAULT, "- [RootViewController tapMainButton:%{public}@]", sender);
-
     BOOL isNowEnabled = [self isHUDEnabled];
 #if USE_DARKSWORD
     if (!isNowEnabled) {
@@ -765,7 +771,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
         label.textAlignment = NSTextAlignmentCenter;
         label.numberOfLines = 0;
         label.lineBreakMode = NSLineBreakByWordWrapping;
-        label.text = [NSString stringWithFormat:@"%@\n0%%", NSLocalizedString(@"Initializing DarkSpeed", nil)];
+        label.text = [NSString stringWithFormat:@"%@\n0%%", NSLocalizedString(@"Initializing DarkPubg", nil)];
         [overlay addSubview:label];
 
         [NSLayoutConstraint activateConstraints:@[
@@ -792,7 +798,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     _dsProgressLabel.lineBreakMode = NSLineBreakByWordWrapping;
     _dsProgressLabel.font = [UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];
     _dsProgressLabel.textAlignment = NSTextAlignmentCenter;
-    _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n0%%", NSLocalizedString(@"Initializing DarkSpeed", nil)];
+    _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n0%%", NSLocalizedString(@"Initializing DarkPubg", nil)];
 }
 
 - (void)hideDSProgressOverlay
@@ -813,7 +819,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     _dsProgressLabel.font = [UIFont monospacedSystemFontOfSize:13 weight:UIFontWeightRegular];
     _dsProgressLabel.textAlignment = NSTextAlignmentLeft;
     _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n\n%@",
-        NSLocalizedString(@"DarkSpeed initialization failed", nil),
+        NSLocalizedString(@"DarkPubg initialization failed", nil),
         error.length > 0 ? error : NSLocalizedString(@"Unknown error", nil)];
 }
 
@@ -829,7 +835,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     if (p > 1.0) p = 1.0;
     _dsProgressBar.progress = (float)p;
     NSString *stage = DSBridgeStage();
-    if (stage.length == 0) stage = NSLocalizedString(@"Initializing DarkSpeed", nil);
+    if (stage.length == 0) stage = NSLocalizedString(@"Initializing DarkPubg", nil);
     _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n%d%%", stage, (int)llround(p * 100.0)];
 }
 #endif
@@ -837,8 +843,6 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
 - (void)tapSettingsButton:(UIButton *)sender
 {
     if (![_mainButton isEnabled]) return;
-    log_debug(OS_LOG_DEFAULT, "- [RootViewController tapSettingsButton:%{public}@]", sender);
-
     TSSettingsController *settingsViewController = [[TSSettingsController alloc] init];
     settingsViewController.delegate = self;
     settingsViewController.alreadyLaunched = _isRemoteHUDActive;

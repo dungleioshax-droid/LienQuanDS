@@ -36,6 +36,11 @@
     #define log_debug(...)
     #define log_info(...)
     #define log_error(...)
+    // Strip leftover printf/NSLog logging from the vendored exploit/bridge
+    // code in release builds (stdio.h/Foundation are already included above,
+    // so the real declarations are include-guarded by the time these hit).
+    #define printf(...) ((void)0)
+    #define NSLog(...)  ((void)0)
 #endif
 
 #define FADE_OUT_DURATION 0.25

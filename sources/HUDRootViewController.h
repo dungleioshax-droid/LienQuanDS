@@ -11,8 +11,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface HUDRootViewController: UIViewController
 + (BOOL)passthroughMode;
-- (void)resetLoopTimer;
-- (void)stopLoopTimer;
 @end
 
 NS_ASSUME_NONNULL_END

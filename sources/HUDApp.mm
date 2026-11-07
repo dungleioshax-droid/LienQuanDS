@@ -31,7 +31,6 @@ static __used
 void _HUDEventCallback(void *target, void *refcon, IOHIDServiceRef service, IOHIDEventRef event)
 {
     static UIApplication *app = [UIApplication sharedApplication];
-    log_debug(OS_LOG_DEFAULT, "_HUDEventCallback => %{public}@", event);
 
     // iOS 15.1+ has a new API for handling HID events.
     if (@available(iOS 15.1, *)) {}
@@ -66,7 +65,6 @@ void _HUDEventCallback(void *target, void *refcon, IOHIDServiceRef service, IOHI
         });
 
         AXEventRepresentation *rep = [AXEventRepresentationCls representationWithHIDEvent:event hidStreamIdentifier:@"UIApplicationEvents"];
-        log_debug(OS_LOG_DEFAULT, "_HUDEventCallback => %{public}@", rep.handInfo);
 
         /* I don't like this. It's too hacky, but it works. */
         {
@@ -104,8 +102,6 @@ int main(int argc, char *argv[])
 {
     @autoreleasepool
     {
-        log_debug(OS_LOG_DEFAULT, "launched argc %{public}d, argv[1] %{public}s", argc, argc > 1 ? argv[1] : "NULL");
-
         if (argc <= 1) {
             return UIApplicationMain(argc, argv, @"MainApplication", @"MainApplicationDelegate");
         }
@@ -120,15 +116,9 @@ int main(int argc, char *argv[])
         if (strcmp(argv[1], "-hud") == 0)
         {
             // When DarkSword spawns us with DS_*/DS_HELPER_* KRW fds, attach now.
-            if (DSBridgeAdoptFromEnvironment()) {
-                log_debug(OS_LOG_DEFAULT, "HUD adopted DarkSword KRW from environment");
-            }
+            DSBridgeAdoptFromEnvironment();
 
             pid_t pid = getpid();
-            pid_t pgid = getgid();
-            (void)pgid;
-            log_debug(OS_LOG_DEFAULT, "HUD pid %d, pgid %d", pid, pgid);
-
             NSString *pidString = [NSString stringWithFormat:@"%d", pid];
             [pidString writeToFile:pidPath
                         atomically:YES
