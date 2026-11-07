@@ -84,6 +84,7 @@ static std::atomic<bool> g_dspubgTargetActive(false);
 static int g_dspubgLastActorsCount = 0;
 static int g_dspubgLastEnemyCount = 0;
 static int g_dspubgLastBotCount = 0;
+static uint32_t g_dspubgLastBoneOff = 0;
 static char g_dspubgStatusBuf[128] = "PUBG: Waiting for game process...";
 
 // Snapshot storage
@@ -394,6 +395,7 @@ static void ds_pubg_reset_state(void) {
     g_dspubgLastActorsCount = 0;
     g_dspubgLastEnemyCount = 0;
     g_dspubgLastBotCount = 0;
+    g_dspubgLastBoneOff = 0;
     g_dspubgNextScan = 0;
     g_dspubgTargetActive.store(false, std::memory_order_release);
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
@@ -597,10 +599,10 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     return true;
 }
 
-static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector *local, DSPUBGVector *out) {
-    float qx = 0, qy = 0, qz = 0, qw = 1;
+static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector &rootFallback, const DSPUBGVector *local, DSPUBGVector *out) {
+    float qx = 0, qy = 0, qz = 0, qw = 1.0f;
     float tx = 0, ty = 0, tz = 0;
-    float sx = 1, sy = 1, sz = 1;
+    float sx = 1.0f, sy = 1.0f, sz = 1.0f;
     memcpy(&qx, c2w + 0x0, 4);
     memcpy(&qy, c2w + 0x4, 4);
     memcpy(&qz, c2w + 0x8, 4);
@@ -615,7 +617,21 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector
     if (isnan(sx) || isinf(sx) || sx < 0.01f || sx > 100.0f) sx = 1.0f;
     if (isnan(sy) || isinf(sy) || sy < 0.01f || sy > 100.0f) sy = 1.0f;
     if (isnan(sz) || isinf(sz) || sz < 0.01f || sz > 100.0f) sz = 1.0f;
-    if (isnan(qw) || isinf(qw)) qw = 1.0f;
+
+    float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
+    if (isnan(qlen2) || isinf(qlen2) || qlen2 < 0.01f || qlen2 > 10.0f) {
+        qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
+    }
+
+    // If c2w translation is uninitialized, local relative, or excessively far from actor root, anchor to rootFallback
+    float dX = tx - rootFallback.X;
+    float dY = ty - rootFallback.Y;
+    float distSq = dX * dX + dY * dY;
+    if (isnan(tx) || isinf(tx) || (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (2000.0f * 2000.0f)) {
+        tx = rootFallback.X;
+        ty = rootFallback.Y;
+        tz = rootFallback.Z;
+    }
 
     float vx = local->X * sx, vy = local->Y * sy, vz = local->Z * sz;
     float cx = qy * vz - qz * vy;
@@ -628,6 +644,68 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector
     out->X = vx + (qy * uz - qz * uy) + tx;
     out->Y = vy + (qz * ux - qx * uz) + ty;
     out->Z = vz + (qx * uy - qy * ux) + tz;
+}
+
+// Dynamically locates live ComponentSpaceTransforms TArray<FTransform> on USkeletalMeshComponent.
+// Tests verified double buffer offsets (0xA30/0xA40), eval-context (0xE18/0xE28), cached (0xCE0/0xCD0),
+// bone-space (0xC98), and range scans 0x400..0xF00.
+static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32_t *outCount, uint32_t *outOffset) {
+    if (!meshComp || !ds_pubg_valid(meshComp)) return false;
+
+    static uint32_t s_cachedBoneOffset = 0;
+
+    auto testOffset = [&](uint32_t off) -> bool {
+        uint8_t hdr[16] = {0};
+        if (!ds_pubg_read(meshComp + (uint64_t)off, hdr, sizeof(hdr))) return false;
+        uint64_t d = 0;
+        uint32_t c = 0, maxc = 0;
+        memcpy(&d, hdr, 8);
+        memcpy(&c, hdr + 8, 4);
+        memcpy(&maxc, hdr + 12, 4);
+        d &= 0x0000FFFFFFFFFFFFULL;
+        if (!ds_pubg_valid(d) || (d & 0x7ULL) != 0) return false;
+        if (c < 20 || c > 800 || maxc < c || maxc > 2000) return false;
+        if (outData) *outData = d;
+        if (outCount) *outCount = c;
+        if (outOffset) *outOffset = off;
+        return true;
+    };
+
+    // 0. Test last working offset first
+    if (s_cachedBoneOffset != 0 && testOffset(s_cachedBoneOffset)) {
+        return true;
+    }
+
+    // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
+    int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
+    if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA78ULL);
+    uint32_t first = (rd == 1) ? 0xA40 : 0xA30;
+    uint32_t second = (rd == 1) ? 0xA30 : 0xA40;
+
+    if (testOffset(first)) { s_cachedBoneOffset = first; return true; }
+    if (testOffset(second)) { s_cachedBoneOffset = second; return true; }
+
+    // 2. Live transforms eval-context (0xE18 / 0xE28)
+    if (testOffset(0xE18)) { s_cachedBoneOffset = 0xE18; return true; }
+    if (testOffset(0xE28)) { s_cachedBoneOffset = 0xE28; return true; }
+
+    // 3. CachedComponentSpaceTransforms (0xCE0) & CachedBoneSpaceTransforms (0xCD0)
+    if (testOffset(0xCE0)) { s_cachedBoneOffset = 0xCE0; return true; }
+    if (testOffset(0xCD0)) { s_cachedBoneOffset = 0xCD0; return true; }
+
+    // 4. BoneSpaceTransforms (0xC98)
+    if (testOffset(0xC98)) { s_cachedBoneOffset = 0xC98; return true; }
+
+    // 5. Scan range 0x400 .. 0xF00 in steps of 8 (skipping compact 0xCA8)
+    for (uint32_t off = 0x400; off + 16 <= 0xF00; off += 8) {
+        if (off == 0xCA8) continue;
+        if (testOffset(off)) {
+            s_cachedBoneOffset = off;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool ds_pubg_has_render_source(void) {
@@ -762,9 +840,15 @@ static const char* ds_pubg_get_debug_status(void) {
         return "PUBG: Attached (Waiting for Match)";
     }
     if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
-        snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots",
-                 g_dspubgLastEnemyCount, g_dspubgLastBotCount);
+        if (g_dspubgLastBoneOff) {
+            snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
+                     "PUBG: %d Enemies | %d Bots [B:0x%X]",
+                     g_dspubgLastEnemyCount, g_dspubgLastBotCount, g_dspubgLastBoneOff);
+        } else {
+            snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
+                     "PUBG: %d Enemies | %d Bots",
+                     g_dspubgLastEnemyCount, g_dspubgLastBotCount);
+        }
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -1113,30 +1197,12 @@ static void ds_pubg_tick(void) {
         // Real Skeletal Bones (16 joints, 15 bone links)
         p.hasSkeleton = false;
         if (g_pubgEspSkeleton && meshComp && ds_pubg_valid(meshComp)) {
-            // 1. Resolve ComponentSpaceTransforms TArray<FTransform>
-            uint32_t useOff = 0xA30;
-            int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
-            if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA78ULL);
-            if (rd == 1) useOff = 0xA40;
+            uint64_t boneData = 0;
+            uint32_t bCount = 0;
+            uint32_t resolvedOff = 0;
+            if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
+                g_dspubgLastBoneOff = resolvedOff;
 
-            uint64_t boneData = ds_pubg_read_ptr(meshComp + useOff);
-            uint32_t bCount = ds_pubg_read_u32(meshComp + useOff + 8);
-            if (!boneData || bCount < 20 || bCount > 800) {
-                uint32_t otherOff = (useOff == 0xA30) ? 0xA40 : 0xA30;
-                boneData = ds_pubg_read_ptr(meshComp + otherOff);
-                bCount = ds_pubg_read_u32(meshComp + otherOff + 8);
-            }
-            if (!boneData || bCount < 20 || bCount > 800) {
-                boneData = ds_pubg_read_ptr(meshComp + 0xE18ULL);
-                bCount = ds_pubg_read_u32(meshComp + 0xE18ULL + 8);
-                if (!boneData || bCount < 20 || bCount > 800) {
-                    boneData = ds_pubg_read_ptr(meshComp + 0xE28ULL);
-                    bCount = ds_pubg_read_u32(meshComp + 0xE28ULL + 8);
-                }
-            }
-
-            int okBones = 0;
-            if (boneData && bCount >= 20 && bCount <= 800 && ds_pubg_valid(boneData)) {
                 // Map G (ShadowTrackerExtra / PUBG Mobile rig with 67 bones):
                 // 0: Head (8), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
                 // 4: LShoulder (34), 5: LElbow (36), 6: LHand (37)
@@ -1150,7 +1216,7 @@ static void ds_pubg_tick(void) {
                     59, 60, 61,
                     55, 56, 57
                 };
-                // Map D (UE4 mannequin rig):
+                // Map D (UE4 mannequin rig fallback for bCount < 58):
                 static const int kESPBoneMapD[16] = {
                     6, 5, 4, 1,
                     8, 9, 10,
@@ -1159,65 +1225,52 @@ static void ds_pubg_tick(void) {
                     19, 20, 21
                 };
 
-                const int *bMap = kESPBoneMapD;
-                if (bCount >= 62) {
-                    DSPUBGVector headLoc = {}, neckLoc = {};
-                    ds_pubg_read(boneData + 8 * 0x30ULL + 0x10ULL, &headLoc, sizeof(headLoc));
-                    ds_pubg_read(boneData + 5 * 0x30ULL + 0x10ULL, &neckLoc, sizeof(neckLoc));
-                    if (headLoc.Z > neckLoc.Z) {
-                        bMap = kESPBoneMapG;
-                    }
+                const int *bMap = (bCount >= 58) ? kESPBoneMapG : kESPBoneMapD;
+                int maxIndex = 0;
+                for (int i = 0; i < 16; i++) {
+                    if (bMap[i] > maxIndex) maxIndex = bMap[i];
                 }
 
-                uint8_t c2w[48] = {0};
-                if (ds_pubg_read(meshComp + 0x208ULL, c2w, sizeof(c2w))) {
-                    for (int i = 0; i < 16; i++) {
-                        int bi = bMap[i];
-                        if (bi >= 0 && bi < (int)bCount) {
+                int needCount = maxIndex + 1;
+                if (needCount <= (int)bCount && needCount <= 256) {
+                    uint8_t boneBuf[256 * 48];
+                    size_t readSize = (size_t)needCount * 48;
+                    if (ds_pubg_read(boneData, boneBuf, readSize)) {
+                        uint8_t c2w[48] = {0};
+                        ds_pubg_read(meshComp + 0x208ULL, c2w, sizeof(c2w));
+
+                        int okBones = 0;
+                        for (int i = 0; i < 16; i++) {
+                            int bi = bMap[i];
+                            if (bi < 0 || bi >= needCount) continue;
+                            const uint8_t *boneEntry = boneBuf + (size_t)bi * 48;
                             DSPUBGVector localTrans = {};
-                            if (ds_pubg_read(boneData + bi * 0x30ULL + 0x10ULL, &localTrans, sizeof(localTrans))) {
-                                if (!isnan(localTrans.X) && !isinf(localTrans.X) &&
-                                    !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
-                                    !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
-                                    DSPUBGVector world = {};
-                                    ds_pubg_bone_world_from_local(c2w, &localTrans, &world);
-                                    float sx = 0, sy = 0, d = 0;
-                                    if (ds_pubg_cam_basis_project(basis, world, sx, sy, d)) {
-                                        p.skeleton[i] = { sx, sy, true };
-                                        okBones++;
-                                    }
+                            memcpy(&localTrans.X, boneEntry + 0x10, 4);
+                            memcpy(&localTrans.Y, boneEntry + 0x14, 4);
+                            memcpy(&localTrans.Z, boneEntry + 0x18, 4);
+
+                            if (!isnan(localTrans.X) && !isinf(localTrans.X) &&
+                                !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
+                                !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
+                                DSPUBGVector world = {};
+                                ds_pubg_bone_world_from_local(c2w, rootLoc, &localTrans, &world);
+                                float sx_proj = 0, sy_proj = 0, d_proj = 0;
+                                if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
+                                    p.skeleton[i] = { sx_proj, sy_proj, true };
+                                    okBones++;
                                 }
+                            }
+                        }
+
+                        if (okBones >= 6) {
+                            p.hasSkeleton = true;
+                            if (p.skeleton[0].valid) {
+                                p.headX = p.skeleton[0].x;
+                                p.headY = p.skeleton[0].y;
                             }
                         }
                     }
                 }
-            }
-
-            if (okBones >= 6) {
-                p.hasSkeleton = true;
-                if (p.skeleton[0].valid) {
-                    p.headX = p.skeleton[0].x;
-                    p.headY = p.skeleton[0].y;
-                }
-            } else {
-                // Fallback to proportional skeleton aligned with bounding box
-                p.skeleton[0] = { centerX, topY + boxH * 0.08f, true }; // Head
-                p.skeleton[1] = { centerX, topY + boxH * 0.18f, true }; // Neck
-                p.skeleton[2] = { centerX, topY + boxH * 0.35f, true }; // Chest
-                p.skeleton[3] = { centerX, topY + boxH * 0.53f, true }; // Pelvis
-                p.skeleton[4] = { centerX - boxW * 0.32f, topY + boxH * 0.22f, true }; // L Shoulder
-                p.skeleton[5] = { centerX - boxW * 0.44f, topY + boxH * 0.38f, true }; // L Elbow
-                p.skeleton[6] = { centerX - boxW * 0.38f, topY + boxH * 0.52f, true }; // L Hand
-                p.skeleton[7] = { centerX + boxW * 0.32f, topY + boxH * 0.22f, true }; // R Shoulder
-                p.skeleton[8] = { centerX + boxW * 0.44f, topY + boxH * 0.38f, true }; // R Elbow
-                p.skeleton[9] = { centerX + boxW * 0.38f, topY + boxH * 0.52f, true }; // R Hand
-                p.skeleton[10] = { centerX - boxW * 0.18f, topY + boxH * 0.55f, true }; // L Hip
-                p.skeleton[11] = { centerX - boxW * 0.22f, topY + boxH * 0.75f, true }; // L Knee
-                p.skeleton[12] = { centerX - boxW * 0.24f, topY + boxH * 0.98f, true }; // L Foot
-                p.skeleton[13] = { centerX + boxW * 0.18f, topY + boxH * 0.55f, true }; // R Hip
-                p.skeleton[14] = { centerX + boxW * 0.22f, topY + boxH * 0.75f, true }; // R Knee
-                p.skeleton[15] = { centerX + boxW * 0.24f, topY + boxH * 0.98f, true }; // R Foot
-                p.hasSkeleton = true;
             }
         }
 
