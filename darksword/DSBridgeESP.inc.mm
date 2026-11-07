@@ -3051,8 +3051,23 @@ static void ds_hosted_overlay_start(void) {
     dispatch_source_set_event_handler(g_hostedTimer, ^{
         if (g_hostedLayerReady.load(std::memory_order_acquire)) {
             uint64_t pulse = g_hostedDisplayPulse.load(std::memory_order_acquire);
-            if (pulse == g_hostedConsumedDisplayPulse) return;
-            g_hostedConsumedDisplayPulse = pulse;
+            if (pulse == g_hostedConsumedDisplayPulse) {
+                // The display link can go silent while this process is
+                // backgrounded (hosted SpringBoard context, audio keepalive).
+                // Returning here starved ds_lq_tick() after the first frame:
+                // no ESP refresh, no camera zoom, no auto smite, and menu
+                // switches appeared dead. Only skip while the display link is
+                // actually driving frames; otherwise this timer reads and
+                // publishes, and the publish fallback applies on main.
+                double lastTick = g_hostedLastDisplayLinkTick.load(
+                    std::memory_order_relaxed);
+                if (lastTick > 0.0 &&
+                    CACurrentMediaTime() - lastTick <= 0.10) {
+                    return;
+                }
+            } else {
+                g_hostedConsumedDisplayPulse = pulse;
+            }
         }
         ds_hosted_overlay_frame();
     });
