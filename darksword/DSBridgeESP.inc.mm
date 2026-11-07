@@ -1314,7 +1314,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 264.0 : 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 230.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1394,8 +1394,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgDistSwitch.hidden = NO;
         _pubgBotLabel.hidden = NO;
         _pubgBotSwitch.hidden = NO;
-        _pubgVehicleLabel.hidden = NO;
-        _pubgVehicleSwitch.hidden = NO;
+        _pubgVehicleLabel.hidden = YES;
+        _pubgVehicleSwitch.hidden = YES;
 
         CGFloat col1LX = 14.0;
         CGFloat col1SX = 88.0;
@@ -1431,20 +1431,15 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgBotLabel.frame = CGRectMake(col2LX, y3 + 5.0, lblW, 18.0);
         _pubgBotSwitch.frame = CGRectMake(col2SX, y3, 51.0, 31.0);
 
-        // Row 5: Hiện Xe
-        CGFloat y4 = 188.0;
-        _pubgVehicleLabel.frame = CGRectMake(col1LX, y4 + 5.0, lblW, 18.0);
-        _pubgVehicleSwitch.frame = CGRectMake(col1SX, y4, 51.0, 31.0);
-
-        // Row 6: Scan Distance Slider
-        CGFloat y5 = 222.0;
+        // Row 5: Scan Distance Slider
+        CGFloat y4 = 190.0;
         _zoomLabel.text = @"Scan";
         _zoomLabel.hidden = NO;
         _zoomValueLabel.hidden = NO;
         _zoomSlider.hidden = NO;
-        _zoomLabel.frame = CGRectMake(14.0, y5 + 3.0, 42.0, 20.0);
-        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, y5 + 3.0, 46.0, 20.0);
-        _zoomSlider.frame = CGRectMake(58.0, y5, CGRectGetWidth(panelBounds) - 120.0, 26.0);
+        _zoomLabel.frame = CGRectMake(14.0, y4 + 3.0, 42.0, 20.0);
+        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, y4 + 3.0, 46.0, 20.0);
+        _zoomSlider.frame = CGRectMake(58.0, y4, CGRectGetWidth(panelBounds) - 120.0, 26.0);
     } else {
         _pubgBoxLabel.hidden = YES;
         _pubgBoxSwitch.hidden = YES;
@@ -2994,7 +2989,6 @@ static void ds_hosted_apply_pubg(void) {
 
     int activeEnemyCount = 0;
     int activeBotCount = 0;
-    int activeVehicleCount = 0;
 
     for (int i = 0; i < count; i++) {
         const DSPUBGProjectedPlayer &p = players[i];
@@ -3022,7 +3016,6 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         BOOL ai = p.isAI;
-        BOOL vehicle = p.isVehicle;
 
         // Honor user filters
         if (ai && !g_pubgEspBot) {
@@ -3036,41 +3029,23 @@ static void ds_hosted_apply_pubg(void) {
             hpBar.hidden = YES;
             continue;
         }
-        if (vehicle && !g_pubgEspVehicle) {
-            box.hidden = YES;
-            if (skel) skel.hidden = YES;
-            line.hidden = YES;
-            if (headDot) headDot.hidden = YES;
-            if (aiMark) aiMark.hidden = YES;
-            info.hidden = YES;
-            if (hpBg) hpBg.hidden = YES;
-            hpBar.hidden = YES;
-            continue;
-        }
 
-        if (vehicle) activeVehicleCount++;
-        else if (ai) activeBotCount++;
+        if (ai) activeBotCount++;
         else activeEnemyCount++;
 
         // Render colors:
         // Player: White 0xFFFFFFFF, width 1.5
         // AI / Bot: Warm Yellow 0xFFFFD040, width 2.0
-        // Vehicle: Golden Yellow 0xFFFFD700, width 1.5
-        CGColorRef mainColor;
-        if (vehicle) {
-            mainColor = [UIColor colorWithRed:255.0/255.0 green:215.0/255.0 blue:0.0/255.0 alpha:0.95].CGColor;
-        } else if (ai) {
-            mainColor = [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor;
-        } else {
-            mainColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-        }
+        CGColorRef mainColor = ai
+            ? [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor
+            : [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
 
         CGFloat centerX = p.screenX + p.boxWidth * 0.5f;
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 1. Bounding Box: Only for players and bots, NOT for vehicles ("bỏ luôn cái khung xe đi")
-        if (g_pubgEspBox && !vehicle) {
+        // 1. Bounding Box:
+        if (g_pubgEspBox) {
             CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
             box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
             box.strokeColor = mainColor;
@@ -3080,8 +3055,8 @@ static void ds_hosted_apply_pubg(void) {
             box.hidden = YES;
         }
 
-        // 2. Snapline: Only for players and bots, NOT for vehicles ("bỏ cái Line xe đi")
-        if (g_pubgEspLine && !vehicle) {
+        // 2. Snapline:
+        if (g_pubgEspLine) {
             UIBezierPath *linePath = [UIBezierPath bezierPath];
             [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
@@ -3095,8 +3070,8 @@ static void ds_hosted_apply_pubg(void) {
             line.hidden = YES;
         }
 
-        // 3. Head Dot: Only for players and bots, never for vehicles
-        if (!vehicle && g_pubgEspHeadDot && headDot) {
+        // 3. Head Dot:
+        if (g_pubgEspHeadDot && headDot) {
             CGFloat headDotX = (p.headX > 0.0f) ? p.headX : centerX;
             CGFloat headDotY = (p.headY > 0.0f) ? p.headY : (topY + p.boxHeight * 0.08f);
             CGRect dotRect = CGRectMake(headDotX - 3.0f, headDotY - 3.0f, 6.0f, 6.0f);
@@ -3109,7 +3084,7 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         // 4. AI Mark: inverted yellow triangle on top of box for AI only
-        if (!vehicle && ai && aiMark) {
+        if (ai && aiMark) {
             CGFloat tx = centerX;
             CGFloat ty = topY - 5.0f;
             UIBezierPath *triPath = [UIBezierPath bezierPath];
@@ -3143,16 +3118,11 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             hpBar.frame = CGRectMake(p.screenX, barY, fillW, barH);
-            if (vehicle) {
-                // Thanh máu xe hiện màu xanh lá
-                hpBar.backgroundColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
-            } else {
-                hpBar.backgroundColor = (hpRatio >= 0.60f)
-                    ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
-                    : ((hpRatio >= 0.30f)
-                        ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor
-                        : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
-            }
+            hpBar.backgroundColor = (hpRatio >= 0.60f)
+                ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
+                : ((hpRatio >= 0.30f)
+                    ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor
+                    : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
             hpBar.hidden = NO;
         } else {
             if (hpBg) hpBg.hidden = YES;
@@ -3165,79 +3135,34 @@ static void ds_hosted_apply_pubg(void) {
             CGFloat labelH = (g_pubgEspName && g_pubgEspDist) ? 28.0f : 16.0f;
             info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
 
-            if (vehicle) {
-                // Tên xe màu vàng, khoảng cách màu trắng
-                int hpPercent = (int)roundf((p.health / (p.healthMax > 0 ? p.healthMax : 1.0f)) * 100.0f);
-                NSMutableParagraphStyle *centerStyle = [[NSMutableParagraphStyle alloc] init];
-                centerStyle.alignment = NSTextAlignmentCenter;
-
-                UIFont *vNameFont = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
-                UIFont *vDistFont = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
-
-                UIColor *vYellow = [UIColor colorWithRed:255.0/255.0 green:215.0/255.0 blue:0.0/255.0 alpha:1.0];
-                UIColor *vWhite = [UIColor colorWithWhite:1.0 alpha:1.0];
-
-                NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
-                if (g_pubgEspName && g_pubgEspDist) {
-                    NSString *nameStr = [NSString stringWithFormat:@"%s [%d%%]\n", p.name, hpPercent];
-                    NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
-                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
-                        NSForegroundColorAttributeName: vYellow,
-                        NSFontAttributeName: vNameFont,
-                        NSParagraphStyleAttributeName: centerStyle
-                    }]];
-                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
-                        NSForegroundColorAttributeName: vWhite,
-                        NSFontAttributeName: vDistFont,
-                        NSParagraphStyleAttributeName: centerStyle
-                    }]];
-                } else if (g_pubgEspName) {
-                    NSString *nameStr = [NSString stringWithFormat:@"%s [%d%%]", p.name, hpPercent];
-                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
-                        NSForegroundColorAttributeName: vYellow,
-                        NSFontAttributeName: vNameFont,
-                        NSParagraphStyleAttributeName: centerStyle
-                    }]];
-                } else {
-                    NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
-                    [attr appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
-                        NSForegroundColorAttributeName: vWhite,
-                        NSFontAttributeName: vDistFont,
-                        NSParagraphStyleAttributeName: centerStyle
-                    }]];
-                }
-                info.string = attr;
-                info.hidden = NO;
-            } else {
-                char labelText[128] = {0};
-                char teamPrefix[32] = {0};
-                if (p.teamId >= 0 && p.teamId <= 200000000) {
-                    snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
-                } else if (ai) {
-                    snprintf(teamPrefix, sizeof(teamPrefix), "[AI] ");
-                }
-
-                BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
-                const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
-
-                if (g_pubgEspName && g_pubgEspDist) {
-                    snprintf(labelText, sizeof(labelText), "%s%s\n%.0fm", teamPrefix, displayName, p.distanceMeters);
-                } else if (g_pubgEspName) {
-                    snprintf(labelText, sizeof(labelText), "%s%s", teamPrefix, displayName);
-                } else {
-                    snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
-                }
-
-                info.string = [NSString stringWithUTF8String:labelText];
-                info.foregroundColor = mainColor;
-                info.hidden = NO;
+            char labelText[128] = {0};
+            char teamPrefix[32] = {0};
+            if (p.teamId >= 0 && p.teamId <= 200000000) {
+                snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
+            } else if (ai) {
+                snprintf(teamPrefix, sizeof(teamPrefix), "[AI] ");
             }
+
+            BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
+            const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
+
+            if (g_pubgEspName && g_pubgEspDist) {
+                snprintf(labelText, sizeof(labelText), "%s%s\n%.0fm", teamPrefix, displayName, p.distanceMeters);
+            } else if (g_pubgEspName) {
+                snprintf(labelText, sizeof(labelText), "%s%s", teamPrefix, displayName);
+            } else {
+                snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
+            }
+
+            info.string = [NSString stringWithUTF8String:labelText];
+            info.foregroundColor = mainColor;
+            info.hidden = NO;
         } else {
             info.hidden = YES;
         }
 
         // 7. Skeleton ESP (Hiện xương kết nối các khớp)
-        if (g_pubgEspSkeleton && p.hasSkeleton && !vehicle && skel) {
+        if (g_pubgEspSkeleton && p.hasSkeleton && skel) {
             UIBezierPath *skelPath = [UIBezierPath bezierPath];
             static const int bonePairs[][2] = {
                 {1, 0}, {1, 2}, {2, 3},
@@ -3276,10 +3201,10 @@ static void ds_hosted_apply_pubg(void) {
     }
 
     if (g_hostedPUBGTopCountLabel) {
-        if (activeEnemyCount > 0 || activeBotCount > 0 || activeVehicleCount > 0) {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 300.0) * 0.5, 10.0, 300.0, 20.0);
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots | %d Cars",
-                                                activeEnemyCount, activeBotCount, activeVehicleCount];
+        if (activeEnemyCount > 0 || activeBotCount > 0) {
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 260.0) * 0.5, 10.0, 260.0, 20.0);
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots",
+                                                activeEnemyCount, activeBotCount];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else if (ds_pubg_has_render_source()) {
             g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 340.0) * 0.5, 10.0, 340.0, 20.0);

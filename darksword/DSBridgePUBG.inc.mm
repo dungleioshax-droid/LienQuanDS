@@ -84,7 +84,6 @@ static std::atomic<bool> g_dspubgTargetActive(false);
 static int g_dspubgLastActorsCount = 0;
 static int g_dspubgLastEnemyCount = 0;
 static int g_dspubgLastBotCount = 0;
-static int g_dspubgLastVehicleCount = 0;
 static char g_dspubgStatusBuf[128] = "PUBG: Waiting for game process...";
 
 // Snapshot storage
@@ -621,39 +620,98 @@ static void ds_pubg_overlay_reset(void) {
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }
 
-// Convert ESTExtraVehicleType enum to readable name
-static const char* ds_pubg_vehicle_name(uint8_t type) {
-    switch (type) {
-        case 1: case 2: return "Motorbike";
-        case 3: case 4: return "Moto Cart";
-        case 5: case 6: case 7: case 8: return "Dacia";
-        case 9: case 10: case 11: return "UAZ";
-        case 12: case 13: case 14: return "Buggy";
-        case 15: return "Boat";
-        case 16: return "Aquarail";
-        case 17: case 18: case 19: return "Minibus";
-        case 20: case 21: case 22: case 23: case 24:
-        case 25: case 26: case 27: case 28: case 29: return "Pickup";
-        case 30: case 31: case 32: return "Buggy";
-        case 33: case 34: case 35: case 36:
-        case 37: case 38: return "Mirado";
-        case 39: case 40: return "Mirado";
-        case 41: return "UAZ";
-        case 42: case 43: return "Rony";
-        case 44: case 45: return "Scooter";
-        case 46: case 47: return "Tukshai";
-        case 48: case 49: return "BRDM-2";
-        case 50: case 51: return "Monster Truck";
-        case 52: case 53: return "Coupe RB";
-        case 55: return "Dragon Boat";
-        case 56: case 64: return "Tesla";
-        case 58: return "Glider";
-        case 63: return "Motorbike";
-        case 65: return "ATV";
-        case 67: return "Lion Dance";
-        case 68: return "UAZ";
-        default: return "Vehicle";
+// Ported from DarkPubg DecryptActorsArray (port logic of QBL __ZN...DecryptActorsArrayEyyi)
+// Resolves ULevel Actors array: plain at 0xA0 or encrypted at 0x448
+static uint64_t ds_pubg_decrypt_actors_array(uint64_t uLevel) {
+    if (!ds_pubg_valid(uLevel)) return 0;
+
+    // 1) Level + 0xA0: Plain TArray
+    uint64_t vPlain = ds_pubg_read_ptr(uLevel + 0xA0ULL);
+    if (vPlain > 0 && ds_pubg_valid(vPlain)) {
+        return uLevel + 0xA0ULL;
     }
+
+    // 2) Level + 0x448: Encrypted TArray (if already plain pointer)
+    uint64_t vEnc = ds_pubg_read_ptr(uLevel + 0x448ULL);
+    if (vEnc > 0 && ds_pubg_valid(vEnc)) {
+        return uLevel + 0x448ULL;
+    }
+
+    // 3) Read 0x20 bytes (4 uint64_t) at 0x448 + 0x10
+    uint64_t enc[4] = {0, 0, 0, 0};
+    if (!ds_pubg_read(uLevel + 0x448ULL + 0x10ULL, enc, sizeof(enc))) {
+        return 0;
+    }
+
+    // Branch 1: enc[0] table of 8 offsets + 8 scattered bytes
+    if (enc[0] > 0) {
+        if (!ds_pubg_valid(enc[0])) return 0;
+        uint32_t vals[8] = {0};
+        if (!ds_pubg_read(enc[0] + 0x80ULL, vals, sizeof(vals))) {
+            return 0;
+        }
+        uint64_t r = 0;
+        for (int i = 0; i < 8; i++) {
+            uint64_t addr = enc[0] + (uint64_t)vals[i];
+            if (addr < enc[0] || !ds_pubg_valid(addr)) {
+                return 0;
+            }
+            uint8_t b = ds_pubg_read_u8(addr);
+            r |= ((uint64_t)b) << (8 * i);
+        }
+        if (ds_pubg_valid(r)) return r;
+        return 0;
+    }
+
+    // Branch 2: enc[1] subtract 4 per byte
+    if (enc[1] > 0) {
+        if (!ds_pubg_valid(enc[1])) return 0;
+        uint64_t ea = ds_pubg_read_ptr(enc[1]);
+        if (ea) {
+            uint64_t r = 0;
+            for (int i = 0; i < 8; i++) {
+                uint8_t b = (uint8_t)(ea >> (8 * i));
+                r |= ((uint64_t)(uint8_t)(b - 4)) << (8 * i);
+            }
+            if (ds_pubg_valid(r)) return r;
+        }
+        return 0;
+    }
+
+    // Branch 3: enc[2] ror 56 (rotate left 8)
+    if (enc[2] > 0) {
+        if (!ds_pubg_valid(enc[2])) return 0;
+        uint64_t ea = ds_pubg_read_ptr(enc[2]);
+        if (ea) {
+            uint64_t r = (ea >> 56) | (ea << 8);
+            if (ds_pubg_valid(r)) return r;
+        }
+        return 0;
+    }
+
+    // Branch 4: enc[3] XOR with 0xCDCD00
+    if (enc[3] > 0) {
+        if (!ds_pubg_valid(enc[3])) return 0;
+        uint64_t ea = ds_pubg_read_ptr(enc[3]);
+        if (ea) {
+            uint64_t r = ea ^ 0xCDCD00ULL;
+            if (ds_pubg_valid(r)) return r;
+        }
+        return 0;
+    }
+
+    return 0;
+}
+
+static bool ds_pubg_actors_array_at(uint64_t arr, uint64_t *outData, uint32_t *outCount) {
+    if (!ds_pubg_valid(arr)) return false;
+    uint64_t data = ds_pubg_read_ptr(arr + 0x0ULL);
+    uint32_t count = ds_pubg_read_u32(arr + 0x8ULL);
+    if (count > 20000) return false;
+    if (count > 0 && !ds_pubg_valid(data)) return false;
+    if (outData) *outData = data;
+    if (outCount) *outCount = count;
+    return true;
 }
 
 // Live informative diagnostic HUD string
@@ -670,10 +728,10 @@ static const char* ds_pubg_get_debug_status(void) {
     if (!g_dspubgCachedWorld) {
         return "PUBG: Attached (Waiting for Match)";
     }
-    if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0 || g_dspubgLastVehicleCount > 0) {
+    if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots | %d Cars",
-                 g_dspubgLastEnemyCount, g_dspubgLastBotCount, g_dspubgLastVehicleCount);
+                 "PUBG: %d Enemies | %d Bots",
+                 g_dspubgLastEnemyCount, g_dspubgLastBotCount);
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -732,7 +790,6 @@ static void ds_pubg_tick(void) {
         g_dspubgLastActorsCount = 0;
         g_dspubgLastEnemyCount = 0;
         g_dspubgLastBotCount = 0;
-        g_dspubgLastVehicleCount = 0;
         return;
     }
 
@@ -861,138 +918,7 @@ static void ds_pubg_tick(void) {
     int publishedCount = 0;
     int enemyCount = 0;
     int botCount = 0;
-    int vehicleCount = 0;
     std::vector<uint64_t> seenPawns;
-
-    auto processVehicle = [&](uint64_t veh, uint64_t vehCommon, uint8_t vehType) {
-        if (!veh || !ds_pubg_valid(veh)) return;
-        if (!g_pubgEspVehicle) return;
-        if (veh == localPawn) return;
-        if (localPawn) {
-            uint64_t myVeh = ds_pubg_read_ptr(localPawn + kDSPUBGCharacterVehicleOffset);
-            if (myVeh && veh == myVeh) return; // Skip vehicle we are currently inside
-        }
-        for (uint64_t seen : seenPawns) {
-            if (seen == veh) return;
-        }
-
-        uint64_t rootComp = ds_pubg_read_ptr(veh + kDSPUBGActorRootComponentOffset);
-        if (!rootComp) rootComp = ds_pubg_read_ptr(veh + 0x180ULL);
-        if (!rootComp || !ds_pubg_valid(rootComp)) return;
-
-        // Reject characters! A character must NEVER be processed as a vehicle
-        uint64_t ps = ds_pubg_read_ptr(veh + 0x4D0ULL);
-        if (ps && ds_pubg_valid(ps)) return;
-        uint64_t capsuleComp = ds_pubg_read_ptr(veh + kDSPUBGCharacterCapsuleOffset);
-        if (rootComp && capsuleComp == rootComp) return;
-
-        // Check bHidden in AActor (offset 0xE8)
-        uint8_t aHidden = ds_pubg_read_u8(veh + 0xE8ULL);
-        if (aHidden & 0x1) return;
-
-        seenPawns.push_back(veh);
-
-        DSPUBGVector rootLoc = {};
-        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) return;
-        if (isnan(rootLoc.X) || isinf(rootLoc.X) || (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f)) return;
-
-        uint64_t parent = ds_pubg_read_ptr(rootComp + kDSPUBGSceneCompAttachedParentOffset);
-        if (parent && ds_pubg_valid(parent)) {
-            DSPUBGVector pLoc = {};
-            if (ds_pubg_read(parent + kDSPUBGSceneCompRelativeLocOffset, &pLoc, sizeof(pLoc))) {
-                rootLoc.X += pLoc.X;
-                rootLoc.Y += pLoc.Y;
-                rootLoc.Z += pLoc.Z;
-            }
-        }
-
-        // Read HP and Fuel from UVehicleCommonComponent
-        float hpMax = ds_pubg_read_f32(vehCommon + 0x350ULL);
-        float hp = ds_pubg_read_f32(vehCommon + 0x354ULL);
-        float fuelMax = ds_pubg_read_f32(vehCommon + 0x438ULL);
-        float fuel = ds_pubg_read_f32(vehCommon + 0x43CULL);
-
-        // Destroyed / exploded vehicle check:
-        if (!isnan(hp) && !isnan(hpMax) && hpMax >= 50.0f && hp <= 0.0f) {
-            return; // Destroyed/exploded vehicle -> skip
-        }
-        if (hpMax < 50.0f || hpMax > 20000.0f || isnan(hpMax) || isinf(hpMax)) {
-            hpMax = 1000.0f;
-        }
-        if (isnan(hp) || isinf(hp) || hp <= 0.0f || hp > hpMax) {
-            hp = hpMax;
-        }
-
-        float fuelPct = (fuelMax > 0.0f && fuel >= 0.0f) ? ((fuel / fuelMax) * 100.0f) : 100.0f;
-        if (fuelPct > 100.0f) fuelPct = 100.0f;
-
-        float vehH = 140.0f;
-        float halfH = vehH * 0.5f;
-        DSPUBGVector bot = rootLoc; bot.Z -= halfH;
-        DSPUBGVector top = rootLoc; top.Z += halfH;
-
-        float bx = 0, by = 0, bd = 0;
-        float tx = 0, ty = 0, td = 0;
-        bool okB = ds_pubg_cam_basis_project(basis, bot, bx, by, bd);
-        bool okT = ds_pubg_cam_basis_project(basis, top, tx, ty, td);
-
-        float sx = 0, sy = 0, dist = 0;
-        if (!okB && !okT) {
-            if (!ds_pubg_cam_basis_project(basis, rootLoc, sx, sy, dist)) return;
-        } else {
-            dist = okB ? bd : td;
-        }
-
-        if (dist > g_dspubgMaxDistance || dist < 0.5f) return;
-
-        float topY = 0, bottomY = 0, boxH = 0, centerX = 0;
-        if (okB && okT) {
-            topY = fminf(ty, by);
-            bottomY = fmaxf(ty, by);
-            boxH = bottomY - topY;
-            centerX = (tx + bx) * 0.5f;
-        } else {
-            float tz = dist * 100.0f;
-            if (tz < 10.0f) tz = 10.0f;
-            boxH = (vehH / tz) * basis.k;
-            topY = sy - boxH * 0.5f;
-            centerX = sx;
-        }
-
-        if (boxH < 6.0f) boxH = 6.0f;
-        if (boxH > screenH * 2.0f) return;
-        float boxW = boxH * 1.35f;
-        float boxX = centerX - boxW * 0.5f;
-
-        if (centerX + boxW * 0.5f < -60.0f || centerX - boxW * 0.5f > screenW + 60.0f ||
-            topY > screenH + 60.0f || topY + boxH < -60.0f) {
-            return;
-        }
-
-        DSPUBGProjectedPlayer p = {};
-        p.screenX = boxX;
-        p.screenY = topY;
-        p.headX = centerX;
-        p.headY = topY;
-        p.boxWidth = boxW;
-        p.boxHeight = boxH;
-        p.distanceMeters = dist;
-        p.health = hp;
-        p.healthMax = hpMax;
-        p.teamId = -1;
-        p.isAI = false;
-        p.isDead = false;
-        p.isVisible = true;
-        p.isVehicle = true;
-        p.fuel = fuelPct;
-        p.actorPtr = veh;
-        strncpy(p.name, ds_pubg_vehicle_name(vehType), sizeof(p.name) - 1);
-
-        if (publishedCount < kDSPUBGMaxPlayers) {
-            staging[publishedCount++] = p;
-            vehicleCount++;
-        }
-    };
 
     auto processPawn = [&](uint64_t pawn, uint64_t psHint, bool knownBot) {
         if (!pawn || pawn == localPawn || !ds_pubg_valid(pawn)) return;
@@ -1015,7 +941,7 @@ static void ds_pubg_tick(void) {
         uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
         if (isDead) return;
 
-        // 4. Must have valid RootComponent and Mesh
+        // 4. Must have valid RootComponent and Mesh (standard UE4 character)
         uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
         if (!rootComp || !ds_pubg_valid(rootComp)) return;
@@ -1023,44 +949,26 @@ static void ds_pubg_tick(void) {
         uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
         if (!meshComp || !ds_pubg_valid(meshComp)) return;
 
-        // 5. Verification for actors discovered outside PlayerArray:
-        // Must match UE4 ACharacter hierarchy (CapsuleComponent == RootComponent and valid CharacterMovement)
-        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
-        if (!ps || !ds_pubg_valid(ps)) {
-            uint64_t capsuleComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterCapsuleOffset);
-            uint64_t moveComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMovementOffset);
-            if (capsuleComp != rootComp || !moveComp || !ds_pubg_valid(moveComp)) {
-                return; // Discard bullets, weapon projectiles, loot items, level debris!
-            }
-        }
-
-        // 6. Health check:
-        // Real PUBG Mobile characters have HealthMax 50..500 (usually 100).
-        // Props, crates, items DO NOT have HealthMax in this range!
+        // 5. Health check (same heuristic as DarkPubg):
+        // Real PUBG character: HealthMax 50..2000, Health 0..healthMax+50
         float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
         float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
         if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return;
-        if (health <= 0.0f) return; // Discard dead or healthless objects!
 
         if (!psHint) {
-            if (healthMax < 50.0f || healthMax > 500.0f) return;
-            if (health > healthMax + 50.0f) return;
+            if (healthMax < 50.0f || healthMax > 2000.0f) return;
+            if (health < 0.0f || health > healthMax + 50.0f) return;
         } else {
-            if (healthMax < 20.0f || healthMax > 500.0f) healthMax = 100.0f;
+            if (healthMax < 20.0f || healthMax > 2000.0f) healthMax = 100.0f;
+            if (health < 0.0f) health = 0.0f;
             if (health > healthMax) health = healthMax;
         }
 
-        // 7. Team filter:
+        // 6. Team filter:
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
         if (teamId < 0 || teamId > 200000000) return;
         if (localTeamId > 0 && teamId == localTeamId) {
             return;
-        }
-
-        // 8. Human skeletal mesh extent check:
-        float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
-        if (extZ < 25.0f || extZ > 170.0f) {
-            if (!psHint) return; // Non-human extents discard!
         }
 
         seenPawns.push_back(pawn);
@@ -1083,6 +991,7 @@ static void ds_pubg_tick(void) {
             }
         }
 
+        float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
         float actorH = 175.0f;
         if (extZ >= 30.0f && extZ <= 160.0f) {
             actorH = extZ * 2.0f;
@@ -1131,6 +1040,7 @@ static void ds_pubg_tick(void) {
             return;
         }
 
+        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
         bool isAI = knownBot;
         if (!isAI && ps && ds_pubg_valid(ps)) {
             uint8_t botByte = ds_pubg_read_u8(ps + kDSPUBGPlayerStateIsABotOffset);
@@ -1149,7 +1059,7 @@ static void ds_pubg_tick(void) {
         p.boxHeight = boxH;
         p.distanceMeters = dist;
         p.health = health;
-        p.healthMax = healthMax;
+        p.healthMax = (healthMax >= 20.0f) ? healthMax : 100.0f;
         p.teamId = teamId;
         p.isAI = isAI;
         p.isDead = false;
@@ -1168,11 +1078,10 @@ static void ds_pubg_tick(void) {
         }
 
         // Humanoid Skeleton (16 joints, 15 bone links)
-        // Perfectly proportioned and aligned with the enemy character's box and head
         p.hasSkeleton = false;
-        if (g_pubgEspSkeleton && !p.isVehicle) {
+        if (g_pubgEspSkeleton) {
             // Spine / Center line
-            p.skeleton[0] = { centerX, topY + boxH * 0.08f, true }; // Head (matches head dot)
+            p.skeleton[0] = { centerX, topY + boxH * 0.08f, true }; // Head
             p.skeleton[1] = { centerX, topY + boxH * 0.18f, true }; // Neck
             p.skeleton[2] = { centerX, topY + boxH * 0.35f, true }; // Chest
             p.skeleton[3] = { centerX, topY + boxH * 0.53f, true }; // Pelvis / Waist
@@ -1233,23 +1142,29 @@ static void ds_pubg_tick(void) {
         }
     }
 
-    // Source 2: PersistentLevel.ActorCluster.Actors & PersistentLevel.Actors
+    // Source 2: PersistentLevel.Actors (via DecryptActorsArray)
     if (level) {
-        uint64_t cluster = ds_pubg_read_ptr(level + 0xE0ULL);
         uint64_t actorsData = 0;
         uint32_t actorsCount = 0;
-        if (cluster) {
-            actorsData = ds_pubg_read_ptr(cluster + 0x28ULL);
-            actorsCount = ds_pubg_read_u32(cluster + 0x30ULL);
+
+        uint64_t arr = ds_pubg_decrypt_actors_array(level);
+        if (arr && ds_pubg_valid(arr)) {
+            ds_pubg_actors_array_at(arr, &actorsData, &actorsCount);
         }
+
         if (!actorsData || actorsCount == 0) {
-            actorsData = ds_pubg_read_ptr(level + 0x98ULL);
-            actorsCount = ds_pubg_read_u32(level + 0xA0ULL);
+            // Fallback to direct 0xA0
+            ds_pubg_actors_array_at(level + 0xA0ULL, &actorsData, &actorsCount);
         }
+
         if (!actorsData || actorsCount == 0) {
-            actorsData = ds_pubg_read_ptr(level + 0xA0ULL);
-            actorsCount = ds_pubg_read_u32(level + 0xA8ULL);
+            // Fallback to cluster 0xE0
+            uint64_t cluster = ds_pubg_read_ptr(level + 0xE0ULL);
+            if (cluster && ds_pubg_valid(cluster)) {
+                ds_pubg_actors_array_at(cluster + 0x28ULL, &actorsData, &actorsCount);
+            }
         }
+
         g_dspubgLastActorsCount = (int)actorsCount;
 
         if (actorsData && actorsCount > 0) {
@@ -1259,36 +1174,8 @@ static void ds_pubg_tick(void) {
                 for (uint32_t i = 0; i < actorsCount; i++) {
                     uint64_t actor = levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
-
-                    // 1. Character detection FIRST:
-                    // Must have valid PlayerState (0x4D0) OR match UE4 ACharacter hierarchy (Capsule == RootComponent)
                     uint64_t ps = ds_pubg_read_ptr(actor + 0x4D0ULL);
-                    uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-                    if (!rootComp) rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
-                    uint64_t capsuleComp = ds_pubg_read_ptr(actor + kDSPUBGCharacterCapsuleOffset);
-                    uint64_t moveComp = ds_pubg_read_ptr(actor + kDSPUBGCharacterMovementOffset);
-                    uint64_t meshComp = ds_pubg_read_ptr(actor + kDSPUBGCharacterMeshOffset);
-
-                    bool isChar = false;
-                    if (ps && ds_pubg_valid(ps)) {
-                        isChar = true;
-                    } else if (rootComp && capsuleComp == rootComp && ds_pubg_valid(moveComp) && ds_pubg_valid(meshComp)) {
-                        isChar = true;
-                    }
-
-                    if (isChar) {
-                        processPawn(actor, ps, false);
-                        continue; // This is a character! Never process as vehicle.
-                    }
-
-                    // 2. Vehicle detection: Only for NON-character actors!
-                    // ASTExtraVehicleBase has VehicleCommon at 0xC08 and valid VehicleType enum (1..120) at 0x70C
-                    uint64_t vehCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
-                    uint8_t vehType = ds_pubg_read_u8(actor + 0x70CULL);
-                    if (vehCommon && ds_pubg_valid(vehCommon) && vehType > 0 && vehType <= 120) {
-                        processVehicle(actor, vehCommon, vehType);
-                        continue;
-                    }
+                    processPawn(actor, ps, false);
                 }
             }
         }
@@ -1296,7 +1183,6 @@ static void ds_pubg_tick(void) {
 
     g_dspubgLastEnemyCount = enemyCount;
     g_dspubgLastBotCount = botCount;
-    g_dspubgLastVehicleCount = vehicleCount;
 
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));
