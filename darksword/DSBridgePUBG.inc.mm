@@ -1052,10 +1052,6 @@ static void ds_pubg_tick(void) {
 
         seenPawns.push_back(pawn);
 
-        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
-        if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
-        if (!rootComp) return;
-
         DSPUBGVector rootLoc = {};
         if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
             return;
