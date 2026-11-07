@@ -13,55 +13,60 @@
 #include <atomic>
 #include <os/lock.h>
 
-// Process names
-static const char kDSPUBGTargetProcessName[] = "ShadowTrackerExtra";
-static const char kDSPUBGTargetProcessShortName[] = "ShadowTrackerExt";
-static const char kDSPUBGTargetProcessAltName[] = "PUBG MOBILE";
-
-// Offsets dumped from DUMP/ folder (ShadowTrackerExtra UE4)
-// Base address is Mach-O 64-bit main image (__TEXT unslid 0x100000000)
-// UEPointers from DUMP/Offsets.hpp & DUMP/Logs.txt:
-//   GEngine: unslid 0x10A8AA8A0 -> RVA 0x0A8AA8A0
-//   Names:   unslid 0x10D492AC0 -> RVA 0x0D492AC0
-//   GUObject:unslid 0x10A692D18 -> RVA 0x0A692D18
+// UEPointers from DUMP/Offsets.hpp & DUMP/Logs.txt (ShadowTrackerExtra UE4)
+// Base address is Mach-O 64-bit main image (__TEXT)
+// GEngine: unslid 0x10A8AA8A0 -> RVA 0x0A8AA8A0
 static const uint64_t kDSPUBGEngineRva = 0x0A8AA8A0ULL;
 
 // Class Member Offsets from DUMP/SDK/Engine.hpp & DUMP/SDK.txt
-static const uint64_t kDSPUBGEngineGameViewportOffset        = 0x810ULL; // UEngine.GameViewport (UGameViewportClient*)
-static const uint64_t kDSPUBGEngineGameInstanceOffset        = 0xE20ULL; // UGameEngine.GameInstance (UGameInstance*)
-static const uint64_t kDSPUBGViewportWorldOffset             = 0x78ULL;  // UGameViewportClient.World (UWorld*)
-static const uint64_t kDSPUBGWorldPersistentLevelOffset       = 0x30ULL;  // UWorld.PersistentLevel (ULevel*)
-static const uint64_t kDSPUBGLevelActorClusterOffset         = 0xE0ULL;  // ULevel.ActorCluster (ULevelActorContainer*)
-static const uint64_t kDSPUBGActorClusterActorsOffset        = 0x28ULL;  // ULevelActorContainer.Actors (TArray<AActor*>)
-static const uint64_t kDSPUBGLevelDirectActorsFallbackOffset = 0x98ULL;  // Fallback direct Actors in ULevel
+static const uint64_t kDSPUBGEngineGameViewportOffset        = 0x810ULL;  // UEngine.GameViewport (UGameViewportClient*)
+static const uint64_t kDSPUBGEngineGameInstanceOffset        = 0xE20ULL;  // UGameEngine.GameInstance (UGameInstance*)
+static const uint64_t kDSPUBGViewportWorldOffset             = 0x78ULL;   // UGameViewportClient.World (UWorld*)
+static const uint64_t kDSPUBGWorldPersistentLevelOffset       = 0x30ULL;   // UWorld.PersistentLevel (ULevel*)
+static const uint64_t kDSPUBGWorldOwningGameInstanceOffset   = 0x470ULL;  // UWorld.OwningGameInstance (UGameInstance*)
+static const uint64_t kDSPUBGWorldGameStateOffset            = 0x428ULL;  // UWorld.GameState (AGameStateBase*)
+static const uint64_t kDSPUBGWorldAuthorityGameModeOffset    = 0x420ULL;  // UWorld.AuthorityGameMode (AGameModeBase*)
+static const uint64_t kDSPUBGGameModeGameStateOffset         = 0x508ULL;  // AGameModeBase.GameState (AGameStateBase*)
+
+// Fast player list via GameState.PlayerArray
+static const uint64_t kDSPUBGGameStatePlayerArrayOffset      = 0x4C8ULL;  // AGameStateBase.PlayerArray (TArray<APlayerState*>)
+static const uint64_t kDSPUBGPlayerStatePawnPrivateOffset    = 0x528ULL;  // APlayerState.PawnPrivate (APawn*)
+static const uint64_t kDSPUBGPlayerStateIsABotOffset         = 0x4DCULL;  // byte bitfield: bit 2 is bIsABot
+static const uint64_t kDSPUBGPlayerStatePlayerNameOffset     = 0x4B8ULL;  // APlayerState.PlayerName (FString)
 
 // LocalPlayer & Camera Chain
-static const uint64_t kDSPUBGGameInstanceLocalPlayersOffset  = 0x48ULL;  // UGameInstance.LocalPlayers (TArray<ULocalPlayer*>)
-static const uint64_t kDSPUBGLocalPlayerControllerOffset     = 0x30ULL;  // UPlayer.PlayerController (APlayerController*)
-static const uint64_t kDSPUBGPlayerControllerPawnOffset      = 0x528ULL; // APlayerController.AcknowledgedPawn (APawn*)
-static const uint64_t kDSPUBGPlayerControllerCameraMgrOffset = 0x548ULL; // APlayerController.PlayerCameraManager (APlayerCameraManager*)
+static const uint64_t kDSPUBGGameInstanceLocalPlayersOffset  = 0x48ULL;   // UGameInstance.LocalPlayers (TArray<ULocalPlayer*>)
+static const uint64_t kDSPUBGLocalPlayerControllerOffset     = 0x30ULL;   // UPlayer.PlayerController (APlayerController*)
+static const uint64_t kDSPUBGPlayerControllerPawnOffset      = 0x528ULL;  // APlayerController.AcknowledgedPawn (APawn*)
+static const uint64_t kDSPUBGPlayerControllerCameraMgrOffset = 0x548ULL;  // APlayerController.PlayerCameraManager (APlayerCameraManager*)
 
-// Camera Cache POV (APlayerCameraManager.CameraCache at 0x520, POV at +0x10)
-static const uint64_t kDSPUBGCameraPOVLocationOffset         = 0x530ULL; // FVector (float X, Y, Z)
-static const uint64_t kDSPUBGCameraPOVRotationOffset         = 0x548ULL; // FRotator (float Pitch, Yaw, Roll)
-static const uint64_t kDSPUBGCameraPOVFOVOffset              = 0x554ULL; // float FOV
+// Camera ViewTarget POV (PlayerCameraManager.ViewTarget at 0x10A0, POV at +0x10)
+static const uint64_t kDSPUBGCameraViewTargetOffset          = 0x10A0ULL; // FTViewTarget
+static const uint64_t kDSPUBGViewTargetPOVOffset             = 0x10ULL;   // FMinimalViewInfo
+static const uint64_t kDSPUBGPOVLocationOffset               = 0x0ULL;    // FVector (float X, Y, Z)
+static const uint64_t kDSPUBGPOVRotationOffset               = 0x18ULL;   // FRotator (float Pitch, Yaw, Roll)
+static const uint64_t kDSPUBGPOVFOVOffset                    = 0x24ULL;   // float FOV
+static const uint64_t kDSPUBGPOVAspectOffset                 = 0x34ULL;   // float Aspect
 
 // Actor & Component Offsets
-static const uint64_t kDSPUBGActorRootComponentOffset        = 0x208ULL; // AActor.RootComponent (USceneComponent*)
-static const uint64_t kDSPUBGSceneCompRelativeLocOffset      = 0x1E4ULL; // USceneComponent.RelativeLocation (FVector)
-static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL; // UAECharacter.PlayerName (FString)
-static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x980ULL; // UAECharacter.PlayerKey (uint32_t)
-static const uint64_t kDSPUBGCharacterTeamIDOffset           = 0x998ULL; // UAECharacter.TeamID (int32_t)
-static const uint64_t kDSPUBGCharacterIsAIOffset             = 0xA40ULL; // UAECharacter.bIsAI (bool)
-static const uint64_t kDSPUBGCharacterHealthOffset           = 0xE60ULL; // STExtraCharacter.Health (float)
-static const uint64_t kDSPUBGCharacterHealthMaxOffset        = 0xE64ULL; // STExtraCharacter.HealthMax (float)
-static const uint64_t kDSPUBGCharacterDeadOffset             = 0xE7CULL; // STExtraCharacter.bDead (uint8_t)
+static const uint64_t kDSPUBGActorRootComponentOffset        = 0x208ULL;  // AActor.RootComponent (USceneComponent*)
+static const uint64_t kDSPUBGSceneCompRelativeLocOffset      = 0x1E4ULL;  // USceneComponent.RelativeLocation (FVector)
+static const uint64_t kDSPUBGSceneCompAttachedParentOffset   = 0x188ULL;  // USceneComponent.AttachedParent (USceneComponent*)
+static const uint64_t kDSPUBGCharacterMeshOffset             = 0x510ULL;  // ASTExtraBaseCharacter.Mesh (USkeletalMeshComponent*)
+static const uint64_t kDSPUBGMeshBoxExtentZOffset            = 0xBA0ULL;  // Mesh.Bounds.BoxExtent.Z
+static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL;  // UAECharacter.PlayerName (FString)
+static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x980ULL;  // UAECharacter.PlayerKey (uint32_t)
+static const uint64_t kDSPUBGCharacterTeamIDOffset           = 0x998ULL;  // UAECharacter.TeamID (int32_t)
+static const uint64_t kDSPUBGCharacterHealthOffset           = 0xE60ULL;  // STExtraCharacter.Health (float)
+static const uint64_t kDSPUBGCharacterHealthMaxOffset        = 0xE64ULL;  // STExtraCharacter.HealthMax (float)
+static const uint64_t kDSPUBGCharacterDeadOffset             = 0xE7CULL;  // STExtraCharacter.bDead (uint8_t)
 
 // Runtime target state
 static uint64_t g_dspubgProc = 0;
 static uint32_t g_dspubgPid = 0;
 static uint64_t g_dspubgVmMap = 0;
 static uint64_t g_dspubgBase = 0;
+static uint64_t g_dspubgCachedWorld = 0;
 static CFAbsoluteTime g_dspubgNextAttach = 0;
 static std::atomic<bool> g_dspubgTargetActive(false);
 
@@ -80,8 +85,17 @@ struct DSPUBGRotator {
     float Pitch, Yaw, Roll;
 };
 
+struct DSPUBGCamBasis {
+    float m00, m01, m02;
+    float m10, m11, m12;
+    float m20, m21, m22;
+    float lx, ly, lz;
+    float k;
+    float cx, cy;
+};
+
 static inline bool ds_pubg_valid(uint64_t address) {
-    return address >= 0x100000000ULL && address < 0x1600000000ULL;
+    return address >= 0x100000000ULL && address < 0x300000000000ULL;
 }
 
 static uint64_t ds_pubg_read_ptr(uint64_t address) {
@@ -97,17 +111,145 @@ static bool ds_pubg_read(uint64_t address, void *buffer, size_t length) {
     return ds_debug_read_bytes(g_dspubgVmMap, address, buffer, length);
 }
 
+static uint32_t ds_pubg_read_u32(uint64_t address) {
+    uint32_t value = 0;
+    if (!g_dspubgVmMap || !ds_pubg_valid(address)) return 0;
+    ds_debug_read_bytes(g_dspubgVmMap, address, &value, sizeof(value));
+    return value;
+}
+
+static int32_t ds_pubg_read_i32(uint64_t address) {
+    int32_t value = 0;
+    if (!g_dspubgVmMap || !ds_pubg_valid(address)) return 0;
+    ds_debug_read_bytes(g_dspubgVmMap, address, &value, sizeof(value));
+    return value;
+}
+
+static float ds_pubg_read_f32(uint64_t address) {
+    float value = 0.0f;
+    if (!g_dspubgVmMap || !ds_pubg_valid(address)) return 0.0f;
+    ds_debug_read_bytes(g_dspubgVmMap, address, &value, sizeof(value));
+    return value;
+}
+
+static uint8_t ds_pubg_read_u8(uint64_t address) {
+    uint8_t value = 0;
+    if (!g_dspubgVmMap || !ds_pubg_valid(address)) return 0;
+    ds_debug_read_bytes(g_dspubgVmMap, address, &value, sizeof(value));
+    return value;
+}
+
+static int ds_pubg_ucs2_to_utf8(const uint8_t *src, int srcChars, char *out, int outCap) {
+    if (!src || srcChars <= 0 || !out || outCap <= 1) return 0;
+    int o = 0;
+    for (int i = 0; i < srcChars && o + 4 < outCap; i++) {
+        uint16_t u = (uint16_t)src[i * 2] | ((uint16_t)src[i * 2 + 1] << 8);
+        if (u == 0) break;
+        if (u < 0x80) {
+            out[o++] = (char)u;
+        } else if (u < 0x800) {
+            out[o++] = (char)(0xC0 | (u >> 6));
+            out[o++] = (char)(0x80 | (u & 0x3F));
+        } else {
+            out[o++] = (char)(0xE0 | (u >> 12));
+            out[o++] = (char)(0x80 | ((u >> 6) & 0x3F));
+            out[o++] = (char)(0x80 | (u & 0x3F));
+        }
+    }
+    out[o] = '\0';
+    return o;
+}
+
+static bool ds_pubg_read_fstring_nick(uint64_t fstr, char *out, int outCap) {
+    if (!fstr || !ds_pubg_valid(fstr) || !out || outCap <= 1) return false;
+    uint64_t dataPtr = ds_pubg_read_ptr(fstr);
+    uint32_t num = ds_pubg_read_u32(fstr + 8);
+    if (!dataPtr || !ds_pubg_valid(dataPtr) || num < 2 || num > 32) return false;
+    uint8_t raw[64] = {0};
+    uint64_t want = (uint64_t)num * 2;
+    if (want > sizeof(raw)) want = sizeof(raw);
+    if (!ds_pubg_read(dataPtr, raw, (size_t)want)) return false;
+    int n = ds_pubg_ucs2_to_utf8(raw, (int)(want / 2), out, outCap);
+    return n >= 2;
+}
+
 static void ds_pubg_reset_state(void) {
     g_dspubgProc = 0;
     g_dspubgPid = 0;
     g_dspubgVmMap = 0;
     g_dspubgBase = 0;
+    g_dspubgCachedWorld = 0;
     g_dspubgTargetActive.store(false, std::memory_order_release);
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     g_dspubgPlayerCount = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
     ++g_dspubgEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+}
+
+// Find PUBG Mobile process. In iOS XNU, p_comm is 16 bytes max (15 chars + \0),
+// so "ShadowTrackerExtra" (18 chars) truncates to "ShadowTrackerEx".
+static uint64_t ds_pubg_find_proc(pid_t *outPid) {
+    if (outPid) *outPid = 0;
+    if (!ds_is_ready()) return 0;
+
+    // 1. Prefix match via procbyname (15 chars)
+    uint64_t proc = procbyname("ShadowTrackerEx");
+    if (!proc) proc = procbyname("ShadowTrackerExtra");
+    if (!proc) proc = procbyname("ShadowTracker");
+    if (!proc) proc = procbyname("PUBG MOBILE");
+
+    if (proc) {
+        if (outPid) *outPid = (pid_t)(off_proc_p_pid ? ds_kread32(proc + off_proc_p_pid) : 0);
+        return proc;
+    }
+
+    // 2. Full proclist search with substring "Shadow" or "PUBG"
+    int count = 0;
+    proc_entry_t *list = proclist("", &count);
+    if (list && count > 0) {
+        for (int i = 0; i < count; i++) {
+            const char *name = list[i].name;
+            if (!name || !name[0]) continue;
+            if (strstr(name, "Shadow") != NULL || strstr(name, "PUBG") != NULL) {
+                uint64_t p = procbypid(list[i].pid);
+                if (p) {
+                    if (outPid) *outPid = list[i].pid;
+                    proc = p;
+                    break;
+                }
+            }
+        }
+        free_proclist(list);
+    }
+    return proc;
+}
+
+// Locate main executable base image. Verifies GEngine RVA to ensure the correct binary.
+static uint64_t ds_pubg_find_base(uint64_t vmMap) {
+    if (!vmMap) return 0;
+
+    std::vector<uint64_t> starts;
+    os_unfair_lock_lock(&g_debugVMRegionsLock);
+    for (const DSDebugVMRegion &region : g_debugVMRegions) {
+        starts.push_back(region.start);
+    }
+    os_unfair_lock_unlock(&g_debugVMRegionsLock);
+
+    uint64_t firstMacho = 0;
+    for (uint64_t start : starts) {
+        if (ds_debug_macho_main_identity(vmMap, start)) {
+            if (!firstMacho) firstMacho = start;
+            // Verify GEngine pointer at base + kDSPUBGEngineRva
+            uint64_t ge = 0;
+            if (ds_debug_read_bytes(vmMap, start + kDSPUBGEngineRva, &ge, sizeof(ge))) {
+                if (ds_pubg_valid(ge) && (ge & 0x7ULL) == 0) {
+                    return start;
+                }
+            }
+        }
+    }
+    return firstMacho;
 }
 
 static bool ds_pubg_attach(void) {
@@ -117,11 +259,10 @@ static bool ds_pubg_attach(void) {
     }
     if (now < g_dspubgNextAttach) return false;
 
-    uint64_t proc = proc_find_by_name(kDSPUBGTargetProcessName);
-    if (!ds_isvalid(proc)) proc = proc_find_by_name(kDSPUBGTargetProcessShortName);
-    if (!ds_isvalid(proc)) proc = proc_find_by_name(kDSPUBGTargetProcessAltName);
+    pid_t targetPid = 0;
+    uint64_t proc = ds_pubg_find_proc(&targetPid);
 
-    if (!ds_isvalid(proc)) {
+    if (!ds_isvalid(proc) || targetPid <= 0) {
         g_dspubgTargetActive.store(false, std::memory_order_release);
         g_dspubgProc = g_dspubgVmMap = g_dspubgBase = 0;
         g_dspubgPid = 0;
@@ -129,35 +270,35 @@ static bool ds_pubg_attach(void) {
         return false;
     }
 
-    uint32_t pid = off_proc_p_pid ? ds_kread32(proc + off_proc_p_pid) : 0;
     uint64_t task = proc_task(proc);
     uint64_t vmMap = ds_isvalid(task) ? task_get_vm_map(task) : 0;
-    if (!pid || !ds_isvalid(vmMap)) {
+    if (!ds_isvalid(vmMap)) {
         g_dspubgTargetActive.store(false, std::memory_order_release);
         g_dspubgNextAttach = now + 1.0;
         return false;
     }
 
-    bool identityChanged = (g_dspubgProc != proc || g_dspubgPid != pid || g_dspubgVmMap != vmMap);
+    bool identityChanged = (g_dspubgProc != proc || g_dspubgPid != (uint32_t)targetPid || g_dspubgVmMap != vmMap);
     if (identityChanged) {
         g_dspubgBase = 0;
+        g_dspubgCachedWorld = 0;
     }
     g_dspubgProc = proc;
-    g_dspubgPid = pid;
+    g_dspubgPid = (uint32_t)targetPid;
     g_dspubgVmMap = vmMap;
 
-    if (!ds_debug_shmem_claim_target(DSDebugShmemOwner::PUBG, (pid_t)pid, proc, vmMap)) {
+    if (!ds_debug_shmem_claim_target(DSDebugShmemOwner::PUBG, targetPid, proc, vmMap)) {
         g_dspubgTargetActive.store(false, std::memory_order_release);
         g_dspubgNextAttach = now + 1.0;
         return false;
     }
 
     if (identityChanged) {
-        ds_debug_vm_regions_rebuild(vmMap, (pid_t)pid, YES);
+        ds_debug_vm_regions_rebuild(vmMap, targetPid, YES);
     }
 
     if (!g_dspubgBase) {
-        g_dspubgBase = ds_debug_find_main_image_base(vmMap);
+        g_dspubgBase = ds_pubg_find_base(vmMap);
     }
 
     if (!g_dspubgBase) {
@@ -170,59 +311,61 @@ static bool ds_pubg_attach(void) {
     return true;
 }
 
-static void ds_pubg_get_axes(DSPUBGRotator R, DSPUBGVector &X, DSPUBGVector &Y, DSPUBGVector &Z) {
-    float radPitch = R.Pitch * (float)M_PI / 180.0f;
-    float radYaw   = R.Yaw * (float)M_PI / 180.0f;
-    float radRoll  = R.Roll * (float)M_PI / 180.0f;
+// Build Camera Basis for World-to-Screen projection (DarkPubg proven algorithm)
+static bool ds_pubg_cam_basis_build(DSPUBGVector camLoc, DSPUBGRotator camRot, float fov,
+                                    float screenW, float screenH, DSPUBGCamBasis &b) {
+    if (screenW <= 0.0f || screenH <= 0.0f || fov < 10.0f || fov > 170.0f) return false;
+    const float kPi = 3.141592653589793f;
+    float radPitch = camRot.Pitch * kPi / 180.0f;
+    float radYaw   = camRot.Yaw   * kPi / 180.0f;
+    float radRoll  = camRot.Roll  * kPi / 180.0f;
 
-    float SP = sinf(radPitch);
-    float CP = cosf(radPitch);
-    float SY = sinf(radYaw);
-    float CY = cosf(radYaw);
-    float SR = sinf(radRoll);
-    float CR = cosf(radRoll);
+    float SP = sinf(radPitch), CP = cosf(radPitch);
+    float SY = sinf(radYaw),   CY = cosf(radYaw);
+    float SR = sinf(radRoll),  CR = cosf(radRoll);
 
-    X.X = CP * CY;
-    X.Y = CP * SY;
-    X.Z = SP;
+    float tanHalf = tanf(fov * kPi / 360.0f);
+    if (tanHalf <= 0.01f || tanHalf > 10.0f) return false;
 
-    Y.X = SR * SP * CY - CR * SY;
-    Y.Y = SR * SP * SY + CR * CY;
-    Y.Z = -SR * CP;
+    b.m00 = CP * CY;
+    b.m01 = CP * SY;
+    b.m02 = SP;
 
-    Z.X = -(CR * SP * CY + SR * SY);
-    Z.Y = CY * SR - CR * SP * SY;
-    Z.Z = CR * CP;
+    b.m10 = SR * SP * CY - CR * SY;
+    b.m11 = SR * SP * SY + CR * CY;
+    b.m12 = -SR * CP;
+
+    b.m20 = -(CR * SP * CY + SR * SY);
+    b.m21 = CY * SR - CR * SP * SY;
+    b.m22 = CR * CP;
+
+    b.lx = camLoc.X;
+    b.ly = camLoc.Y;
+    b.lz = camLoc.Z;
+
+    b.cx = screenW * 0.5f;
+    b.cy = screenH * 0.5f;
+    b.k  = b.cx / tanHalf;
+
+    return true;
 }
 
-static bool ds_pubg_w2s(DSPUBGVector worldLoc, DSPUBGVector camLoc, DSPUBGRotator camRot, float fov, float screenW, float screenH, float &outX, float &outY, float &outDist) {
-    DSPUBGVector axisX, axisY, axisZ;
-    ds_pubg_get_axes(camRot, axisX, axisY, axisZ);
+static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector world,
+                                      float &outX, float &outY, float &outDist) {
+    float dx = world.X - b.lx;
+    float dy = world.Y - b.ly;
+    float dz = world.Z - b.lz;
 
-    DSPUBGVector delta;
-    delta.X = worldLoc.X - camLoc.X;
-    delta.Y = worldLoc.Y - camLoc.Y;
-    delta.Z = worldLoc.Z - camLoc.Z;
+    float tx = dx * b.m10 + dy * b.m11 + dz * b.m12;
+    float ty = dx * b.m20 + dy * b.m21 + dz * b.m22;
+    float tz = dx * b.m00 + dy * b.m01 + dz * b.m02;
 
-    outDist = sqrtf(delta.X * delta.X + delta.Y * delta.Y + delta.Z * delta.Z) / 100.0f;
+    if (tz < 10.0f) return false; // Behind or too close
 
-    float transX = delta.X * axisY.X + delta.Y * axisY.Y + delta.Z * axisY.Z;
-    float transY = delta.X * axisZ.X + delta.Y * axisZ.Y + delta.Z * axisZ.Z;
-    float transZ = delta.X * axisX.X + delta.Y * axisX.Y + delta.Z * axisX.Z;
-
-    if (transZ < 1.0f) {
-        return false;
-    }
-
-    float halfW = screenW * 0.5f;
-    float halfH = screenH * 0.5f;
-    float tanHalfFov = tanf((fov * (float)M_PI / 180.0f) * 0.5f);
-    if (tanHalfFov <= 0.0001f) return false;
-
-    float factor = halfW / tanHalfFov;
-    outX = halfW + (transX * factor / transZ);
-    outY = halfH - (transY * factor / transZ);
-
+    float distM = sqrtf(dx * dx + dy * dy + dz * dz) / 100.0f;
+    outX = b.cx + tx * b.k / tz;
+    outY = b.cy - ty * b.k / tz;
+    outDist = distM;
     return true;
 }
 
@@ -261,9 +404,6 @@ static void ds_pubg_tick(void) {
 
     uint64_t viewport = ds_pubg_read_ptr(gengine + kDSPUBGEngineGameViewportOffset);
     uint64_t gameInstance = ds_pubg_read_ptr(gengine + kDSPUBGEngineGameInstanceOffset);
-    if (!viewport && !gameInstance) {
-        return;
-    }
 
     uint64_t world = 0;
     if (viewport) {
@@ -273,16 +413,36 @@ static void ds_pubg_tick(void) {
         }
     }
 
+    // Fallback resolution for UWorld
+    if (!world && gameInstance) {
+        uint64_t lpArray = ds_pubg_read_ptr(gameInstance + kDSPUBGGameInstanceLocalPlayersOffset);
+        uint64_t lp0 = lpArray ? ds_pubg_read_ptr(lpArray) : 0;
+        uint64_t pc = lp0 ? ds_pubg_read_ptr(lp0 + kDSPUBGLocalPlayerControllerOffset) : 0;
+        uint64_t pawn = pc ? ds_pubg_read_ptr(pc + kDSPUBGPlayerControllerPawnOffset) : 0;
+        uint64_t outer = pawn ? ds_pubg_read_ptr(pawn + 0x20ULL) : 0;
+        if (outer) world = ds_pubg_read_ptr(outer + 0xC0ULL);
+    }
+
+    if (!world) {
+        world = g_dspubgCachedWorld;
+    } else {
+        g_dspubgCachedWorld = world;
+    }
+
     if (!world) {
         return;
     }
 
-    // Camera and local player
+    // Camera and local player resolution
+    if (!gameInstance) {
+        gameInstance = ds_pubg_read_ptr(world + kDSPUBGWorldOwningGameInstanceOffset);
+    }
+
     uint64_t localPlayersArray = 0;
     int32_t localPlayerCount = 0;
     if (gameInstance) {
         localPlayersArray = ds_pubg_read_ptr(gameInstance + kDSPUBGGameInstanceLocalPlayersOffset);
-        ds_pubg_read(gameInstance + kDSPUBGGameInstanceLocalPlayersOffset + 8, &localPlayerCount, sizeof(localPlayerCount));
+        localPlayerCount = ds_pubg_read_i32(gameInstance + kDSPUBGGameInstanceLocalPlayersOffset + 8);
     }
 
     if (!localPlayersArray || localPlayerCount <= 0) {
@@ -299,41 +459,41 @@ static void ds_pubg_tick(void) {
     uint64_t cameraManager = ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerCameraMgrOffset);
     if (!cameraManager) return;
 
+    // In this build of PUBG Mobile, camera is at PlayerCameraManager.ViewTarget.POV (0x10A0 + 0x10)
+    uint64_t pov = cameraManager + kDSPUBGCameraViewTargetOffset + kDSPUBGViewTargetPOVOffset;
     DSPUBGVector camLoc = {};
     DSPUBGRotator camRot = {};
     float camFOV = 90.0f;
-    ds_pubg_read(cameraManager + kDSPUBGCameraPOVLocationOffset, &camLoc, sizeof(camLoc));
-    ds_pubg_read(cameraManager + kDSPUBGCameraPOVRotationOffset, &camRot, sizeof(camRot));
-    ds_pubg_read(cameraManager + kDSPUBGCameraPOVFOVOffset, &camFOV, sizeof(camFOV));
+    float camAspect = 0.0f;
+
+    ds_pubg_read(pov + kDSPUBGPOVLocationOffset, &camLoc, sizeof(camLoc));
+    ds_pubg_read(pov + kDSPUBGPOVRotationOffset, &camRot, sizeof(camRot));
+    ds_pubg_read(pov + kDSPUBGPOVFOVOffset, &camFOV, sizeof(camFOV));
+    ds_pubg_read(pov + kDSPUBGPOVAspectOffset, &camAspect, sizeof(camAspect));
     if (camFOV < 10.0f || camFOV > 170.0f) camFOV = 90.0f;
 
     int32_t localTeamId = -1;
     if (localPawn) {
-        ds_pubg_read(localPawn + kDSPUBGCharacterTeamIDOffset, &localTeamId, sizeof(localTeamId));
+        localTeamId = ds_pubg_read_i32(localPawn + kDSPUBGCharacterTeamIDOffset);
     }
 
-    uint64_t persistentLevel = ds_pubg_read_ptr(world + kDSPUBGWorldPersistentLevelOffset);
-    if (!persistentLevel) return;
-
-    uint64_t actorsData = 0;
-    int32_t actorCount = 0;
-
-    uint64_t actorCluster = ds_pubg_read_ptr(persistentLevel + kDSPUBGLevelActorClusterOffset);
-    if (actorCluster) {
-        actorsData = ds_pubg_read_ptr(actorCluster + kDSPUBGActorClusterActorsOffset);
-        ds_pubg_read(actorCluster + kDSPUBGActorClusterActorsOffset + 8, &actorCount, sizeof(actorCount));
+    // Fast player list via UWorld.GameState -> PlayerArray
+    uint64_t gameState = ds_pubg_read_ptr(world + kDSPUBGWorldGameStateOffset);
+    if (!gameState) {
+        uint64_t gm = ds_pubg_read_ptr(world + kDSPUBGWorldAuthorityGameModeOffset);
+        if (gm) gameState = ds_pubg_read_ptr(gm + kDSPUBGGameModeGameStateOffset);
     }
 
-    if (!actorsData || actorCount <= 0 || actorCount > 4000) {
-        actorsData = ds_pubg_read_ptr(persistentLevel + kDSPUBGLevelDirectActorsFallbackOffset);
-        ds_pubg_read(persistentLevel + kDSPUBGLevelDirectActorsFallbackOffset + 8, &actorCount, sizeof(actorCount));
-    }
+    if (!gameState) return;
 
-    if (!actorsData || actorCount <= 0) return;
+    uint64_t playerArrayData = ds_pubg_read_ptr(gameState + kDSPUBGGameStatePlayerArrayOffset);
+    uint32_t playerCount = ds_pubg_read_u32(gameState + kDSPUBGGameStatePlayerArrayOffset + 8);
 
-    int fetchCount = MIN(actorCount, 512);
-    std::vector<uint64_t> actors(fetchCount, 0);
-    if (!ds_pubg_read(actorsData, actors.data(), fetchCount * sizeof(uint64_t))) {
+    if (!playerArrayData || playerCount == 0) return;
+    if (playerCount > 128) playerCount = 128;
+
+    std::vector<uint64_t> playerStates(playerCount, 0);
+    if (!ds_pubg_read(playerArrayData, playerStates.data(), playerCount * sizeof(uint64_t))) {
         return;
     }
 
@@ -341,75 +501,134 @@ static void ds_pubg_tick(void) {
     float screenW = (float)MAX(screenBounds.size.width, screenBounds.size.height);
     float screenH = (float)MIN(screenBounds.size.width, screenBounds.size.height);
 
+    DSPUBGCamBasis basis = {};
+    if (!ds_pubg_cam_basis_build(camLoc, camRot, camFOV, screenW, screenH, basis)) {
+        return;
+    }
+
     DSPUBGProjectedPlayer staging[kDSPUBGMaxPlayers] = {};
     int publishedCount = 0;
 
-    for (int i = 0; i < fetchCount && publishedCount < kDSPUBGMaxPlayers; i++) {
-        uint64_t actor = actors[i];
-        if (!actor || actor == localPawn) continue;
+    for (uint32_t i = 0; i < playerCount && publishedCount < (uint32_t)kDSPUBGMaxPlayers; i++) {
+        uint64_t ps = playerStates[i];
+        if (!ps || !ds_pubg_valid(ps)) continue;
 
-        uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-        if (!rootComp) continue;
+        uint64_t pawn = ds_pubg_read_ptr(ps + kDSPUBGPlayerStatePawnPrivateOffset);
+        if (!pawn || pawn == localPawn || !ds_pubg_valid(pawn)) continue;
 
-        float health = 0.0f;
-        float healthMax = 0.0f;
-        uint8_t isDead = 0;
-        ds_pubg_read(actor + kDSPUBGCharacterHealthOffset, &health, sizeof(health));
-        ds_pubg_read(actor + kDSPUBGCharacterHealthMaxOffset, &healthMax, sizeof(healthMax));
-        ds_pubg_read(actor + kDSPUBGCharacterDeadOffset, &isDead, sizeof(isDead));
+        uint8_t botByte = ds_pubg_read_u8(ps + kDSPUBGPlayerStateIsABotOffset);
+        bool isAI = (botByte & 0x4) != 0;
+
+        int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
+        if (localTeamId > 0 && teamId == localTeamId) {
+            continue;
+        }
+
+        float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
+        float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
+        uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
 
         if (healthMax < 10.0f || healthMax > 500.0f || isDead || health <= 0.0f) {
             continue;
         }
 
-        int32_t teamId = 0;
-        uint8_t isAI = 0;
-        uint32_t playerKey = 0;
-        ds_pubg_read(actor + kDSPUBGCharacterTeamIDOffset, &teamId, sizeof(teamId));
-        ds_pubg_read(actor + kDSPUBGCharacterIsAIOffset, &isAI, sizeof(isAI));
-        ds_pubg_read(actor + kDSPUBGCharacterPlayerKeyOffset, &playerKey, sizeof(playerKey));
-
-        if (localTeamId > 0 && teamId == localTeamId) {
-            continue;
-        }
+        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
+        if (!rootComp) continue;
 
         DSPUBGVector rootLoc = {};
-        ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc));
+        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
+            continue;
+        }
         if (isnan(rootLoc.X) || isinf(rootLoc.X) || (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f)) {
             continue;
         }
 
-        float feetX = 0, feetY = 0, dist = 0;
-        bool feetVisible = ds_pubg_w2s(rootLoc, camLoc, camRot, camFOV, screenW, screenH, feetX, feetY, dist);
-        if (!feetVisible || dist > g_dspubgMaxDistance) continue;
+        // Attached parent offset
+        uint64_t parent = ds_pubg_read_ptr(rootComp + kDSPUBGSceneCompAttachedParentOffset);
+        if (parent && ds_pubg_valid(parent)) {
+            DSPUBGVector parentLoc = {};
+            if (ds_pubg_read(parent + kDSPUBGSceneCompRelativeLocOffset, &parentLoc, sizeof(parentLoc))) {
+                rootLoc.X += parentLoc.X;
+                rootLoc.Y += parentLoc.Y;
+                rootLoc.Z += parentLoc.Z;
+            }
+        }
 
-        DSPUBGVector headLoc = rootLoc;
-        headLoc.Z += 175.0f;
-        float headX = 0, headY = 0, headDist = 0;
-        ds_pubg_w2s(headLoc, camLoc, camRot, camFOV, screenW, screenH, headX, headY, headDist);
+        // Height from SkeletalMesh bounds (Mesh.Bounds.BoxExtent.Z * 2)
+        float actorH = 175.0f;
+        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
+        if (meshComp && ds_pubg_valid(meshComp)) {
+            float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
+            if (extZ > 30.0f && extZ < 200.0f) {
+                actorH = extZ * 2.0f;
+            }
+        }
 
-        float boxH = fabsf(feetY - headY);
-        if (boxH < 4.0f) boxH = 4.0f;
-        float boxW = boxH * 0.45f;
-        float boxX = headX - boxW * 0.5f;
-        float boxY = MIN(feetY, headY);
+        // Project feet and head (pos = capsule center)
+        DSPUBGVector pos = rootLoc;
+        float halfH = actorH * 0.5f;
+        DSPUBGVector bot = pos; bot.Z -= halfH;
+        DSPUBGVector top = pos; top.Z += halfH;
+
+        float bx = 0, by = 0, bd = 0;
+        float tx = 0, ty = 0, td = 0;
+        bool okB = ds_pubg_cam_basis_project(basis, bot, bx, by, bd);
+        bool okT = ds_pubg_cam_basis_project(basis, top, tx, ty, td);
+
+        float sx = 0, sy = 0, dist = 0;
+        if (!okB && !okT) {
+            if (!ds_pubg_cam_basis_project(basis, pos, sx, sy, dist)) continue;
+        } else {
+            dist = okB ? bd : td;
+        }
+
+        if (dist > g_dspubgMaxDistance) continue;
+
+        float topY = 0, bottomY = 0, boxH = 0, centerX = 0;
+        if (okB && okT) {
+            topY = fminf(ty, by);
+            bottomY = fmaxf(ty, by);
+            boxH = bottomY - topY;
+            centerX = (tx + bx) * 0.5f;
+        } else {
+            float tz = dist * 100.0f;
+            if (tz < 10.0f) tz = 10.0f;
+            boxH = (actorH / tz) * basis.k;
+            topY = sy - boxH * 0.5f;
+            centerX = sx;
+        }
+
+        if (boxH < 8.0f) boxH = 8.0f;
+        if (boxH > screenH * 2.0f) continue;
+        float boxW = boxH * 0.5f;
+        float boxX = centerX - boxW * 0.5f;
+
+        if (centerX + boxW * 0.5f < -60.0f || centerX - boxW * 0.5f > screenW + 60.0f ||
+            topY > screenH + 60.0f || topY + boxH < -60.0f) {
+            continue;
+        }
 
         DSPUBGProjectedPlayer p = {};
         p.screenX = boxX;
-        p.screenY = boxY;
-        p.headX = headX;
-        p.headY = headY;
+        p.screenY = topY;
+        p.headX = centerX;
+        p.headY = topY + boxH * 0.08f;
         p.boxWidth = boxW;
         p.boxHeight = boxH;
         p.distanceMeters = dist;
         p.health = health;
         p.healthMax = healthMax;
         p.teamId = teamId;
-        p.isAI = (isAI != 0);
+        p.isAI = isAI;
         p.isDead = false;
         p.isVisible = true;
-        p.actorPtr = actor;
-        p.playerKey = playerKey;
+        p.actorPtr = pawn;
+        p.playerKey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
+
+        // Read player nickname (FString at character or PlayerState)
+        if (!ds_pubg_read_fstring_nick(pawn + kDSPUBGCharacterPlayerNameOffset, p.name, sizeof(p.name))) {
+            ds_pubg_read_fstring_nick(ps + kDSPUBGPlayerStatePlayerNameOffset, p.name, sizeof(p.name));
+        }
 
         staging[publishedCount++] = p;
     }

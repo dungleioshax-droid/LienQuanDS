@@ -948,6 +948,7 @@ typedef struct {
     bool isVisible;
     uint64_t actorPtr;
     uint32_t playerKey;
+    char name[32];
 } DSPUBGProjectedPlayer;
 
 static const int kDSPUBGMaxPlayers = 40;

@@ -8,7 +8,7 @@
 #import "KGVNHeroIcons/Herolib.h"
 
 static BOOL ds_debug_user_address(uint64_t address) {
-    return address >= 0x100000000ULL && address < 0x1600000000ULL;
+    return address >= 0x100000000ULL && address < 0x300000000000ULL;
 }
 
 typedef struct {
@@ -2743,8 +2743,9 @@ static void ds_hosted_apply_lq(void) {
 
 static CAShapeLayer *g_hostedPUBGBoxLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGLineLayers[kDSPUBGMaxPlayers] = {};
+static CAShapeLayer *g_hostedPUBGHeadDotLayers[kDSPUBGMaxPlayers] = {};
+static CAShapeLayer *g_hostedPUBGAIMarkLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGInfoLabels[kDSPUBGMaxPlayers] = {};
-static CALayer *g_hostedPUBGHealthBgLayers[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -2752,8 +2753,9 @@ static void ds_hosted_pubg_hide_all(void) {
     for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
         if (g_hostedPUBGBoxLayers[i] && !g_hostedPUBGBoxLayers[i].hidden) g_hostedPUBGBoxLayers[i].hidden = YES;
         if (g_hostedPUBGLineLayers[i] && !g_hostedPUBGLineLayers[i].hidden) g_hostedPUBGLineLayers[i].hidden = YES;
+        if (g_hostedPUBGHeadDotLayers[i] && !g_hostedPUBGHeadDotLayers[i].hidden) g_hostedPUBGHeadDotLayers[i].hidden = YES;
+        if (g_hostedPUBGAIMarkLayers[i] && !g_hostedPUBGAIMarkLayers[i].hidden) g_hostedPUBGAIMarkLayers[i].hidden = YES;
         if (g_hostedPUBGInfoLabels[i] && !g_hostedPUBGInfoLabels[i].hidden) g_hostedPUBGInfoLabels[i].hidden = YES;
-        if (g_hostedPUBGHealthBgLayers[i] && !g_hostedPUBGHealthBgLayers[i].hidden) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i] && !g_hostedPUBGHealthBarLayers[i].hidden) g_hostedPUBGHealthBarLayers[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -2787,74 +2789,135 @@ static void ds_hosted_apply_pubg(void) {
         const DSPUBGProjectedPlayer &p = players[i];
         CAShapeLayer *box = g_hostedPUBGBoxLayers[i];
         CAShapeLayer *line = g_hostedPUBGLineLayers[i];
+        CAShapeLayer *headDot = g_hostedPUBGHeadDotLayers[i];
+        CAShapeLayer *aiMark = g_hostedPUBGAIMarkLayers[i];
         CATextLayer *info = g_hostedPUBGInfoLabels[i];
-        CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
         CALayer *hpBar = g_hostedPUBGHealthBarLayers[i];
-        if (!box || !line || !info || !hpBg || !hpBar) continue;
+        if (!box || !line || !info || !hpBar) continue;
 
         if (!p.isVisible || p.screenX < -200 || p.screenX > width + 200 ||
             p.screenY < -200 || p.screenY > height + 200) {
             box.hidden = YES;
             line.hidden = YES;
+            if (headDot) headDot.hidden = YES;
+            if (aiMark) aiMark.hidden = YES;
             info.hidden = YES;
-            hpBg.hidden = YES;
             hpBar.hidden = YES;
             continue;
         }
 
-        if (p.isAI) activeBotCount++;
+        BOOL ai = p.isAI;
+        if (ai) activeBotCount++;
         else activeEnemyCount++;
 
-        CGColorRef color = p.isAI
-            ? [UIColor colorWithRed:0.0 green:0.9 blue:0.45 alpha:0.9].CGColor
-            : [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:0.95].CGColor;
+        // DarkPubg style render colors:
+        // Player: White 0xFFFFFFFF, width 1.5
+        // AI / Bot: Warm Yellow 0xFFFFD040, width 2.0
+        CGColorRef mainColor = ai
+            ? [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor
+            : [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
 
-        // Bounding Box
+        CGFloat centerX = p.screenX + p.boxWidth * 0.5f;
+        CGFloat topY = p.screenY;
+        CGFloat bottomY = p.screenY + p.boxHeight;
+
+        // 1. Bounding Box: Sharp rect, 1.5 width (2.0 for AI)
         CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
-        UIBezierPath *boxPath = [UIBezierPath bezierPathWithRoundedRect:boxRect cornerRadius:2.0];
-        box.path = boxPath.CGPath;
-        box.strokeColor = color;
+        box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
+        box.strokeColor = mainColor;
+        box.lineWidth = ai ? 2.0 : 1.5;
         box.hidden = NO;
 
-        // Snapline from top center
+        // 2. Snapline: from top center (width * 0.5, 25.0) to top center of box
         UIBezierPath *linePath = [UIBezierPath bezierPath];
-        [linePath moveToPoint:CGPointMake(width * 0.5, 0)];
-        [linePath addLineToPoint:CGPointMake(p.headX, p.headY)];
+        [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
+        [linePath addLineToPoint:CGPointMake(centerX, topY)];
         line.path = linePath.CGPath;
-        line.strokeColor = color;
+        line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+        line.lineWidth = 1.2;
         line.hidden = NO;
 
-        // Info text
-        NSString *tag = p.isAI ? @"[BOT]" : [NSString stringWithFormat:@"[T%d]", p.teamId];
-        info.string = [NSString stringWithFormat:@"%@ %.0fm | %.0fHP", tag, p.distanceMeters, p.health];
-        info.frame = CGRectMake(p.screenX - 40.0, p.screenY - 16.0, p.boxWidth + 80.0, 14.0);
-        info.foregroundColor = color;
+        // 3. Head Dot: radius 3.0 at head position
+        if (headDot) {
+            CGFloat headDotX = (p.headX > 0.0f) ? p.headX : centerX;
+            CGFloat headDotY = (p.headY > 0.0f) ? p.headY : (topY + p.boxHeight * 0.08f);
+            CGRect dotRect = CGRectMake(headDotX - 3.0f, headDotY - 3.0f, 6.0f, 6.0f);
+            headDot.path = [UIBezierPath bezierPathWithOvalInRect:dotRect].CGPath;
+            headDot.fillColor = mainColor;
+            headDot.strokeColor = UIColor.clearColor.CGColor;
+            headDot.hidden = NO;
+        }
+
+        // 4. AI Mark: inverted yellow triangle on top of box for AI
+        if (ai && aiMark) {
+            CGFloat tx = centerX;
+            CGFloat ty = topY - 5.0f;
+            UIBezierPath *triPath = [UIBezierPath bezierPath];
+            [triPath moveToPoint:CGPointMake(tx, ty - 9.0f)];
+            [triPath addLineToPoint:CGPointMake(tx - 7.0f, ty)];
+            [triPath addLineToPoint:CGPointMake(tx + 7.0f, ty)];
+            [triPath closePath];
+            aiMark.path = triPath.CGPath;
+            aiMark.fillColor = [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.85].CGColor;
+            aiMark.strokeColor = mainColor;
+            aiMark.lineWidth = 1.0;
+            aiMark.hidden = NO;
+        } else if (aiMark) {
+            aiMark.hidden = YES;
+        }
+
+        // 5. Health bar: left of box, fills from bottom up, NO black background
+        if (p.healthMax > 0 && p.health >= 0) {
+            CGFloat barW = 4.0f;
+            CGFloat pad = 4.0f;
+            CGFloat barX = p.screenX - barW - pad;
+            float hpRatio = p.health / p.healthMax;
+            if (hpRatio < 0.0f) hpRatio = 0.0f;
+            if (hpRatio > 1.0f) hpRatio = 1.0f;
+            CGFloat fillH = p.boxHeight * hpRatio;
+            if (fillH < 1.0f && p.health > 0.0f) fillH = 1.0f;
+
+            hpBar.frame = CGRectMake(barX, topY + p.boxHeight - fillH, barW, fillH);
+            hpBar.backgroundColor = (hpRatio >= 0.60f)
+                ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor  // Green (kQBLColorHpGreen)
+                : ((hpRatio >= 0.30f)
+                    ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor // Yellow (kQBLColorHpYellow)
+                    : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor); // Red (kQBLColorHpRed)
+            hpBar.hidden = NO;
+        } else {
+            hpBar.hidden = YES;
+        }
+
+        // 6. Text label: below box at bottom center (DarkPubg style: [T%d] Nickname\n%.0fm)
+        char labelText[128] = {0};
+        char teamPrefix[32] = {0};
+        if (p.teamId >= 0 && p.teamId <= 200000000) {
+            snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
+        } else if (ai) {
+            snprintf(teamPrefix, sizeof(teamPrefix), "[AI] ");
+        }
+
+        BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
+        if (haveNick) {
+            snprintf(labelText, sizeof(labelText), "%s%s\n%.0fm", teamPrefix, p.name, p.distanceMeters);
+        } else {
+            snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
+        }
+
+        info.string = [NSString stringWithUTF8String:labelText];
+        CGFloat labelW = 160.0f;
+        CGFloat labelH = haveNick ? 28.0f : 16.0f;
+        info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
+        info.foregroundColor = mainColor;
         info.hidden = NO;
-
-        // Health bar on left
-        CGFloat barW = 3.0;
-        CGFloat barH = p.boxHeight;
-        hpBg.frame = CGRectMake(p.screenX - barW - 3.0, p.screenY, barW, barH);
-        hpBg.hidden = NO;
-
-        float hpRatio = p.healthMax > 0 ? (p.health / p.healthMax) : 1.0f;
-        if (hpRatio < 0.0f) hpRatio = 0.0f;
-        if (hpRatio > 1.0f) hpRatio = 1.0f;
-        CGFloat fillH = barH * hpRatio;
-        hpBar.frame = CGRectMake(p.screenX - barW - 3.0, p.screenY + (barH - fillH), barW, fillH);
-        hpBar.backgroundColor = (hpRatio > 0.5f)
-            ? [UIColor colorWithRed:0.2 green:0.85 blue:0.3 alpha:1.0].CGColor
-            : ((hpRatio > 0.2f)
-               ? [UIColor colorWithRed:1.0 green:0.7 blue:0.0 alpha:1.0].CGColor
-               : [UIColor colorWithRed:1.0 green:0.1 blue:0.1 alpha:1.0].CGColor);
-        hpBar.hidden = NO;
     }
 
     for (int i = count; i < kDSPUBGMaxPlayers; i++) {
         if (g_hostedPUBGBoxLayers[i]) g_hostedPUBGBoxLayers[i].hidden = YES;
         if (g_hostedPUBGLineLayers[i]) g_hostedPUBGLineLayers[i].hidden = YES;
+        if (g_hostedPUBGHeadDotLayers[i]) g_hostedPUBGHeadDotLayers[i].hidden = YES;
+        if (g_hostedPUBGAIMarkLayers[i]) g_hostedPUBGAIMarkLayers[i].hidden = YES;
         if (g_hostedPUBGInfoLabels[i]) g_hostedPUBGInfoLabels[i].hidden = YES;
-        if (g_hostedPUBGHealthBgLayers[i]) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i]) g_hostedPUBGHealthBarLayers[i].hidden = YES;
     }
 
@@ -3195,29 +3258,34 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 CAShapeLayer *line = [CAShapeLayer layer];
                 line.actions = noAnim;
                 line.contentsScale = scale;
-                line.lineWidth = 1.0;
+                line.lineWidth = 1.2;
                 line.hidden = YES;
                 [g_hostedLayer addSublayer:line];
                 g_hostedPUBGLineLayers[i] = line;
+
+                CAShapeLayer *headDot = [CAShapeLayer layer];
+                headDot.actions = noAnim;
+                headDot.contentsScale = scale;
+                headDot.hidden = YES;
+                [g_hostedLayer addSublayer:headDot];
+                g_hostedPUBGHeadDotLayers[i] = headDot;
+
+                CAShapeLayer *aiMark = [CAShapeLayer layer];
+                aiMark.actions = noAnim;
+                aiMark.contentsScale = scale;
+                aiMark.hidden = YES;
+                [g_hostedLayer addSublayer:aiMark];
+                g_hostedPUBGAIMarkLayers[i] = aiMark;
 
                 CATextLayer *info = [CATextLayer layer];
                 info.actions = noAnim;
                 info.contentsScale = scale;
                 info.alignmentMode = kCAAlignmentCenter;
-                info.fontSize = 11.0;
-                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+                info.fontSize = 11.5;
+                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
                 info.hidden = YES;
                 [g_hostedLayer addSublayer:info];
                 g_hostedPUBGInfoLabels[i] = info;
-
-                CALayer *hpBg = [CALayer layer];
-                hpBg.actions = noAnim;
-                hpBg.contentsScale = scale;
-                hpBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.6].CGColor;
-                hpBg.cornerRadius = 1.0;
-                hpBg.hidden = YES;
-                [g_hostedLayer addSublayer:hpBg];
-                g_hostedPUBGHealthBgLayers[i] = hpBg;
 
                 CALayer *hpBar = [CALayer layer];
                 hpBar.actions = noAnim;
@@ -3234,8 +3302,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.alignmentMode = kCAAlignmentCenter;
             topLabel.fontSize = 13.0;
             topLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:13.0 weight:UIFontWeightBold];
-            topLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.85 blue:0.0 alpha:0.95].CGColor;
-            topLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.5].CGColor;
+            topLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:1.0].CGColor;
+            topLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55].CGColor;
             topLabel.cornerRadius = 4.0;
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
