@@ -1082,8 +1082,6 @@ static void ds_pubg_tick(void) {
         }
 
         bool isAI = knownBot;
-        uint64_t ps = psHint;
-        if (!ps) ps = ds_pubg_read_ptr(pawn + 0x4D0ULL); // APawn.PlayerState
         if (!isAI && ps && ds_pubg_valid(ps)) {
             uint8_t botByte = ds_pubg_read_u8(ps + kDSPUBGPlayerStateIsABotOffset);
             isAI = (botByte & 0x4) != 0;
