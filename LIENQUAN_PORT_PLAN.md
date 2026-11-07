@@ -60,7 +60,7 @@ dung lai roster cache.
 - `LFramework._battleLogic`: `0x68`
 - `LBattleLogic.gameActorMgr`: `0xF8`
 - `LBattleLogic.HostPlayerId`: `0x88`
-- `LBattleLogic.HostPlayer`: `0x2C0`
+- `LBattleLogic.HostPlayer`: `0x2C8`
 - `LHostPlayer.m_hostPlayerId`: `0x10`
 - `LHostPlayer.m_HostActor`: `0x20`
 - `LGameActorMgr.GameActors`: `0x38`
@@ -76,19 +76,19 @@ dung lai roster cache.
 - `LActorRoot.name`: `0x20`
 - `LActorRoot.mRealObjID`: `0x28`
 - `LActorRoot.TheActorMeta`: `0x58`
-- `LActorRoot._location`: `0xD0`
-- `LActorRoot._forward`: `0xDC`
-- `LActorRoot.ActorControl`: `0x2E8`
-- `LActorRoot.SkillControl`: `0x308`
-- `LActorRoot.ValueComponent`: `0x318`
-- `LActorRoot.EquipComponent`: `0x328`
-- `LActorRoot.ObjLinker`: `0x350`
-- `LActorRoot._gameObject`: `0x3F0`
-- `LActorRoot.isRecycled`: `0x400`
+- `LActorRoot._location`: `0xE0`
+- `LActorRoot._forward`: `0xEC`
+- `LActorRoot.ActorControl`: `0x308`
+- `LActorRoot.SkillControl`: `0x328`
+- `LActorRoot.ValueComponent`: `0x338`
+- `LActorRoot.EquipComponent`: `0x348`
+- `LActorRoot.ObjLinker`: `0x370`
+- `LActorRoot._gameObject`: `0x410`
+- `LActorRoot.isRecycled`: `0x420`
 - `ActorLinker.SkillControl`: `0x18`
 - `ActorLinker.BuffControl`: `0x40`
-- `ActorLinker.mRealObjID`: `0x128`
-- `ActorLinker.<bVisible>`: `0x1BD`
+- `ActorLinker.mRealObjID`: `0x148`
+- `ActorLinker.<bVisible>`: `0x1DD`
 
 `VInt3` dung precision 1000; doi sang world units bang phep chia cho `1000.0f`.
 
