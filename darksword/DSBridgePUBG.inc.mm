@@ -637,7 +637,75 @@ static const int kESPBoneMapD[16] = {
     19, 20, 21
 };
 
-static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector &rootFallback, const DSPUBGVector *local, DSPUBGVector *out) {
+static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
+    if (!meshComp || !ds_pubg_valid(meshComp) || !outC2W) return false;
+    // In UE4 64-bit arm64, USceneComponent RelativeScale3D is at 0x1FC (ends at 0x208).
+    // FTransform is alignas(16), so ComponentToWorld is located at 0x210 (with 8B alignment padding at 0x208).
+    // On packed/unaligned layouts, test 0x210, 0x208, 0x200, 0x220, 0x218.
+    static const uint32_t kCandidates[] = { 0x210, 0x208, 0x200, 0x220, 0x218 };
+    static uint32_t s_cachedC2WOff = 0;
+
+    auto testCandidate = [&](uint32_t off) -> bool {
+        uint8_t buf[48];
+        if (!ds_pubg_read(meshComp + (uint64_t)off, buf, sizeof(buf))) return false;
+
+        float qx = 0, qy = 0, qz = 0, qw = 1.0f;
+        memcpy(&qx, buf + 0x0, 4);
+        memcpy(&qy, buf + 0x4, 4);
+        memcpy(&qz, buf + 0x8, 4);
+        memcpy(&qw, buf + 0xC, 4);
+        float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
+        if (isnan(qlen2) || isinf(qlen2) || qlen2 < 0.6f || qlen2 > 1.5f) return false;
+
+        float tx = 0, ty = 0, tz = 0;
+        memcpy(&tx, buf + 0x10, 4);
+        memcpy(&ty, buf + 0x14, 4);
+        memcpy(&tz, buf + 0x18, 4);
+        if (isnan(tx) || isinf(tx) || isnan(ty) || isinf(ty) || isnan(tz) || isinf(tz)) return false;
+
+        float dX = tx - rootLoc.X;
+        float dY = ty - rootLoc.Y;
+        if (dX * dX + dY * dY > (300.0f * 300.0f)) return false;
+
+        float expectedZ = rootLoc.Z - halfH;
+        if (fabsf(tz - expectedZ) > 250.0f && fabsf(tz - rootLoc.Z) > 250.0f) return false;
+
+        float sx = 1.0f, sy = 1.0f, sz = 1.0f;
+        memcpy(&sx, buf + 0x20, 4);
+        memcpy(&sy, buf + 0x24, 4);
+        memcpy(&sz, buf + 0x28, 4);
+        if (isnan(sx) || isinf(sx) || sx < 0.2f || sx > 5.0f ||
+            isnan(sy) || isinf(sy) || sy < 0.2f || sy > 5.0f ||
+            isnan(sz) || isinf(sz) || sz < 0.2f || sz > 5.0f) return false;
+
+        memcpy(outC2W, buf, 48);
+        return true;
+    };
+
+    if (s_cachedC2WOff != 0 && testCandidate(s_cachedC2WOff)) {
+        return true;
+    }
+
+    for (uint32_t off : kCandidates) {
+        if (off == s_cachedC2WOff) continue;
+        if (testCandidate(off)) {
+            s_cachedC2WOff = off;
+            return true;
+        }
+    }
+
+    if (!ds_pubg_read(meshComp + 0x210ULL, outC2W, 48)) {
+        ds_pubg_read(meshComp + 0x208ULL, outC2W, 48);
+    }
+    return false;
+}
+
+static void ds_pubg_bone_world_from_local(const uint8_t *c2w,
+                                          const DSPUBGVector &rootLoc,
+                                          float halfH,
+                                          const DSPUBGRotator &actorRot,
+                                          const DSPUBGVector *local,
+                                          DSPUBGVector *out) {
     float qx = 0, qy = 0, qz = 0, qw = 1.0f;
     float tx = 0, ty = 0, tz = 0;
     float sx = 1.0f, sy = 1.0f, sz = 1.0f;
@@ -658,23 +726,43 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w, const DSPUBGVector
     if (isnan(sy) || isinf(sy) || sy < 0.01f || sy > 100.0f) sy = 1.0f;
     if (isnan(sz) || isinf(sz) || sz < 0.01f || sz > 100.0f) sz = 1.0f;
 
-    float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
-    if (isnan(qlen2) || isinf(qlen2) || qlen2 < 0.01f || qlen2 > 10.0f) {
-        qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
-    } else {
-        float qlen = sqrtf(qlen2);
-        qx /= qlen; qy /= qlen; qz /= qlen; qw /= qlen;
-    }
-
-    // Translation validation: if c2w translation is uninitialized, local relative, or far from rootFallback, anchor to rootFallback
-    float dX = tx - rootFallback.X;
-    float dY = ty - rootFallback.Y;
+    // Translation validation & anchoring:
+    // In UE4 ACharacter, USkeletalMeshComponent origin is placed at the character feet:
+    // (rootLoc.Z - halfH). Bone Z=0 is feet, Z≈85 is Pelvis, Z≈165 is Head.
+    float meshOriginZ = rootLoc.Z - halfH;
+    float dX = tx - rootLoc.X;
+    float dY = ty - rootLoc.Y;
     float distSq = dX * dX + dY * dY;
     if (isnan(tx) || isinf(tx) || isnan(ty) || isinf(ty) || isnan(tz) || isinf(tz) ||
-        (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (2000.0f * 2000.0f)) {
-        tx = rootFallback.X;
-        ty = rootFallback.Y;
-        tz = rootFallback.Z;
+        (fabsf(tx) < 1.0f && fabsf(ty) < 1.0f) || distSq > (500.0f * 500.0f)) {
+        tx = rootLoc.X;
+        ty = rootLoc.Y;
+        tz = meshOriginZ;
+    } else {
+        // If c2w translation Z is floating at waist (rootLoc.Z) rather than ground level (meshOriginZ),
+        // adjust it down to meshOriginZ so bones don't float above enemy
+        if (fabsf(tz - rootLoc.Z) < 30.0f && fabsf(tz - meshOriginZ) > 30.0f) {
+            tz = meshOriginZ;
+        }
+    }
+
+    // Rotation quaternion validation & fallback:
+    float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
+    bool quatValid = (!isnan(qlen2) && !isinf(qlen2) && qlen2 >= 0.5f && qlen2 <= 2.0f);
+    if (quatValid) {
+        float qlen = sqrtf(qlen2);
+        qx /= qlen; qy /= qlen; qz /= qlen; qw /= qlen;
+    } else if (!isnan(actorRot.Yaw) && !isinf(actorRot.Yaw)) {
+        // In UE4 Character, Mesh is attached with RelativeRotation(0, -90, 0),
+        // so Mesh Yaw = ActorYaw - 90
+        const float kPi = 3.141592653589793f;
+        float radYaw = ((actorRot.Yaw - 90.0f) * kPi / 180.0f) * 0.5f;
+        qx = 0.0f;
+        qy = 0.0f;
+        qz = sinf(radYaw);
+        qw = cosf(radYaw);
+    } else {
+        qx = 0.0f; qy = 0.0f; qz = 0.0f; qw = 1.0f;
     }
 
     float vx = local->X * sx, vy = local->Y * sy, vz = local->Z * sz;
@@ -1143,6 +1231,12 @@ static void ds_pubg_tick(void) {
             }
         }
 
+        DSPUBGRotator actorRot = {};
+        if (!ds_pubg_read(rootComp + 0x1F0ULL, &actorRot, sizeof(actorRot)) ||
+            isnan(actorRot.Yaw) || isinf(actorRot.Yaw) || (actorRot.Pitch == 0.0f && actorRot.Yaw == 0.0f && actorRot.Roll == 0.0f)) {
+            ds_pubg_read(pawn + 0x134ULL, &actorRot, sizeof(actorRot));
+        }
+
         float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
         float actorH = 175.0f;
         if (extZ >= 30.0f && extZ <= 160.0f) {
@@ -1251,15 +1345,11 @@ static void ds_pubg_tick(void) {
                             return (!isnan(z) && !isinf(z)) ? z : -9999.0f;
                         };
 
-                        // Default to standard UE4 rig (Map D: Head 6, Neck 5, Chest 4, Pelvis 1)
-                        // Only use Map G if bone 8 is demonstrably higher than bone 6 (Head is bone 8)
-                        const int *bMap = kESPBoneMapD;
-                        if (needReadCount >= 62 && getBoneZ(8) > getBoneZ(6) + 8.0f) {
-                            bMap = kESPBoneMapG;
-                        }
+                        // Map G is standard 67-bone PUBG Mobile rig; Map D for < 58 bones rig
+                        const int *bMap = (needReadCount >= 58) ? kESPBoneMapG : kESPBoneMapD;
 
                         uint8_t c2w[48] = {0};
-                        ds_pubg_read(meshComp + 0x208ULL, c2w, sizeof(c2w));
+                        ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);
 
                         int okBones = 0;
                         for (int i = 0; i < 16; i++) {
@@ -1275,7 +1365,7 @@ static void ds_pubg_tick(void) {
                                 !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
                                 !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
                                 DSPUBGVector world = {};
-                                ds_pubg_bone_world_from_local(c2w, rootLoc, &localTrans, &world);
+                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &localTrans, &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
                                 if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
