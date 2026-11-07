@@ -95,7 +95,9 @@ static const uint64_t kDSLienQuanBuffCfgSkillIdOffset = 0x08ULL;
 // Assets.Scripts.GameLogic.BuffSkill.GetDuration reads this field directly.
 static const uint64_t kDSLienQuanBuffSkillDurationOffset = 0x20ULL;
 static const uint64_t kDSLienQuanBuffSkillInitStampOffset = 0x50ULL;
-static const uint64_t kDSLienQuanBattleLogicFrameTickOffset = 0x288ULL;
+// dump.cs: NucleusDrive.Logic.LBattleLogic.<LogicFrameTick>k__BackingField
+// @ 0x38 (ulong). 0x288 is <lSeasonGameplaySys> in this build.
+static const uint64_t kDSLienQuanBattleLogicFrameTickOffset = 0x38ULL;
 static const uint64_t kDSLienQuanManagedArrayLengthOffset = 0x10ULL;
 static const uint64_t kDSLienQuanManagedArrayDataOffset = 0x18ULL;
 static const uint64_t kDSLienQuanObjWrapperBehaviorOffset = 0x4CULL;
@@ -105,8 +107,11 @@ static const uint64_t kDSLienQuanIl2CppClassInstanceSizeOffset = 0xF8ULL;
 static const uint64_t kDSLienQuanCameraSystemTypeInfoRva = 0x0D0B5AD8ULL;
 static const uint64_t kDSLienQuanLBattleLogicTypeInfoRva = 0x0D0BB890ULL;
 static const uint64_t kDSLienQuanBattleSingletonMethodInfoRva = 0x0D10D320ULL;
-static const uint64_t kDSLienQuanBattleLogicGameContextOffset = 0x30ULL;
-static const uint64_t kDSLienQuanGameContextLevelContextOffset = 0x08ULL;
+// dump.cs: LBattleLogic.<m_GameInfo>k__BackingField @ 0x18 (LGameBase);
+// LGameBase.GameContext @ 0x28 is the LGameContextBase (a LSLevelContext),
+// which carries iLevelID @ 0x0C and MapType @ 0x18. 0x30 is ActiveAstar.
+static const uint64_t kDSLienQuanBattleLogicGameContextOffset = 0x18ULL;
+static const uint64_t kDSLienQuanGameContextLevelContextOffset = 0x28ULL;
 static const uint64_t kDSLienQuanLevelContextLevelIdOffset = 0x0CULL;
 static const uint64_t kDSLienQuanLevelContextMapTypeOffset = 0x18ULL;
 static const uint64_t kDSLienQuanActorRootTypeInfoRva = 0x0D0BB620ULL;
