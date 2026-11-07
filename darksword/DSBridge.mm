@@ -933,6 +933,12 @@ static int ds_lq_copy_projected_monsters(
 static void ds_lq_overlay_reset(void);
 
 typedef struct {
+    float x;
+    float y;
+    bool valid;
+} DSPUBGJoint;
+
+typedef struct {
     float screenX;
     float screenY;
     float headX;
@@ -951,11 +957,14 @@ typedef struct {
     uint64_t actorPtr;
     uint32_t playerKey;
     char name[32];
+    bool hasSkeleton;
+    DSPUBGJoint skeleton[16];
 } DSPUBGProjectedPlayer;
 
 static const int kDSPUBGMaxPlayers = 60;
 static float g_dspubgMaxDistance = 400.0f;
 static BOOL g_pubgEspBox = YES;
+static BOOL g_pubgEspSkeleton = YES;
 static BOOL g_pubgEspLine = YES;
 static BOOL g_pubgEspHeadDot = YES;
 static BOOL g_pubgEspHealth = YES;

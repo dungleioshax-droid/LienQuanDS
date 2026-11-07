@@ -1013,6 +1013,7 @@ static void ds_pubg_tick(void) {
         }
 
         float actorH = 175.0f;
+        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
         if (meshComp && ds_pubg_valid(meshComp)) {
             float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
             if (extZ > 30.0f && extZ < 200.0f) {
@@ -1099,6 +1100,58 @@ static void ds_pubg_tick(void) {
         }
         if (p.name[0] == '\0') {
             strncpy(p.name, isAI ? "Bot" : "Enemy", sizeof(p.name) - 1);
+        }
+
+        // 3D Humanoid Skeleton Projection (16 joints, 14 bone links)
+        p.hasSkeleton = false;
+        if (g_pubgEspSkeleton) {
+            DSPUBGVector rVec = { basis.m10, basis.m11, basis.m12 }; // Camera Right
+            float sw = actorH * 0.12f;
+            float ew = actorH * 0.16f;
+            float hipW = actorH * 0.08f;
+            float kw = actorH * 0.09f;
+            float fw = actorH * 0.10f;
+
+            DSPUBGVector joints3D[16];
+            // 0: Head, 1: Neck, 2: Chest, 3: Pelvis
+            joints3D[0] = { pos.X, pos.Y, pos.Z + halfH - (actorH * 0.08f) };
+            joints3D[1] = { pos.X, pos.Y, pos.Z + halfH - (actorH * 0.18f) };
+            joints3D[2] = { pos.X, pos.Y, pos.Z + halfH - (actorH * 0.36f) };
+            joints3D[3] = { pos.X, pos.Y, pos.Z - (actorH * 0.04f) };
+
+            // 4: L Shoulder, 5: L Elbow, 6: L Hand
+            joints3D[4] = { joints3D[1].X - rVec.X * sw, joints3D[1].Y - rVec.Y * sw, joints3D[1].Z - (actorH * 0.02f) };
+            joints3D[5] = { joints3D[4].X - rVec.X * (ew - sw), joints3D[4].Y - rVec.Y * (ew - sw), joints3D[2].Z - (actorH * 0.06f) };
+            joints3D[6] = { joints3D[5].X, joints3D[5].Y, joints3D[3].Z };
+
+            // 7: R Shoulder, 8: R Elbow, 9: R Hand
+            joints3D[7] = { joints3D[1].X + rVec.X * sw, joints3D[1].Y + rVec.Y * sw, joints3D[1].Z - (actorH * 0.02f) };
+            joints3D[8] = { joints3D[7].X + rVec.X * (ew - sw), joints3D[7].Y + rVec.Y * (ew - sw), joints3D[2].Z - (actorH * 0.06f) };
+            joints3D[9] = { joints3D[8].X, joints3D[8].Y, joints3D[3].Z };
+
+            // 10: L Hip, 11: L Knee, 12: L Foot
+            joints3D[10] = { joints3D[3].X - rVec.X * hipW, joints3D[3].Y - rVec.Y * hipW, joints3D[3].Z };
+            joints3D[11] = { joints3D[10].X - rVec.X * (kw - hipW), joints3D[10].Y - rVec.Y * (kw - hipW), pos.Z - halfH + (actorH * 0.28f) };
+            joints3D[12] = { joints3D[11].X - rVec.X * (fw - kw), joints3D[11].Y - rVec.Y * (fw - kw), pos.Z - halfH + (actorH * 0.04f) };
+
+            // 13: R Hip, 14: R Knee, 15: R Foot
+            joints3D[13] = { joints3D[3].X + rVec.X * hipW, joints3D[3].Y + rVec.Y * hipW, joints3D[3].Z };
+            joints3D[14] = { joints3D[13].X + rVec.X * (kw - hipW), joints3D[13].Y + rVec.Y * (kw - hipW), pos.Z - halfH + (actorH * 0.28f) };
+            joints3D[15] = { joints3D[14].X + rVec.X * (fw - kw), joints3D[14].Y + rVec.Y * (fw - kw), pos.Z - halfH + (actorH * 0.04f) };
+
+            bool validSkeleton = true;
+            for (int k = 0; k < 16; k++) {
+                float jx = 0, jy = 0, jd = 0;
+                if (ds_pubg_cam_basis_project(basis, joints3D[k], jx, jy, jd)) {
+                    p.skeleton[k].x = jx;
+                    p.skeleton[k].y = jy;
+                    p.skeleton[k].valid = true;
+                } else {
+                    p.skeleton[k].valid = false;
+                    if (k <= 3) validSkeleton = false;
+                }
+            }
+            p.hasSkeleton = validSkeleton;
         }
 
         if (publishedCount < kDSPUBGMaxPlayers) {

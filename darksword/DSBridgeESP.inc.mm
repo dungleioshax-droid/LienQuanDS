@@ -921,6 +921,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     // PUBG ESP controls
     UILabel *_pubgBoxLabel;
     UISwitch *_pubgBoxSwitch;
+    UILabel *_pubgSkeletonLabel;
+    UISwitch *_pubgSkeletonSwitch;
     UILabel *_pubgLineLabel;
     UISwitch *_pubgLineSwitch;
     UILabel *_pubgHealthLabel;
@@ -956,15 +958,17 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [self.view addSubview:_contentView];
 
     _panelView = [[UIView alloc] initWithFrame:CGRectZero];
-    _panelView.backgroundColor = [UIColor colorWithWhite:0.04 alpha:0.72];
-    _panelView.layer.cornerRadius = 8.0;
+    _panelView.backgroundColor = [UIColor colorWithRed:18/255.0 green:22/255.0 blue:30/255.0 alpha:0.92];
+    _panelView.layer.cornerRadius = 14.0;
+    _panelView.layer.borderWidth = 1.0;
+    _panelView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
     _panelView.layer.masksToBounds = YES;
     [_contentView addSubview:_panelView];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.text = @"LQ Tools";
-    _titleLabel.textColor = UIColor.whiteColor;
-    _titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightSemibold];
+    _titleLabel.text = @"⚡ DARKTOOLS";
+    _titleLabel.textColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+    _titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold];
     _titleLabel.userInteractionEnabled = YES;
     UIPanGestureRecognizer *titlePan = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(dsMenuPanelPanned:)];
@@ -972,15 +976,18 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [_panelView addSubview:_titleLabel];
 
     _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _closeButton.tintColor = UIColor.whiteColor;
+    _closeButton.tintColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    _closeButton.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.12];
+    _closeButton.layer.cornerRadius = 13.0;
+    _closeButton.layer.masksToBounds = YES;
     UIImage *closeImage = [UIImage systemImageNamed:@"xmark"];
     if (closeImage) {
         closeImage = [closeImage imageByApplyingSymbolConfiguration:
-            [UIImageSymbolConfiguration configurationWithPointSize:13.0
-                                                             weight:UIImageSymbolWeightSemibold]];
+            [UIImageSymbolConfiguration configurationWithPointSize:11.0
+                                                             weight:UIImageSymbolWeightBold]];
         [_closeButton setImage:closeImage forState:UIControlStateNormal];
     } else {
-        [_closeButton setTitle:@"X" forState:UIControlStateNormal];
+        [_closeButton setTitle:@"✕" forState:UIControlStateNormal];
         [_closeButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     }
     [_closeButton addTarget:self action:@selector(dsCloseTapped:)
@@ -1152,7 +1159,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     auto pubgCreateSwitch = ^(SEL sel) {
         UISwitch *s = [[UISwitch alloc] initWithFrame:CGRectZero];
         s.onTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-        s.transform = CGAffineTransformMakeScale(0.72, 0.72);
+        s.transform = CGAffineTransformMakeScale(0.68, 0.68);
         [s addTarget:self action:sel forControlEvents:UIControlEventValueChanged];
         [_panelView addSubview:s];
         return s;
@@ -1160,30 +1167,33 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     auto pubgCreateLabel = ^(NSString *text) {
         UILabel *l = [[UILabel alloc] initWithFrame:CGRectZero];
         l.text = text;
-        l.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
-        l.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
+        l.textColor = [UIColor colorWithWhite:1.0 alpha:0.92];
+        l.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium];
         [_panelView addSubview:l];
         return l;
     };
 
     _pubgBoxLabel = pubgCreateLabel(@"Box");
     _pubgBoxSwitch = pubgCreateSwitch(@selector(dsPubgBoxChanged:));
+    _pubgSkeletonLabel = pubgCreateLabel(@"Xương");
+    _pubgSkeletonSwitch = pubgCreateSwitch(@selector(dsPubgSkeletonChanged:));
+
     _pubgLineLabel = pubgCreateLabel(@"Line");
     _pubgLineSwitch = pubgCreateSwitch(@selector(dsPubgLineChanged:));
-
-    _pubgHealthLabel = pubgCreateLabel(@"HP");
-    _pubgHealthSwitch = pubgCreateSwitch(@selector(dsPubgHealthChanged:));
     _pubgHeadDotLabel = pubgCreateLabel(@"Head");
     _pubgHeadDotSwitch = pubgCreateSwitch(@selector(dsPubgHeadDotChanged:));
 
-    _pubgNameLabel = pubgCreateLabel(@"Name");
+    _pubgHealthLabel = pubgCreateLabel(@"HP Ngang");
+    _pubgHealthSwitch = pubgCreateSwitch(@selector(dsPubgHealthChanged:));
+    _pubgNameLabel = pubgCreateLabel(@"Tên");
     _pubgNameSwitch = pubgCreateSwitch(@selector(dsPubgNameChanged:));
-    _pubgDistLabel = pubgCreateLabel(@"Dist");
-    _pubgDistSwitch = pubgCreateSwitch(@selector(dsPubgDistChanged:));
 
-    _pubgBotLabel = pubgCreateLabel(@"Bot");
+    _pubgDistLabel = pubgCreateLabel(@"Khoảng cách");
+    _pubgDistSwitch = pubgCreateSwitch(@selector(dsPubgDistChanged:));
+    _pubgBotLabel = pubgCreateLabel(@"Hiện Bot");
     _pubgBotSwitch = pubgCreateSwitch(@selector(dsPubgBotChanged:));
-    _pubgVehicleLabel = pubgCreateLabel(@"Car");
+
+    _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
 
     _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -1244,6 +1254,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _zoomSlider.value = g_dspubgMaxDistance;
         if ([defaults objectForKey:@"pubg_box"] != nil) g_pubgEspBox = [defaults boolForKey:@"pubg_box"];
         _pubgBoxSwitch.on = g_pubgEspBox;
+        if ([defaults objectForKey:@"pubg_skeleton"] != nil) g_pubgEspSkeleton = [defaults boolForKey:@"pubg_skeleton"];
+        _pubgSkeletonSwitch.on = g_pubgEspSkeleton;
         if ([defaults objectForKey:@"pubg_line"] != nil) g_pubgEspLine = [defaults boolForKey:@"pubg_line"];
         _pubgLineSwitch.on = g_pubgEspLine;
         if ([defaults objectForKey:@"pubg_health"] != nil) g_pubgEspHealth = [defaults boolForKey:@"pubg_health"];
@@ -1301,8 +1313,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsLayoutMenu {
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
-    CGFloat panelW = MIN((CGFloat)300.0, MAX((CGFloat)250.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 230.0 : 311.0;
+    CGFloat panelW = MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
+    CGFloat panelH = (ds_active_game() == 1) ? 264.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1339,15 +1351,15 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGFloat panelY = panelAnchor.y - panelH * 0.5;
     _panelView.frame = CGRectMake(panelX, panelY, panelW, panelH);
     CGRect panelBounds = _panelView.bounds;
-    _titleLabel.frame = CGRectMake(13.0, 8.0,
+    _titleLabel.frame = CGRectMake(14.0, 8.0,
                                     CGRectGetWidth(panelBounds) - 58.0, 26.0);
-    _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 40.0, 4.0,
-                                    34.0, 34.0);
-    _espLabel.frame = CGRectMake(13.0, 42.0, 90.0, 20.0);
-    _espSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 37.0, 51.0, 31.0);
+    _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 34.0, 8.0,
+                                    26.0, 26.0);
+    _espLabel.frame = CGRectMake(14.0, 40.0, 90.0, 20.0);
+    _espSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 35.0, 51.0, 31.0);
 
     if (ds_active_game() == 1) {
-        _titleLabel.text = @"PUBG Tools";
+        _titleLabel.text = @"⚡ PUBG Tools";
         _enableLabel.hidden = YES;
         _enableSwitch.hidden = YES;
         _autoSmiteLabel.hidden = YES;
@@ -1368,6 +1380,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
         _pubgBoxLabel.hidden = NO;
         _pubgBoxSwitch.hidden = NO;
+        _pubgSkeletonLabel.hidden = NO;
+        _pubgSkeletonSwitch.hidden = NO;
         _pubgLineLabel.hidden = NO;
         _pubgLineSwitch.hidden = NO;
         _pubgHealthLabel.hidden = NO;
@@ -1383,52 +1397,59 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgVehicleLabel.hidden = NO;
         _pubgVehicleSwitch.hidden = NO;
 
-        CGFloat col1LX = 13.0;
-        CGFloat col1SX = 68.0;
-        CGFloat col2LX = 142.0;
-        CGFloat col2SX = 197.0;
-        CGFloat lblW = 50.0;
+        CGFloat col1LX = 14.0;
+        CGFloat col1SX = 88.0;
+        CGFloat col2LX = 162.0;
+        CGFloat col2SX = 236.0;
+        CGFloat lblW = 72.0;
 
-        // Row 1: Box & Line
+        // Row 1: Box & Xương
         CGFloat y0 = 68.0;
         _pubgBoxLabel.frame = CGRectMake(col1LX, y0 + 5.0, lblW, 18.0);
         _pubgBoxSwitch.frame = CGRectMake(col1SX, y0, 51.0, 31.0);
-        _pubgLineLabel.frame = CGRectMake(col2LX, y0 + 5.0, lblW, 18.0);
-        _pubgLineSwitch.frame = CGRectMake(col2SX, y0, 51.0, 31.0);
+        _pubgSkeletonLabel.frame = CGRectMake(col2LX, y0 + 5.0, lblW, 18.0);
+        _pubgSkeletonSwitch.frame = CGRectMake(col2SX, y0, 51.0, 31.0);
 
-        // Row 2: HP & Head Dot
+        // Row 2: Line & Head Dot
         CGFloat y1 = 98.0;
-        _pubgHealthLabel.frame = CGRectMake(col1LX, y1 + 5.0, lblW, 18.0);
-        _pubgHealthSwitch.frame = CGRectMake(col1SX, y1, 51.0, 31.0);
+        _pubgLineLabel.frame = CGRectMake(col1LX, y1 + 5.0, lblW, 18.0);
+        _pubgLineSwitch.frame = CGRectMake(col1SX, y1, 51.0, 31.0);
         _pubgHeadDotLabel.frame = CGRectMake(col2LX, y1 + 5.0, lblW, 18.0);
         _pubgHeadDotSwitch.frame = CGRectMake(col2SX, y1, 51.0, 31.0);
 
-        // Row 3: Name & Dist
+        // Row 3: HP Ngang & Tên
         CGFloat y2 = 128.0;
-        _pubgNameLabel.frame = CGRectMake(col1LX, y2 + 5.0, lblW, 18.0);
-        _pubgNameSwitch.frame = CGRectMake(col1SX, y2, 51.0, 31.0);
-        _pubgDistLabel.frame = CGRectMake(col2LX, y2 + 5.0, lblW, 18.0);
-        _pubgDistSwitch.frame = CGRectMake(col2SX, y2, 51.0, 31.0);
+        _pubgHealthLabel.frame = CGRectMake(col1LX, y2 + 5.0, lblW, 18.0);
+        _pubgHealthSwitch.frame = CGRectMake(col1SX, y2, 51.0, 31.0);
+        _pubgNameLabel.frame = CGRectMake(col2LX, y2 + 5.0, lblW, 18.0);
+        _pubgNameSwitch.frame = CGRectMake(col2SX, y2, 51.0, 31.0);
 
-        // Row 4: Bot & Vehicle
+        // Row 4: Khoảng cách & Hiện Bot
         CGFloat y3 = 158.0;
-        _pubgBotLabel.frame = CGRectMake(col1LX, y3 + 5.0, lblW, 18.0);
-        _pubgBotSwitch.frame = CGRectMake(col1SX, y3, 51.0, 31.0);
-        _pubgVehicleLabel.frame = CGRectMake(col2LX, y3 + 5.0, lblW, 18.0);
-        _pubgVehicleSwitch.frame = CGRectMake(col2SX, y3, 51.0, 31.0);
+        _pubgDistLabel.frame = CGRectMake(col1LX, y3 + 5.0, lblW, 18.0);
+        _pubgDistSwitch.frame = CGRectMake(col1SX, y3, 51.0, 31.0);
+        _pubgBotLabel.frame = CGRectMake(col2LX, y3 + 5.0, lblW, 18.0);
+        _pubgBotSwitch.frame = CGRectMake(col2SX, y3, 51.0, 31.0);
 
-        // Row 5: Scan Distance Slider
-        CGFloat y4 = 192.0;
+        // Row 5: Hiện Xe
+        CGFloat y4 = 188.0;
+        _pubgVehicleLabel.frame = CGRectMake(col1LX, y4 + 5.0, lblW, 18.0);
+        _pubgVehicleSwitch.frame = CGRectMake(col1SX, y4, 51.0, 31.0);
+
+        // Row 6: Scan Distance Slider
+        CGFloat y5 = 222.0;
         _zoomLabel.text = @"Scan";
         _zoomLabel.hidden = NO;
         _zoomValueLabel.hidden = NO;
         _zoomSlider.hidden = NO;
-        _zoomLabel.frame = CGRectMake(13.0, y4 + 3.0, 42.0, 20.0);
-        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, y4 + 3.0, 46.0, 20.0);
-        _zoomSlider.frame = CGRectMake(58.0, y4, CGRectGetWidth(panelBounds) - 120.0, 26.0);
+        _zoomLabel.frame = CGRectMake(14.0, y5 + 3.0, 42.0, 20.0);
+        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, y5 + 3.0, 46.0, 20.0);
+        _zoomSlider.frame = CGRectMake(58.0, y5, CGRectGetWidth(panelBounds) - 120.0, 26.0);
     } else {
         _pubgBoxLabel.hidden = YES;
         _pubgBoxSwitch.hidden = YES;
+        _pubgSkeletonLabel.hidden = YES;
+        _pubgSkeletonSwitch.hidden = YES;
         _pubgLineLabel.hidden = YES;
         _pubgLineSwitch.hidden = YES;
         _pubgHealthLabel.hidden = YES;
@@ -1614,6 +1635,11 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsPubgBoxChanged:(UISwitch *)sender {
     g_pubgEspBox = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_box"];
+}
+
+- (void)dsPubgSkeletonChanged:(UISwitch *)sender {
+    g_pubgEspSkeleton = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_skeleton"];
 }
 
 - (void)dsPubgLineChanged:(UISwitch *)sender {
@@ -2922,20 +2948,24 @@ static void ds_hosted_apply_lq(void) {
 #pragma mark - PUBG ESP render
 
 static CAShapeLayer *g_hostedPUBGBoxLayers[kDSPUBGMaxPlayers] = {};
+static CAShapeLayer *g_hostedPUBGSkeletonLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGLineLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGHeadDotLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGAIMarkLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGInfoLabels[kDSPUBGMaxPlayers] = {};
+static CALayer *g_hostedPUBGHealthBgLayers[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
 static void ds_hosted_pubg_hide_all(void) {
     for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
         if (g_hostedPUBGBoxLayers[i] && !g_hostedPUBGBoxLayers[i].hidden) g_hostedPUBGBoxLayers[i].hidden = YES;
+        if (g_hostedPUBGSkeletonLayers[i] && !g_hostedPUBGSkeletonLayers[i].hidden) g_hostedPUBGSkeletonLayers[i].hidden = YES;
         if (g_hostedPUBGLineLayers[i] && !g_hostedPUBGLineLayers[i].hidden) g_hostedPUBGLineLayers[i].hidden = YES;
         if (g_hostedPUBGHeadDotLayers[i] && !g_hostedPUBGHeadDotLayers[i].hidden) g_hostedPUBGHeadDotLayers[i].hidden = YES;
         if (g_hostedPUBGAIMarkLayers[i] && !g_hostedPUBGAIMarkLayers[i].hidden) g_hostedPUBGAIMarkLayers[i].hidden = YES;
         if (g_hostedPUBGInfoLabels[i] && !g_hostedPUBGInfoLabels[i].hidden) g_hostedPUBGInfoLabels[i].hidden = YES;
+        if (g_hostedPUBGHealthBgLayers[i] && !g_hostedPUBGHealthBgLayers[i].hidden) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i] && !g_hostedPUBGHealthBarLayers[i].hidden) g_hostedPUBGHealthBarLayers[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -2969,20 +2999,24 @@ static void ds_hosted_apply_pubg(void) {
     for (int i = 0; i < count; i++) {
         const DSPUBGProjectedPlayer &p = players[i];
         CAShapeLayer *box = g_hostedPUBGBoxLayers[i];
+        CAShapeLayer *skel = g_hostedPUBGSkeletonLayers[i];
         CAShapeLayer *line = g_hostedPUBGLineLayers[i];
         CAShapeLayer *headDot = g_hostedPUBGHeadDotLayers[i];
         CAShapeLayer *aiMark = g_hostedPUBGAIMarkLayers[i];
         CATextLayer *info = g_hostedPUBGInfoLabels[i];
+        CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
         CALayer *hpBar = g_hostedPUBGHealthBarLayers[i];
         if (!box || !line || !info || !hpBar) continue;
 
         if (!p.isVisible || p.screenX < -200 || p.screenX > width + 200 ||
             p.screenY < -200 || p.screenY > height + 200) {
             box.hidden = YES;
+            if (skel) skel.hidden = YES;
             line.hidden = YES;
             if (headDot) headDot.hidden = YES;
             if (aiMark) aiMark.hidden = YES;
             info.hidden = YES;
+            if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
             continue;
         }
@@ -2993,19 +3027,23 @@ static void ds_hosted_apply_pubg(void) {
         // Honor user filters
         if (ai && !g_pubgEspBot) {
             box.hidden = YES;
+            if (skel) skel.hidden = YES;
             line.hidden = YES;
             if (headDot) headDot.hidden = YES;
             if (aiMark) aiMark.hidden = YES;
             info.hidden = YES;
+            if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
             continue;
         }
         if (vehicle && !g_pubgEspVehicle) {
             box.hidden = YES;
+            if (skel) skel.hidden = YES;
             line.hidden = YES;
             if (headDot) headDot.hidden = YES;
             if (aiMark) aiMark.hidden = YES;
             info.hidden = YES;
+            if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
             continue;
         }
@@ -3042,14 +3080,14 @@ static void ds_hosted_apply_pubg(void) {
             box.hidden = YES;
         }
 
-        // 2. Snapline:
-        if (g_pubgEspLine) {
+        // 2. Snapline: Only for players and bots, NOT for vehicles ("bỏ cái Line xe đi")
+        if (g_pubgEspLine && !vehicle) {
             UIBezierPath *linePath = [UIBezierPath bezierPath];
             [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
             line.path = linePath.CGPath;
-            line.strokeColor = vehicle
-                ? [UIColor colorWithRed:0.0 green:229.0/255.0 blue:255.0/255.0 alpha:0.75].CGColor
+            line.strokeColor = ai
+                ? [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.85].CGColor
                 : [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
             line.lineWidth = 1.2;
             line.hidden = NO;
@@ -3088,18 +3126,23 @@ static void ds_hosted_apply_pubg(void) {
             aiMark.hidden = YES;
         }
 
-        // 5. Health bar:
+        // 5. Horizontal Health Bar (Máu ngang kiểu thanh nằm trên đầu)
         if (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0) {
-            CGFloat barW = 4.0f;
-            CGFloat pad = 4.0f;
-            CGFloat barX = p.screenX - barW - pad;
+            CGFloat barH = 3.5f;
+            CGFloat barY = topY - barH - 3.0f; // nằm ngay phía trên đầu / box
+            CGFloat barW = p.boxWidth;
             float hpRatio = p.health / p.healthMax;
             if (hpRatio < 0.0f) hpRatio = 0.0f;
             if (hpRatio > 1.0f) hpRatio = 1.0f;
-            CGFloat fillH = p.boxHeight * hpRatio;
-            if (fillH < 1.0f && p.health > 0.0f) fillH = 1.0f;
+            CGFloat fillW = barW * hpRatio;
+            if (fillW < 1.0f && p.health > 0.0f) fillW = 1.0f;
 
-            hpBar.frame = CGRectMake(barX, topY + p.boxHeight - fillH, barW, fillH);
+            if (hpBg) {
+                hpBg.frame = CGRectMake(p.screenX - 0.5f, barY - 0.5f, barW + 1.0f, barH + 1.0f);
+                hpBg.hidden = NO;
+            }
+
+            hpBar.frame = CGRectMake(p.screenX, barY, fillW, barH);
             if (vehicle) {
                 hpBar.backgroundColor = (hpRatio >= 0.50f)
                     ? [UIColor colorWithRed:0.0 green:229.0/255.0 blue:255.0/255.0 alpha:1.0].CGColor
@@ -3113,6 +3156,7 @@ static void ds_hosted_apply_pubg(void) {
             }
             hpBar.hidden = NO;
         } else {
+            if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
         }
 
@@ -3157,14 +3201,42 @@ static void ds_hosted_apply_pubg(void) {
         } else {
             info.hidden = YES;
         }
+
+        // 7. Skeleton ESP (Hiện xương kết nối 14 đốt xương)
+        if (g_pubgEspSkeleton && p.hasSkeleton && !vehicle && skel) {
+            UIBezierPath *skelPath = [UIBezierPath bezierPath];
+            static const int bonePairs[14][2] = {
+                {1, 0}, {1, 2}, {2, 3},
+                {1, 4}, {4, 5}, {5, 6},
+                {1, 7}, {7, 8}, {8, 9},
+                {3, 10}, {10, 11}, {11, 12},
+                {3, 13}, {13, 14}, {14, 15}
+            };
+            for (int b = 0; b < 14; b++) {
+                int u = bonePairs[b][0];
+                int v = bonePairs[b][1];
+                if (p.skeleton[u].valid && p.skeleton[v].valid) {
+                    [skelPath moveToPoint:CGPointMake(p.skeleton[u].x, p.skeleton[u].y)];
+                    [skelPath addLineToPoint:CGPointMake(p.skeleton[v].x, p.skeleton[v].y)];
+                }
+            }
+            skel.path = skelPath.CGPath;
+            skel.strokeColor = mainColor;
+            skel.lineWidth = 1.2;
+            skel.hidden = NO;
+        } else if (skel) {
+            skel.hidden = YES;
+        }
     }
 
     for (int i = count; i < kDSPUBGMaxPlayers; i++) {
         if (g_hostedPUBGBoxLayers[i]) g_hostedPUBGBoxLayers[i].hidden = YES;
+        if (g_hostedPUBGSkeletonLayers[i]) g_hostedPUBGSkeletonLayers[i].hidden = YES;
         if (g_hostedPUBGLineLayers[i]) g_hostedPUBGLineLayers[i].hidden = YES;
         if (g_hostedPUBGHeadDotLayers[i]) g_hostedPUBGHeadDotLayers[i].hidden = YES;
         if (g_hostedPUBGAIMarkLayers[i]) g_hostedPUBGAIMarkLayers[i].hidden = YES;
         if (g_hostedPUBGInfoLabels[i]) g_hostedPUBGInfoLabels[i].hidden = YES;
+        if (g_hostedPUBGHealthBgLayers[i]) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i]) g_hostedPUBGHealthBarLayers[i].hidden = YES;
     }
 
@@ -3510,6 +3582,15 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [g_hostedLayer addSublayer:box];
                 g_hostedPUBGBoxLayers[i] = box;
 
+                CAShapeLayer *skel = [CAShapeLayer layer];
+                skel.actions = noAnim;
+                skel.contentsScale = scale;
+                skel.fillColor = UIColor.clearColor.CGColor;
+                skel.lineWidth = 1.2;
+                skel.hidden = YES;
+                [g_hostedLayer addSublayer:skel];
+                g_hostedPUBGSkeletonLayers[i] = skel;
+
                 CAShapeLayer *line = [CAShapeLayer layer];
                 line.actions = noAnim;
                 line.contentsScale = scale;
@@ -3542,10 +3623,19 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [g_hostedLayer addSublayer:info];
                 g_hostedPUBGInfoLabels[i] = info;
 
+                CALayer *hpBg = [CALayer layer];
+                hpBg.actions = noAnim;
+                hpBg.contentsScale = scale;
+                hpBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65].CGColor;
+                hpBg.cornerRadius = 1.5;
+                hpBg.hidden = YES;
+                [g_hostedLayer addSublayer:hpBg];
+                g_hostedPUBGHealthBgLayers[i] = hpBg;
+
                 CALayer *hpBar = [CALayer layer];
                 hpBar.actions = noAnim;
                 hpBar.contentsScale = scale;
-                hpBar.cornerRadius = 1.0;
+                hpBar.cornerRadius = 1.5;
                 hpBar.hidden = YES;
                 [g_hostedLayer addSublayer:hpBar];
                 g_hostedPUBGHealthBarLayers[i] = hpBar;
