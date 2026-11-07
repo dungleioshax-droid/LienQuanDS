@@ -946,13 +946,23 @@ typedef struct {
     bool isAI;
     bool isDead;
     bool isVisible;
+    bool isVehicle;
+    float fuel;
     uint64_t actorPtr;
     uint32_t playerKey;
     char name[32];
 } DSPUBGProjectedPlayer;
 
-static const int kDSPUBGMaxPlayers = 40;
+static const int kDSPUBGMaxPlayers = 60;
 static float g_dspubgMaxDistance = 400.0f;
+static BOOL g_pubgEspBox = YES;
+static BOOL g_pubgEspLine = YES;
+static BOOL g_pubgEspHeadDot = YES;
+static BOOL g_pubgEspHealth = YES;
+static BOOL g_pubgEspName = YES;
+static BOOL g_pubgEspDist = YES;
+static BOOL g_pubgEspBot = YES;
+static BOOL g_pubgEspVehicle = YES;
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);

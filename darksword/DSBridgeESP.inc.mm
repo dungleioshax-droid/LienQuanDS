@@ -918,6 +918,23 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UIButton *_minimapYPlusButton;
     UILabel *_minimapYValueLabel;
     UIButton *_resetButton;
+    // PUBG ESP controls
+    UILabel *_pubgBoxLabel;
+    UISwitch *_pubgBoxSwitch;
+    UILabel *_pubgLineLabel;
+    UISwitch *_pubgLineSwitch;
+    UILabel *_pubgHealthLabel;
+    UISwitch *_pubgHealthSwitch;
+    UILabel *_pubgHeadDotLabel;
+    UISwitch *_pubgHeadDotSwitch;
+    UILabel *_pubgNameLabel;
+    UISwitch *_pubgNameSwitch;
+    UILabel *_pubgDistLabel;
+    UISwitch *_pubgDistSwitch;
+    UILabel *_pubgBotLabel;
+    UISwitch *_pubgBotSwitch;
+    UILabel *_pubgVehicleLabel;
+    UISwitch *_pubgVehicleSwitch;
     CGPoint _buttonAnchorUnit;
     CGPoint _panelAnchorUnit;
     CGPoint _dragStartAnchor;
@@ -1132,6 +1149,43 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [_resetButton addTarget:self action:@selector(dsResetTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_panelView addSubview:_resetButton];
 
+    auto pubgCreateSwitch = ^(SEL sel) {
+        UISwitch *s = [[UISwitch alloc] initWithFrame:CGRectZero];
+        s.onTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+        s.transform = CGAffineTransformMakeScale(0.72, 0.72);
+        [s addTarget:self action:sel forControlEvents:UIControlEventValueChanged];
+        [_panelView addSubview:s];
+        return s;
+    };
+    auto pubgCreateLabel = ^(NSString *text) {
+        UILabel *l = [[UILabel alloc] initWithFrame:CGRectZero];
+        l.text = text;
+        l.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
+        l.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
+        [_panelView addSubview:l];
+        return l;
+    };
+
+    _pubgBoxLabel = pubgCreateLabel(@"Box");
+    _pubgBoxSwitch = pubgCreateSwitch(@selector(dsPubgBoxChanged:));
+    _pubgLineLabel = pubgCreateLabel(@"Line");
+    _pubgLineSwitch = pubgCreateSwitch(@selector(dsPubgLineChanged:));
+
+    _pubgHealthLabel = pubgCreateLabel(@"HP");
+    _pubgHealthSwitch = pubgCreateSwitch(@selector(dsPubgHealthChanged:));
+    _pubgHeadDotLabel = pubgCreateLabel(@"Head");
+    _pubgHeadDotSwitch = pubgCreateSwitch(@selector(dsPubgHeadDotChanged:));
+
+    _pubgNameLabel = pubgCreateLabel(@"Name");
+    _pubgNameSwitch = pubgCreateSwitch(@selector(dsPubgNameChanged:));
+    _pubgDistLabel = pubgCreateLabel(@"Dist");
+    _pubgDistSwitch = pubgCreateSwitch(@selector(dsPubgDistChanged:));
+
+    _pubgBotLabel = pubgCreateLabel(@"Bot");
+    _pubgBotSwitch = pubgCreateSwitch(@selector(dsPubgBotChanged:));
+    _pubgVehicleLabel = pubgCreateLabel(@"Car");
+    _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
+
     _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _toggleButton.backgroundColor = [UIColor colorWithWhite:0.04 alpha:0.76];
     _toggleButton.tintColor = UIColor.whiteColor;
@@ -1184,10 +1238,26 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     }
     if (ds_active_game() == 1) {
         _titleLabel.text = @"PUBG Tools";
-        _zoomLabel.text = @"Dist";
+        _zoomLabel.text = @"Scan";
         _zoomSlider.minimumValue = 50.0f;
-        _zoomSlider.maximumValue = 400.0f;
+        _zoomSlider.maximumValue = 500.0f;
         _zoomSlider.value = g_dspubgMaxDistance;
+        if ([defaults objectForKey:@"pubg_box"] != nil) g_pubgEspBox = [defaults boolForKey:@"pubg_box"];
+        _pubgBoxSwitch.on = g_pubgEspBox;
+        if ([defaults objectForKey:@"pubg_line"] != nil) g_pubgEspLine = [defaults boolForKey:@"pubg_line"];
+        _pubgLineSwitch.on = g_pubgEspLine;
+        if ([defaults objectForKey:@"pubg_health"] != nil) g_pubgEspHealth = [defaults boolForKey:@"pubg_health"];
+        _pubgHealthSwitch.on = g_pubgEspHealth;
+        if ([defaults objectForKey:@"pubg_head_dot"] != nil) g_pubgEspHeadDot = [defaults boolForKey:@"pubg_head_dot"];
+        _pubgHeadDotSwitch.on = g_pubgEspHeadDot;
+        if ([defaults objectForKey:@"pubg_name"] != nil) g_pubgEspName = [defaults boolForKey:@"pubg_name"];
+        _pubgNameSwitch.on = g_pubgEspName;
+        if ([defaults objectForKey:@"pubg_dist"] != nil) g_pubgEspDist = [defaults boolForKey:@"pubg_dist"];
+        _pubgDistSwitch.on = g_pubgEspDist;
+        if ([defaults objectForKey:@"pubg_bot"] != nil) g_pubgEspBot = [defaults boolForKey:@"pubg_bot"];
+        _pubgBotSwitch.on = g_pubgEspBot;
+        if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
+        _pubgVehicleSwitch.on = g_pubgEspVehicle;
     } else {
         _titleLabel.text = @"LQ Tools";
         _zoomLabel.text = @"Zoom";
@@ -1232,7 +1302,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = MIN((CGFloat)300.0, MAX((CGFloat)250.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 112.0 : 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 230.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1270,7 +1340,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _panelView.frame = CGRectMake(panelX, panelY, panelW, panelH);
     CGRect panelBounds = _panelView.bounds;
     _titleLabel.frame = CGRectMake(13.0, 8.0,
-                                   CGRectGetWidth(panelBounds) - 58.0, 26.0);
+                                    CGRectGetWidth(panelBounds) - 58.0, 26.0);
     _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 40.0, 4.0,
                                     34.0, 34.0);
     _espLabel.frame = CGRectMake(13.0, 42.0, 90.0, 20.0);
@@ -1296,14 +1366,84 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _minimapYValueLabel.hidden = YES;
         _resetButton.hidden = YES;
 
-        _zoomLabel.text = @"Dist";
+        _pubgBoxLabel.hidden = NO;
+        _pubgBoxSwitch.hidden = NO;
+        _pubgLineLabel.hidden = NO;
+        _pubgLineSwitch.hidden = NO;
+        _pubgHealthLabel.hidden = NO;
+        _pubgHealthSwitch.hidden = NO;
+        _pubgHeadDotLabel.hidden = NO;
+        _pubgHeadDotSwitch.hidden = NO;
+        _pubgNameLabel.hidden = NO;
+        _pubgNameSwitch.hidden = NO;
+        _pubgDistLabel.hidden = NO;
+        _pubgDistSwitch.hidden = NO;
+        _pubgBotLabel.hidden = NO;
+        _pubgBotSwitch.hidden = NO;
+        _pubgVehicleLabel.hidden = NO;
+        _pubgVehicleSwitch.hidden = NO;
+
+        CGFloat col1LX = 13.0;
+        CGFloat col1SX = 68.0;
+        CGFloat col2LX = 142.0;
+        CGFloat col2SX = 197.0;
+        CGFloat lblW = 50.0;
+
+        // Row 1: Box & Line
+        CGFloat y0 = 68.0;
+        _pubgBoxLabel.frame = CGRectMake(col1LX, y0 + 5.0, lblW, 18.0);
+        _pubgBoxSwitch.frame = CGRectMake(col1SX, y0, 51.0, 31.0);
+        _pubgLineLabel.frame = CGRectMake(col2LX, y0 + 5.0, lblW, 18.0);
+        _pubgLineSwitch.frame = CGRectMake(col2SX, y0, 51.0, 31.0);
+
+        // Row 2: HP & Head Dot
+        CGFloat y1 = 98.0;
+        _pubgHealthLabel.frame = CGRectMake(col1LX, y1 + 5.0, lblW, 18.0);
+        _pubgHealthSwitch.frame = CGRectMake(col1SX, y1, 51.0, 31.0);
+        _pubgHeadDotLabel.frame = CGRectMake(col2LX, y1 + 5.0, lblW, 18.0);
+        _pubgHeadDotSwitch.frame = CGRectMake(col2SX, y1, 51.0, 31.0);
+
+        // Row 3: Name & Dist
+        CGFloat y2 = 128.0;
+        _pubgNameLabel.frame = CGRectMake(col1LX, y2 + 5.0, lblW, 18.0);
+        _pubgNameSwitch.frame = CGRectMake(col1SX, y2, 51.0, 31.0);
+        _pubgDistLabel.frame = CGRectMake(col2LX, y2 + 5.0, lblW, 18.0);
+        _pubgDistSwitch.frame = CGRectMake(col2SX, y2, 51.0, 31.0);
+
+        // Row 4: Bot & Vehicle
+        CGFloat y3 = 158.0;
+        _pubgBotLabel.frame = CGRectMake(col1LX, y3 + 5.0, lblW, 18.0);
+        _pubgBotSwitch.frame = CGRectMake(col1SX, y3, 51.0, 31.0);
+        _pubgVehicleLabel.frame = CGRectMake(col2LX, y3 + 5.0, lblW, 18.0);
+        _pubgVehicleSwitch.frame = CGRectMake(col2SX, y3, 51.0, 31.0);
+
+        // Row 5: Scan Distance Slider
+        CGFloat y4 = 192.0;
+        _zoomLabel.text = @"Scan";
         _zoomLabel.hidden = NO;
         _zoomValueLabel.hidden = NO;
         _zoomSlider.hidden = NO;
-        _zoomLabel.frame = CGRectMake(13.0, 73.0, 52.0, 20.0);
-        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 73.0, 46.0, 20.0);
-        _zoomSlider.frame = CGRectMake(66.0, 70.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
+        _zoomLabel.frame = CGRectMake(13.0, y4 + 3.0, 42.0, 20.0);
+        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, y4 + 3.0, 46.0, 20.0);
+        _zoomSlider.frame = CGRectMake(58.0, y4, CGRectGetWidth(panelBounds) - 120.0, 26.0);
     } else {
+        _pubgBoxLabel.hidden = YES;
+        _pubgBoxSwitch.hidden = YES;
+        _pubgLineLabel.hidden = YES;
+        _pubgLineSwitch.hidden = YES;
+        _pubgHealthLabel.hidden = YES;
+        _pubgHealthSwitch.hidden = YES;
+        _pubgHeadDotLabel.hidden = YES;
+        _pubgHeadDotSwitch.hidden = YES;
+        _pubgNameLabel.hidden = YES;
+        _pubgNameSwitch.hidden = YES;
+        _pubgDistLabel.hidden = YES;
+        _pubgDistSwitch.hidden = YES;
+        _pubgBotLabel.hidden = YES;
+        _pubgBotSwitch.hidden = YES;
+        _pubgVehicleLabel.hidden = YES;
+        _pubgVehicleSwitch.hidden = YES;
+
         _titleLabel.text = @"LQ Tools";
         _enableLabel.hidden = NO;
         _enableSwitch.hidden = NO;
@@ -1469,6 +1609,46 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
 - (void)dsAutoSmiteObjectivesOnlySwitchChanged:(UISwitch *)sender {
     ds_lq_auto_smite_objectives_only_set(sender.on);
+}
+
+- (void)dsPubgBoxChanged:(UISwitch *)sender {
+    g_pubgEspBox = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_box"];
+}
+
+- (void)dsPubgLineChanged:(UISwitch *)sender {
+    g_pubgEspLine = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_line"];
+}
+
+- (void)dsPubgHealthChanged:(UISwitch *)sender {
+    g_pubgEspHealth = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_health"];
+}
+
+- (void)dsPubgHeadDotChanged:(UISwitch *)sender {
+    g_pubgEspHeadDot = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_head_dot"];
+}
+
+- (void)dsPubgNameChanged:(UISwitch *)sender {
+    g_pubgEspName = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_name"];
+}
+
+- (void)dsPubgDistChanged:(UISwitch *)sender {
+    g_pubgEspDist = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_dist"];
+}
+
+- (void)dsPubgBotChanged:(UISwitch *)sender {
+    g_pubgEspBot = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bot"];
+}
+
+- (void)dsPubgVehicleChanged:(UISwitch *)sender {
+    g_pubgEspVehicle = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
 }
 
 - (void)dsZoomSliderChanged:(UISlider *)sender {
@@ -2784,6 +2964,7 @@ static void ds_hosted_apply_pubg(void) {
 
     int activeEnemyCount = 0;
     int activeBotCount = 0;
+    int activeVehicleCount = 0;
 
     for (int i = 0; i < count; i++) {
         const DSPUBGProjectedPlayer &p = players[i];
@@ -2807,38 +2988,77 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         BOOL ai = p.isAI;
-        if (ai) activeBotCount++;
+        BOOL vehicle = p.isVehicle;
+
+        // Honor user filters
+        if (ai && !g_pubgEspBot) {
+            box.hidden = YES;
+            line.hidden = YES;
+            if (headDot) headDot.hidden = YES;
+            if (aiMark) aiMark.hidden = YES;
+            info.hidden = YES;
+            hpBar.hidden = YES;
+            continue;
+        }
+        if (vehicle && !g_pubgEspVehicle) {
+            box.hidden = YES;
+            line.hidden = YES;
+            if (headDot) headDot.hidden = YES;
+            if (aiMark) aiMark.hidden = YES;
+            info.hidden = YES;
+            hpBar.hidden = YES;
+            continue;
+        }
+
+        if (vehicle) activeVehicleCount++;
+        else if (ai) activeBotCount++;
         else activeEnemyCount++;
 
-        // DarkPubg style render colors:
+        // Render colors:
         // Player: White 0xFFFFFFFF, width 1.5
         // AI / Bot: Warm Yellow 0xFFFFD040, width 2.0
-        CGColorRef mainColor = ai
-            ? [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor
-            : [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+        // Vehicle: Cyan / Teal 0xFF00E5FF, width 1.5
+        CGColorRef mainColor;
+        if (vehicle) {
+            mainColor = [UIColor colorWithRed:0.0/255.0 green:229.0/255.0 blue:255.0/255.0 alpha:0.95].CGColor;
+        } else if (ai) {
+            mainColor = [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor;
+        } else {
+            mainColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+        }
 
         CGFloat centerX = p.screenX + p.boxWidth * 0.5f;
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 1. Bounding Box: Sharp rect, 1.5 width (2.0 for AI)
-        CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
-        box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
-        box.strokeColor = mainColor;
-        box.lineWidth = ai ? 2.0 : 1.5;
-        box.hidden = NO;
+        // 1. Bounding Box:
+        if (g_pubgEspBox) {
+            CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
+            box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
+            box.strokeColor = mainColor;
+            box.lineWidth = vehicle ? 1.5 : (ai ? 2.0 : 1.5);
+            box.hidden = NO;
+        } else {
+            box.hidden = YES;
+        }
 
-        // 2. Snapline: from top center (width * 0.5, 25.0) to top center of box
-        UIBezierPath *linePath = [UIBezierPath bezierPath];
-        [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
-        [linePath addLineToPoint:CGPointMake(centerX, topY)];
-        line.path = linePath.CGPath;
-        line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
-        line.lineWidth = 1.2;
-        line.hidden = NO;
+        // 2. Snapline:
+        if (g_pubgEspLine) {
+            UIBezierPath *linePath = [UIBezierPath bezierPath];
+            [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
+            [linePath addLineToPoint:CGPointMake(centerX, topY)];
+            line.path = linePath.CGPath;
+            line.strokeColor = vehicle
+                ? [UIColor colorWithRed:0.0 green:229.0/255.0 blue:255.0/255.0 alpha:0.75].CGColor
+                : [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+            line.lineWidth = 1.2;
+            line.hidden = NO;
+        } else {
+            line.hidden = YES;
+        }
 
-        // 3. Head Dot: radius 3.0 at head position
-        if (headDot) {
+        // 3. Head Dot: Only for players and bots, never for vehicles
+        if (!vehicle && g_pubgEspHeadDot && headDot) {
             CGFloat headDotX = (p.headX > 0.0f) ? p.headX : centerX;
             CGFloat headDotY = (p.headY > 0.0f) ? p.headY : (topY + p.boxHeight * 0.08f);
             CGRect dotRect = CGRectMake(headDotX - 3.0f, headDotY - 3.0f, 6.0f, 6.0f);
@@ -2846,10 +3066,12 @@ static void ds_hosted_apply_pubg(void) {
             headDot.fillColor = mainColor;
             headDot.strokeColor = UIColor.clearColor.CGColor;
             headDot.hidden = NO;
+        } else if (headDot) {
+            headDot.hidden = YES;
         }
 
-        // 4. AI Mark: inverted yellow triangle on top of box for AI
-        if (ai && aiMark) {
+        // 4. AI Mark: inverted yellow triangle on top of box for AI only
+        if (!vehicle && ai && aiMark) {
             CGFloat tx = centerX;
             CGFloat ty = topY - 5.0f;
             UIBezierPath *triPath = [UIBezierPath bezierPath];
@@ -2866,8 +3088,8 @@ static void ds_hosted_apply_pubg(void) {
             aiMark.hidden = YES;
         }
 
-        // 5. Health bar: left of box, fills from bottom up, NO black background
-        if (p.healthMax > 0 && p.health >= 0) {
+        // 5. Health bar:
+        if (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0) {
             CGFloat barW = 4.0f;
             CGFloat pad = 4.0f;
             CGFloat barX = p.screenX - barW - pad;
@@ -2878,38 +3100,63 @@ static void ds_hosted_apply_pubg(void) {
             if (fillH < 1.0f && p.health > 0.0f) fillH = 1.0f;
 
             hpBar.frame = CGRectMake(barX, topY + p.boxHeight - fillH, barW, fillH);
-            hpBar.backgroundColor = (hpRatio >= 0.60f)
-                ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor  // Green (kQBLColorHpGreen)
-                : ((hpRatio >= 0.30f)
-                    ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor // Yellow (kQBLColorHpYellow)
-                    : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor); // Red (kQBLColorHpRed)
+            if (vehicle) {
+                hpBar.backgroundColor = (hpRatio >= 0.50f)
+                    ? [UIColor colorWithRed:0.0 green:229.0/255.0 blue:255.0/255.0 alpha:1.0].CGColor
+                    : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
+            } else {
+                hpBar.backgroundColor = (hpRatio >= 0.60f)
+                    ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
+                    : ((hpRatio >= 0.30f)
+                        ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor
+                        : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
+            }
             hpBar.hidden = NO;
         } else {
             hpBar.hidden = YES;
         }
 
-        // 6. Text label: below box at bottom center (DarkPubg style: [T%d] Nickname\n%.0fm)
-        char labelText[128] = {0};
-        char teamPrefix[32] = {0};
-        if (p.teamId >= 0 && p.teamId <= 200000000) {
-            snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
-        } else if (ai) {
-            snprintf(teamPrefix, sizeof(teamPrefix), "[AI] ");
-        }
+        // 6. Text label: below box at bottom center
+        if (g_pubgEspName || g_pubgEspDist) {
+            char labelText[128] = {0};
+            if (vehicle) {
+                int hpPercent = (int)roundf((p.health / (p.healthMax > 0 ? p.healthMax : 1.0f)) * 100.0f);
+                if (g_pubgEspName && g_pubgEspDist) {
+                    snprintf(labelText, sizeof(labelText), "%s [%d%%]\n%.0fm", p.name, hpPercent, p.distanceMeters);
+                } else if (g_pubgEspName) {
+                    snprintf(labelText, sizeof(labelText), "%s [%d%%]", p.name, hpPercent);
+                } else {
+                    snprintf(labelText, sizeof(labelText), "%.0fm", p.distanceMeters);
+                }
+            } else {
+                char teamPrefix[32] = {0};
+                if (p.teamId >= 0 && p.teamId <= 200000000) {
+                    snprintf(teamPrefix, sizeof(teamPrefix), "[T%d%s] ", p.teamId, ai ? " AI" : "");
+                } else if (ai) {
+                    snprintf(teamPrefix, sizeof(teamPrefix), "[AI] ");
+                }
 
-        BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
-        if (haveNick) {
-            snprintf(labelText, sizeof(labelText), "%s%s\n%.0fm", teamPrefix, p.name, p.distanceMeters);
+                BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
+                const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
+
+                if (g_pubgEspName && g_pubgEspDist) {
+                    snprintf(labelText, sizeof(labelText), "%s%s\n%.0fm", teamPrefix, displayName, p.distanceMeters);
+                } else if (g_pubgEspName) {
+                    snprintf(labelText, sizeof(labelText), "%s%s", teamPrefix, displayName);
+                } else {
+                    snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
+                }
+            }
+
+            info.string = [NSString stringWithUTF8String:labelText];
+            CGFloat labelW = 160.0f;
+            CGFloat labelH = (g_pubgEspName && g_pubgEspDist) ? 28.0f : 16.0f;
+            info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
+            info.foregroundColor = mainColor;
+            info.hidden = NO;
         } else {
-            snprintf(labelText, sizeof(labelText), "%s%.0fm", teamPrefix, p.distanceMeters);
+            info.hidden = YES;
         }
-
-        info.string = [NSString stringWithUTF8String:labelText];
-        CGFloat labelW = 160.0f;
-        CGFloat labelH = haveNick ? 28.0f : 16.0f;
-        info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
-        info.foregroundColor = mainColor;
-        info.hidden = NO;
     }
 
     for (int i = count; i < kDSPUBGMaxPlayers; i++) {
@@ -2922,9 +3169,10 @@ static void ds_hosted_apply_pubg(void) {
     }
 
     if (g_hostedPUBGTopCountLabel) {
-        if (activeEnemyCount > 0 || activeBotCount > 0) {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 260.0) * 0.5, 10.0, 260.0, 20.0);
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots", activeEnemyCount, activeBotCount];
+        if (activeEnemyCount > 0 || activeBotCount > 0 || activeVehicleCount > 0) {
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 300.0) * 0.5, 10.0, 300.0, 20.0);
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots | %d Cars",
+                                                activeEnemyCount, activeBotCount, activeVehicleCount];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else if (ds_pubg_has_render_source()) {
             g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 340.0) * 0.5, 10.0, 340.0, 20.0);
