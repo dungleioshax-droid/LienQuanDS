@@ -645,6 +645,13 @@ static const char* ds_pubg_vehicle_name(uint8_t type) {
         case 48: case 49: return "BRDM-2";
         case 50: case 51: return "Monster Truck";
         case 52: case 53: return "Coupe RB";
+        case 55: return "Dragon Boat";
+        case 56: case 64: return "Tesla";
+        case 58: return "Glider";
+        case 63: return "Motorbike";
+        case 65: return "ATV";
+        case 67: return "Lion Dance";
+        case 68: return "UAZ";
         default: return "Vehicle";
     }
 }
@@ -872,6 +879,12 @@ static void ds_pubg_tick(void) {
         uint64_t rootComp = ds_pubg_read_ptr(veh + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(veh + 0x180ULL);
         if (!rootComp || !ds_pubg_valid(rootComp)) return;
+
+        // Reject characters! A character must NEVER be processed as a vehicle
+        uint64_t ps = ds_pubg_read_ptr(veh + 0x4D0ULL);
+        if (ps && ds_pubg_valid(ps)) return;
+        uint64_t capsuleComp = ds_pubg_read_ptr(veh + kDSPUBGCharacterCapsuleOffset);
+        if (rootComp && capsuleComp == rootComp) return;
 
         // Check bHidden in AActor (offset 0xE8)
         uint8_t aHidden = ds_pubg_read_u8(veh + 0xE8ULL);
@@ -1247,16 +1260,8 @@ static void ds_pubg_tick(void) {
                     uint64_t actor = levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
 
-                    // 1. Vehicle detection via VehicleCommon (0xC08)
-                    uint64_t vehCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
-                    if (vehCommon && ds_pubg_valid(vehCommon)) {
-                        uint8_t vehType = ds_pubg_read_u8(actor + 0x70CULL);
-                        processVehicle(actor, vehCommon, vehType);
-                        continue;
-                    }
-
-                    // 2. Character detection: Must have valid PlayerState (0x4D0) OR
-                    // match UE4 ACharacter hierarchy (CapsuleComponent == RootComponent, CharacterMovement, Mesh)
+                    // 1. Character detection FIRST:
+                    // Must have valid PlayerState (0x4D0) OR match UE4 ACharacter hierarchy (Capsule == RootComponent)
                     uint64_t ps = ds_pubg_read_ptr(actor + 0x4D0ULL);
                     uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
                     if (!rootComp) rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
@@ -1273,6 +1278,16 @@ static void ds_pubg_tick(void) {
 
                     if (isChar) {
                         processPawn(actor, ps, false);
+                        continue; // This is a character! Never process as vehicle.
+                    }
+
+                    // 2. Vehicle detection: Only for NON-character actors!
+                    // ASTExtraVehicleBase has VehicleCommon at 0xC08 and valid VehicleType enum (1..120) at 0x70C
+                    uint64_t vehCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
+                    uint8_t vehType = ds_pubg_read_u8(actor + 0x70CULL);
+                    if (vehCommon && ds_pubg_valid(vehCommon) && vehType > 0 && vehType <= 120) {
+                        processVehicle(actor, vehCommon, vehType);
+                        continue;
                     }
                 }
             }
