@@ -2926,8 +2926,14 @@ static void ds_hosted_apply_pubg(void) {
             g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 240.0) * 0.5, 10.0, 240.0, 20.0);
             g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots", activeEnemyCount, activeBotCount];
             g_hostedPUBGTopCountLabel.hidden = NO;
+        } else if (ds_pubg_has_render_source()) {
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 280.0) * 0.5, 10.0, 280.0, 20.0);
+            g_hostedPUBGTopCountLabel.string = @"PUBG: Attached (Waiting for Players)";
+            g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
-            g_hostedPUBGTopCountLabel.hidden = YES;
+            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 280.0) * 0.5, 10.0, 280.0, 20.0);
+            g_hostedPUBGTopCountLabel.string = @"PUBG: Waiting for game process...";
+            g_hostedPUBGTopCountLabel.hidden = NO;
         }
     }
 }

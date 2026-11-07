@@ -1729,4 +1729,11 @@ int DSBridgeActiveGame(void) {
 void DSBridgeSetActiveGame(int game) {
     [NSUserDefaults.standardUserDefaults setInteger:game forKey:@"DSActiveGame"];
     [NSUserDefaults.standardUserDefaults synchronize];
+    if (game == 1) {
+        ds_lq_overlay_reset();
+        ds_pubg_overlay_reset();
+    } else {
+        ds_pubg_overlay_reset();
+        ds_lq_overlay_reset();
+    }
 }
