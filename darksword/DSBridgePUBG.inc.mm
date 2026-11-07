@@ -966,6 +966,27 @@ static void ds_pubg_tick(void) {
         for (uint64_t seen : seenPawns) {
             if (seen == pawn) return;
         }
+
+        // Reject local player's own bullets, weapons, projectiles
+        uint64_t owner = ds_pubg_read_ptr(pawn + 0x140ULL);
+        uint64_t instigator = ds_pubg_read_ptr(pawn + 0x138ULL);
+        if (localPawn && (owner == localPawn || instigator == localPawn)) {
+            return;
+        }
+
+        // Character identity check: must have valid PlayerState, valid PlayerKey, or character mesh extent!
+        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
+        float extZ = (meshComp && ds_pubg_valid(meshComp)) ? ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset) : 0.0f;
+        uint32_t pkey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
+        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
+
+        bool isRealChar = (ps && ds_pubg_valid(ps)) ||
+                          (pkey > 0 && pkey < 2000000000) ||
+                          (extZ >= 25.0f && extZ <= 150.0f);
+        if (!isRealChar) {
+            return; // Discard bullets, weapon projectiles, and level debris!
+        }
+
         seenPawns.push_back(pawn);
 
         // Team filter
@@ -1013,12 +1034,8 @@ static void ds_pubg_tick(void) {
         }
 
         float actorH = 175.0f;
-        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
-        if (meshComp && ds_pubg_valid(meshComp)) {
-            float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
-            if (extZ > 30.0f && extZ < 200.0f) {
-                actorH = extZ * 2.0f;
-            }
+        if (extZ >= 25.0f && extZ <= 150.0f) {
+            actorH = extZ * 2.0f;
         }
 
         DSPUBGVector pos = rootLoc;
@@ -1102,56 +1119,37 @@ static void ds_pubg_tick(void) {
             strncpy(p.name, isAI ? "Bot" : "Enemy", sizeof(p.name) - 1);
         }
 
-        // 3D Humanoid Skeleton Projection (16 joints, 14 bone links)
+        // Humanoid Skeleton (16 joints, 15 bone links)
+        // Perfectly proportioned and aligned with the enemy character's box and head
         p.hasSkeleton = false;
-        if (g_pubgEspSkeleton) {
-            DSPUBGVector rVec = { basis.m10, basis.m11, basis.m12 }; // Camera Right
-            float sw = actorH * 0.12f;
-            float ew = actorH * 0.16f;
-            float hipW = actorH * 0.08f;
-            float kw = actorH * 0.09f;
-            float fw = actorH * 0.10f;
+        if (g_pubgEspSkeleton && !p.isVehicle) {
+            // Spine / Center line
+            p.skeleton[0] = { centerX, topY + boxH * 0.08f, true }; // Head (matches head dot)
+            p.skeleton[1] = { centerX, topY + boxH * 0.18f, true }; // Neck
+            p.skeleton[2] = { centerX, topY + boxH * 0.35f, true }; // Chest
+            p.skeleton[3] = { centerX, topY + boxH * 0.53f, true }; // Pelvis / Waist
 
-            DSPUBGVector joints3D[16];
-            // 0: Head, 1: Neck, 2: Chest, 3: Pelvis
-            joints3D[0] = { pos.X, pos.Y, pos.Z + halfH - (actorH * 0.08f) };
-            joints3D[1] = { pos.X, pos.Y, pos.Z + halfH - (actorH * 0.18f) };
-            joints3D[2] = { pos.X, pos.Y, pos.Z + halfH - (actorH * 0.36f) };
-            joints3D[3] = { pos.X, pos.Y, pos.Z - (actorH * 0.04f) };
+            // Left Arm
+            p.skeleton[4] = { centerX - boxW * 0.32f, topY + boxH * 0.20f, true }; // L Shoulder
+            p.skeleton[5] = { centerX - boxW * 0.44f, topY + boxH * 0.36f, true }; // L Elbow
+            p.skeleton[6] = { centerX - boxW * 0.38f, topY + boxH * 0.50f, true }; // L Hand
 
-            // 4: L Shoulder, 5: L Elbow, 6: L Hand
-            joints3D[4] = { joints3D[1].X - rVec.X * sw, joints3D[1].Y - rVec.Y * sw, joints3D[1].Z - (actorH * 0.02f) };
-            joints3D[5] = { joints3D[4].X - rVec.X * (ew - sw), joints3D[4].Y - rVec.Y * (ew - sw), joints3D[2].Z - (actorH * 0.06f) };
-            joints3D[6] = { joints3D[5].X, joints3D[5].Y, joints3D[3].Z };
+            // Right Arm
+            p.skeleton[7] = { centerX + boxW * 0.32f, topY + boxH * 0.20f, true }; // R Shoulder
+            p.skeleton[8] = { centerX + boxW * 0.44f, topY + boxH * 0.36f, true }; // R Elbow
+            p.skeleton[9] = { centerX + boxW * 0.38f, topY + boxH * 0.50f, true }; // R Hand
 
-            // 7: R Shoulder, 8: R Elbow, 9: R Hand
-            joints3D[7] = { joints3D[1].X + rVec.X * sw, joints3D[1].Y + rVec.Y * sw, joints3D[1].Z - (actorH * 0.02f) };
-            joints3D[8] = { joints3D[7].X + rVec.X * (ew - sw), joints3D[7].Y + rVec.Y * (ew - sw), joints3D[2].Z - (actorH * 0.06f) };
-            joints3D[9] = { joints3D[8].X, joints3D[8].Y, joints3D[3].Z };
+            // Left Leg
+            p.skeleton[10] = { centerX - boxW * 0.18f, topY + boxH * 0.55f, true }; // L Hip
+            p.skeleton[11] = { centerX - boxW * 0.22f, topY + boxH * 0.75f, true }; // L Knee
+            p.skeleton[12] = { centerX - boxW * 0.24f, topY + boxH * 0.98f, true }; // L Foot
 
-            // 10: L Hip, 11: L Knee, 12: L Foot
-            joints3D[10] = { joints3D[3].X - rVec.X * hipW, joints3D[3].Y - rVec.Y * hipW, joints3D[3].Z };
-            joints3D[11] = { joints3D[10].X - rVec.X * (kw - hipW), joints3D[10].Y - rVec.Y * (kw - hipW), pos.Z - halfH + (actorH * 0.28f) };
-            joints3D[12] = { joints3D[11].X - rVec.X * (fw - kw), joints3D[11].Y - rVec.Y * (fw - kw), pos.Z - halfH + (actorH * 0.04f) };
+            // Right Leg
+            p.skeleton[13] = { centerX + boxW * 0.18f, topY + boxH * 0.55f, true }; // R Hip
+            p.skeleton[14] = { centerX + boxW * 0.22f, topY + boxH * 0.75f, true }; // R Knee
+            p.skeleton[15] = { centerX + boxW * 0.24f, topY + boxH * 0.98f, true }; // R Foot
 
-            // 13: R Hip, 14: R Knee, 15: R Foot
-            joints3D[13] = { joints3D[3].X + rVec.X * hipW, joints3D[3].Y + rVec.Y * hipW, joints3D[3].Z };
-            joints3D[14] = { joints3D[13].X + rVec.X * (kw - hipW), joints3D[13].Y + rVec.Y * (kw - hipW), pos.Z - halfH + (actorH * 0.28f) };
-            joints3D[15] = { joints3D[14].X + rVec.X * (fw - kw), joints3D[14].Y + rVec.Y * (fw - kw), pos.Z - halfH + (actorH * 0.04f) };
-
-            bool validSkeleton = true;
-            for (int k = 0; k < 16; k++) {
-                float jx = 0, jy = 0, jd = 0;
-                if (ds_pubg_cam_basis_project(basis, joints3D[k], jx, jy, jd)) {
-                    p.skeleton[k].x = jx;
-                    p.skeleton[k].y = jy;
-                    p.skeleton[k].valid = true;
-                } else {
-                    p.skeleton[k].valid = false;
-                    if (k <= 3) validSkeleton = false;
-                }
-            }
-            p.hasSkeleton = validSkeleton;
+            p.hasSkeleton = true;
         }
 
         if (publishedCount < kDSPUBGMaxPlayers) {
@@ -1222,12 +1220,18 @@ static void ds_pubg_tick(void) {
                         continue;
                     }
 
-                    // 2. Character detection: Mesh component (0x510), PlayerState (0x4D0), or PlayerKey (0x980)
-                    uint64_t meshComp = ds_pubg_read_ptr(actor + kDSPUBGCharacterMeshOffset);
+                    // 2. Character detection: Must have valid PlayerState (0x4D0), valid PlayerKey (0x980),
+                    // or valid human character skeletal mesh extent!
                     uint64_t ps = ds_pubg_read_ptr(actor + 0x4D0ULL);
                     uint32_t pkey = ds_pubg_read_u32(actor + kDSPUBGCharacterPlayerKeyOffset);
+                    uint64_t meshComp = ds_pubg_read_ptr(actor + kDSPUBGCharacterMeshOffset);
+                    float extZ = (meshComp && ds_pubg_valid(meshComp)) ? ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset) : 0.0f;
 
-                    if ((meshComp && ds_pubg_valid(meshComp)) || (ps && ds_pubg_valid(ps)) || (pkey > 0)) {
+                    bool isChar = (ps && ds_pubg_valid(ps)) ||
+                                  (pkey > 0 && pkey < 2000000000) ||
+                                  (extZ >= 25.0f && extZ <= 150.0f);
+
+                    if (isChar) {
                         processPawn(actor, ps, false);
                     }
                 }
