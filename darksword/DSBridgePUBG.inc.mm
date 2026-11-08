@@ -610,77 +610,23 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     return true;
 }
 
-// Map G (ShadowTrackerExtra / PUBG Mobile 67-bone rig for Player & Bot):
-// 0: Head (8), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
-// 4: LShoulder (34), 5: LElbow (36), 6: LHand (37)
-// 7: RShoulder (13), 8: RElbow (15), 9: RHand (16)
-// 10: LHip (59), 11: LKnee (60), 12: LFoot (61)
-// 13: RHip (55), 14: RKnee (56), 15: RFoot (57)
-static const int kESPBoneMapG[16] = {
-    8, 5, 4, 1,
-    34, 36, 37,
-    13, 15, 16,
-    59, 60, 61,
-    55, 56, 57
+// Standard UE4 humanoid rigs (head 6, neck 5, pelvis 1):
+// Map D: Training Dummy rig (< 58 bones)
+// Map G: Player & Bot rig (67 bones - ShadowTrackerExtra)
+static const int kESPBoneMapD[15] = {
+    6, 5, 1,          // Head, Neck, Pelvis
+    12, 13, 14,       // UprR, LwrR, HandR
+    8, 9, 10,         // UprL, LwrL, HandL
+    19, 20, 21,       // ThighR, CalfR, FootR
+    15, 16, 17        // ThighL, CalfL, FootL
 };
 
-// Map G_Clavicle (67-bone rig variant using clavicle indices 33 and 12):
-static const int kESPBoneMapG_Clavicle[16] = {
-    8, 5, 4, 1,
-    33, 36, 37,
-    12, 15, 16,
-    59, 60, 61,
-    55, 56, 57
-};
-
-// Map G_Head6 (67-bone rig variant with Head at bone 6):
-static const int kESPBoneMapG_Head6[16] = {
-    6, 5, 4, 1,
-    34, 36, 37,
-    13, 15, 16,
-    59, 60, 61,
-    55, 56, 57
-};
-
-// Map D (Standard UE4 humanoid rig - verified 100% accurate for training dummies / < 58 bones):
-// 0: Head (6), 1: Neck (5), 2: Chest (4), 3: Pelvis (1)
-// 4: LShoulder (8), 5: LElbow (9), 6: LHand (10)
-// 7: RShoulder (12), 8: RElbow (13), 9: RHand (14)
-// 10: LHip (15), 11: LKnee (16), 12: LFoot (17)
-// 13: RHip (19), 14: RKnee (20), 15: RFoot (21)
-static const int kESPBoneMapD[16] = {
-    6, 5, 4, 1,
-    8, 9, 10,
-    12, 13, 14,
-    15, 16, 17,
-    19, 20, 21
-};
-
-// Map E (No-clavicle humanoid rig fallback for < 58 bones):
-static const int kESPBoneMapE[16] = {
-    6, 5, 4, 1,
-    7, 8, 9,
-    11, 12, 13,
-    15, 16, 17,
-    19, 20, 21
-};
-
-// Map A (UE4 alternative hand indices fallback for < 58 bones):
-static const int kESPBoneMapA[16] = {
-    6, 5, 4, 1,
-    7, 8, 10,
-    11, 12, 14,
-    15, 16, 17,
-    19, 20, 21
-};
-
-// Map B (Extra spine bone rig fallback for < 58 bones):
-static const int kESPBoneMapB[16] = {
-    7, 6, 5, 1,
-    8, 9, 10,
-    12, 13, 14,
-    15, 16, 17,
-    19, 20, 21
+static const int kESPBoneMapG[15] = {
+    6, 5, 1,          // Head, Neck, Pelvis
+    13, 15, 16,       // UprR, LwrR, HandR
+    34, 36, 37,       // UprL, LwrL, HandL
+    55, 56, 57,       // ThighR, CalfR, FootR
+    59, 60, 61        // ThighL, CalfL, FootL
 };
 
 static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
@@ -1384,92 +1330,87 @@ static void ds_pubg_tick(void) {
                     uint32_t needReadCount = (bCount > 256) ? 256 : bCount;
                     size_t readSize = (size_t)needReadCount * 48;
                     if (ds_pubg_read(boneData, boneBuf, readSize)) {
-                        auto validateBoneMap = [&](const int *m) -> bool {
-                            if (!m) return false;
-                            DSPUBGVector j[16];
-                            for (int i = 0; i < 16; i++) {
-                                int bi = m[i];
-                                if (bi < 0 || bi >= (int)needReadCount) return false;
-                                memcpy(&j[i].X, boneBuf + (size_t)bi * 48 + 0x10, 4);
-                                memcpy(&j[i].Y, boneBuf + (size_t)bi * 48 + 0x14, 4);
-                                memcpy(&j[i].Z, boneBuf + (size_t)bi * 48 + 0x18, 4);
-                                if (isnan(j[i].X) || isinf(j[i].X) ||
-                                    isnan(j[i].Y) || isinf(j[i].Y) ||
-                                    isnan(j[i].Z) || isinf(j[i].Z)) return false;
-                            }
-                            auto dist3d = [](const DSPUBGVector &a, const DSPUBGVector &b) -> float {
-                                float dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
-                                return sqrtf(dx * dx + dy * dy + dz * dz);
-                            };
-
-                            // 1. Head (0) to Pelvis (3) distance: 35cm .. 140cm
-                            float hp = dist3d(j[0], j[3]);
-                            if (hp < 35.0f || hp > 140.0f) return false;
-
-                            // 2. Shoulder separation: LShoulder (4) to RShoulder (7): 15cm .. 80cm
-                            float sh = dist3d(j[4], j[7]);
-                            if (sh < 15.0f || sh > 80.0f) return false;
-
-                            // 3. Hip separation: LHip (10) to RHip (13): 8cm .. 60cm
-                            float hip = dist3d(j[10], j[13]);
-                            if (hip < 8.0f || hip > 60.0f) return false;
-
-                            // 4. Arms & Legs plausible lengths (10cm .. 80cm)
-                            float lArm = dist3d(j[4], j[5]);
-                            float rArm = dist3d(j[7], j[8]);
-                            if (lArm < 10.0f || lArm > 80.0f || rArm < 10.0f || rArm > 80.0f) return false;
-
-                            float lLeg = dist3d(j[10], j[11]);
-                            float rLeg = dist3d(j[13], j[14]);
-                            if (lLeg < 10.0f || lLeg > 90.0f || rLeg < 10.0f || rLeg > 90.0f) return false;
-
-                            return true;
+                        auto getBoneLocal = [&](int idx, DSPUBGVector &outV) -> bool {
+                            if (idx < 0 || idx >= (int)needReadCount) return false;
+                            const uint8_t *boneEntry = boneBuf + (size_t)idx * 48;
+                            memcpy(&outV.X, boneEntry + 0x10, 4);
+                            memcpy(&outV.Y, boneEntry + 0x14, 4);
+                            memcpy(&outV.Z, boneEntry + 0x18, 4);
+                            return (!isnan(outV.X) && !isinf(outV.X) && !isnan(outV.Y) && !isinf(outV.Y) && !isnan(outV.Z) && !isinf(outV.Z));
                         };
 
-                        // Select bone map based on rig size:
-                        // Player and Bot: 67-bone rig (needReadCount >= 58), Map G
-                        // Dummy: ~22-bone rig (needReadCount < 58), Map D
-                        const int *bMap = nullptr;
-                        if (needReadCount >= 58) {
-                            if (validateBoneMap(kESPBoneMapG)) {
-                                bMap = kESPBoneMapG;
-                            } else if (validateBoneMap(kESPBoneMapG_Clavicle)) {
-                                bMap = kESPBoneMapG_Clavicle;
-                            } else if (validateBoneMap(kESPBoneMapG_Head6)) {
-                                bMap = kESPBoneMapG_Head6;
+                        int bHead = 6, bNeck = 5, bPelvis = 1;
+                        int bUprR = -1, bLwrR = -1, bHandR = -1;
+                        int bUprL = -1, bLwrL = -1, bHandL = -1;
+                        int bThighR = -1, bCalfR = -1, bFootR = -1;
+                        int bThighL = -1, bCalfL = -1, bFootL = -1;
+
+                        if (needReadCount < 58) {
+                            // Training dummy rig (< 58 bones)
+                            bHead = 6; bNeck = 5; bPelvis = 1;
+                            DSPUBGVector armA = {}, armB = {};
+                            getBoneLocal(12, armA);
+                            getBoneLocal(8, armB);
+                            if (armA.Y >= armB.Y) {
+                                bUprR = 12; bLwrR = 13; bHandR = 14;
+                                bUprL = 8;  bLwrL = 9;  bHandL = 10;
                             } else {
-                                bMap = kESPBoneMapG; // Guaranteed fallback for 67-bone character
+                                bUprR = 8;  bLwrR = 9;  bHandR = 10;
+                                bUprL = 12; bLwrL = 13; bHandL = 14;
+                            }
+
+                            DSPUBGVector legA = {}, legB = {};
+                            getBoneLocal(19, legA);
+                            getBoneLocal(15, legB);
+                            if (legA.Y >= legB.Y) {
+                                bThighR = 19; bCalfR = 20; bFootR = 21;
+                                bThighL = 15; bCalfL = 16; bFootL = 17;
+                            } else {
+                                bThighR = 15; bCalfR = 16; bFootR = 17;
+                                bThighL = 19; bCalfL = 20; bFootL = 21;
                             }
                         } else {
-                            if (validateBoneMap(kESPBoneMapD)) {
-                                bMap = kESPBoneMapD;
-                            } else if (validateBoneMap(kESPBoneMapE)) {
-                                bMap = kESPBoneMapE;
-                            } else if (validateBoneMap(kESPBoneMapA)) {
-                                bMap = kESPBoneMapA;
-                            } else if (validateBoneMap(kESPBoneMapB)) {
-                                bMap = kESPBoneMapB;
+                            // Player & Bot rig (67 bones - ShadowTrackerExtra)
+                            bHead = 6; bNeck = 5; bPelvis = 1;
+                            DSPUBGVector armA = {}, armB = {};
+                            getBoneLocal(13, armA);
+                            getBoneLocal(34, armB);
+                            if (armA.Y >= armB.Y) {
+                                bUprR = 13; bLwrR = 15; bHandR = 16;
+                                bUprL = 34; bLwrL = 36; bHandL = 37;
                             } else {
-                                bMap = kESPBoneMapD; // Guaranteed fallback for training dummy
+                                bUprR = 34; bLwrR = 36; bHandR = 37;
+                                bUprL = 13; bLwrL = 15; bHandL = 16;
+                            }
+
+                            DSPUBGVector legA = {}, legB = {};
+                            getBoneLocal(55, legA);
+                            getBoneLocal(59, legB);
+                            if (legA.Y >= legB.Y) {
+                                bThighR = 55; bCalfR = 56; bFootR = 57;
+                                bThighL = 59; bCalfL = 60; bFootL = 61;
+                            } else {
+                                bThighR = 59; bCalfR = 60; bFootR = 61;
+                                bThighL = 55; bCalfL = 56; bFootL = 57;
                             }
                         }
+
+                        const int jointIndices[15] = {
+                            bHead, bNeck, bPelvis,
+                            bUprR, bLwrR, bHandR,
+                            bUprL, bLwrL, bHandL,
+                            bThighR, bCalfR, bFootR,
+                            bThighL, bCalfL, bFootL
+                        };
 
                         uint8_t c2w[48] = {0};
                         ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);
 
                         int okBones = 0;
-                        for (int i = 0; i < 16; i++) {
-                            int bi = bMap[i];
-                            if (bi < 0 || bi >= (int)needReadCount) continue;
-                            const uint8_t *boneEntry = boneBuf + (size_t)bi * 48;
+                        for (int i = 0; i < 15; i++) {
+                            int bi = jointIndices[i];
                             DSPUBGVector localTrans = {};
-                            memcpy(&localTrans.X, boneEntry + 0x10, 4);
-                            memcpy(&localTrans.Y, boneEntry + 0x14, 4);
-                            memcpy(&localTrans.Z, boneEntry + 0x18, 4);
-
-                            if (!isnan(localTrans.X) && !isinf(localTrans.X) &&
-                                !isnan(localTrans.Y) && !isinf(localTrans.Y) &&
-                                !isnan(localTrans.Z) && !isinf(localTrans.Z)) {
+                            if (getBoneLocal(bi, localTrans)) {
                                 DSPUBGVector world = {};
                                 ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &localTrans, &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
@@ -1477,6 +1418,19 @@ static void ds_pubg_tick(void) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
                                     okBones++;
                                 }
+                            }
+                        }
+
+                        // Project HeadTop for circle at vHead.Z += 7.0f (exact internal snippet logic)
+                        DSPUBGVector headLocal = {};
+                        if (getBoneLocal(bHead, headLocal)) {
+                            DSPUBGVector headTopLocal = headLocal;
+                            headTopLocal.Z += 7.0f;
+                            DSPUBGVector worldHeadTop = {};
+                            ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &headTopLocal, &worldHeadTop);
+                            float sx_ht = 0, sy_ht = 0, d_ht = 0;
+                            if (ds_pubg_cam_basis_project(basis, worldHeadTop, sx_ht, sy_ht, d_ht)) {
+                                p.skeleton[15] = { sx_ht, sy_ht, true };
                             }
                         }
 
@@ -1495,22 +1449,22 @@ static void ds_pubg_tick(void) {
             // Fallback: if real bone transforms were not available or < 6 joints projected,
             // populate proportional bounding box skeleton so skeleton is ALWAYS visible!
             if (!skeletonDone && boxH >= 8.0f && !isnan(boxH) && !isnan(centerX) && !isnan(topY)) {
-                p.skeleton[0]  = { centerX,                 topY + boxH * 0.08f, true }; // Head
-                p.skeleton[1]  = { centerX,                 topY + boxH * 0.16f, true }; // Neck
-                p.skeleton[2]  = { centerX,                 topY + boxH * 0.28f, true }; // Chest
-                p.skeleton[3]  = { centerX,                 topY + boxH * 0.52f, true }; // Pelvis
-                p.skeleton[4]  = { centerX - boxW * 0.22f,  topY + boxH * 0.22f, true }; // LShoulder
-                p.skeleton[5]  = { centerX - boxW * 0.32f,  topY + boxH * 0.35f, true }; // LElbow
-                p.skeleton[6]  = { centerX - boxW * 0.35f,  topY + boxH * 0.48f, true }; // LHand
-                p.skeleton[7]  = { centerX + boxW * 0.22f,  topY + boxH * 0.22f, true }; // RShoulder
-                p.skeleton[8]  = { centerX + boxW * 0.32f,  topY + boxH * 0.35f, true }; // RElbow
-                p.skeleton[9]  = { centerX + boxW * 0.35f,  topY + boxH * 0.48f, true }; // RHand
-                p.skeleton[10] = { centerX - boxW * 0.16f,  topY + boxH * 0.54f, true }; // LHip
-                p.skeleton[11] = { centerX - boxW * 0.18f,  topY + boxH * 0.74f, true }; // LKnee
-                p.skeleton[12] = { centerX - boxW * 0.20f,  topY + boxH * 0.96f, true }; // LFoot
-                p.skeleton[13] = { centerX + boxW * 0.16f,  topY + boxH * 0.54f, true }; // RHip
-                p.skeleton[14] = { centerX + boxW * 0.18f,  topY + boxH * 0.74f, true }; // RKnee
-                p.skeleton[15] = { centerX + boxW * 0.20f,  topY + boxH * 0.96f, true }; // RFoot
+                p.skeleton[0]  = { centerX,                 topY + boxH * 0.12f, true }; // Head
+                p.skeleton[1]  = { centerX,                 topY + boxH * 0.18f, true }; // Neck
+                p.skeleton[2]  = { centerX,                 topY + boxH * 0.52f, true }; // Pelvis
+                p.skeleton[3]  = { centerX + boxW * 0.22f,  topY + boxH * 0.24f, true }; // UprR
+                p.skeleton[4]  = { centerX + boxW * 0.32f,  topY + boxH * 0.38f, true }; // LwrR
+                p.skeleton[5]  = { centerX + boxW * 0.35f,  topY + boxH * 0.50f, true }; // HandR
+                p.skeleton[6]  = { centerX - boxW * 0.22f,  topY + boxH * 0.24f, true }; // UprL
+                p.skeleton[7]  = { centerX - boxW * 0.32f,  topY + boxH * 0.38f, true }; // LwrL
+                p.skeleton[8]  = { centerX - boxW * 0.35f,  topY + boxH * 0.50f, true }; // HandL
+                p.skeleton[9]  = { centerX + boxW * 0.16f,  topY + boxH * 0.56f, true }; // ThighR
+                p.skeleton[10] = { centerX + boxW * 0.18f,  topY + boxH * 0.76f, true }; // CalfR
+                p.skeleton[11] = { centerX + boxW * 0.20f,  topY + boxH * 0.96f, true }; // FootR
+                p.skeleton[12] = { centerX - boxW * 0.16f,  topY + boxH * 0.56f, true }; // ThighL
+                p.skeleton[13] = { centerX - boxW * 0.18f,  topY + boxH * 0.76f, true }; // CalfL
+                p.skeleton[14] = { centerX - boxW * 0.20f,  topY + boxH * 0.96f, true }; // FootL
+                p.skeleton[15] = { centerX,                 topY + boxH * 0.10f, true }; // HeadTop
                 p.hasSkeleton = true;
             }
         }

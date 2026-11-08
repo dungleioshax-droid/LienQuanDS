@@ -3185,11 +3185,12 @@ static void ds_hosted_apply_pubg(void) {
             @try {
                 UIBezierPath *skelPath = [UIBezierPath bezierPath];
                 static const int bonePairs[][2] = {
-                    {1, 0}, {1, 2}, {2, 3},       // Neck->Head, Neck->Chest, Chest->Pelvis
-                    {1, 4}, {4, 5}, {5, 6},       // Neck->LShoulder, LShoulder->LElbow, LElbow->LHand
-                    {1, 7}, {7, 8}, {8, 9},       // Neck->RShoulder, RShoulder->RElbow, RElbow->RHand
-                    {3, 10}, {10, 11}, {11, 12},  // Pelvis->LHip, LHip->LKnee, LKnee->LFoot
-                    {3, 13}, {13, 14}, {14, 15}   // Pelvis->RHip, RHip->RKnee, RKnee->RFoot
+                    {0, 1},                     // Head <-> Neck
+                    {1, 2},                     // Neck <-> Pelvis (Spine)
+                    {1, 3}, {3, 4}, {4, 5},     // Neck <-> UprR <-> LwrR <-> HandR
+                    {1, 6}, {6, 7}, {7, 8},     // Neck <-> UprL <-> LwrL <-> HandL
+                    {2, 9}, {9, 10}, {10, 11},  // Pelvis <-> ThighR <-> CalfR <-> FootR
+                    {2, 12}, {12, 13}, {13, 14} // Pelvis <-> ThighL <-> CalfL <-> FootL
                 };
                 const int boneCount = (int)(sizeof(bonePairs) / sizeof(bonePairs[0]));
                 int drawnLines = 0;
@@ -3209,6 +3210,25 @@ static void ds_hosted_apply_pubg(void) {
                         }
                     }
                 }
+
+                // Head Circle (vHead.Z += 7.0f, radius = boxHeight / 15.0f)
+                if (p.skeleton[15].valid) {
+                    float hx = p.skeleton[15].x, hy = p.skeleton[15].y;
+                    if (!isnan(hx) && !isinf(hx) && !isnan(hy) && !isinf(hy) &&
+                        fabsf(hx) < 10000.0f && fabsf(hy) < 10000.0f) {
+                        float r = p.boxHeight / 15.0f;
+                        if (r < 3.0f) r = 3.0f;
+                        if (r > 30.0f) r = 30.0f;
+                        [skelPath moveToPoint:CGPointMake(hx + r, hy)];
+                        [skelPath addArcWithCenter:CGPointMake(hx, hy)
+                                            radius:r
+                                        startAngle:0
+                                          endAngle:2.0f * (float)M_PI
+                                         clockwise:YES];
+                        drawnLines++;
+                    }
+                }
+
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
                     skel.strokeColor = mainColor;
