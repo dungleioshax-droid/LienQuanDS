@@ -3108,37 +3108,28 @@ static void ds_hosted_apply_pubg(void) {
         if (ai) activeBotCount++;
         else activeEnemyCount++;
 
-        // Render colors:
-        // Bot (AI): Xanh biển (Ocean Blue) [0, 170, 255]
-        // Player (Người): Vàng (Bright Yellow) [255, 214, 10]
-        CGColorRef mainColor = ai
-            ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.95].CGColor
-            : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:0.95].CGColor;
-
         CGFloat centerX = p.screenX + p.boxWidth * 0.5f;
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 1. Bounding Box:
+        // 1. Bounding Box: Màu trắng
         if (g_pubgEspBox) {
             CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
             box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
-            box.strokeColor = mainColor;
-            box.lineWidth = ai ? 2.0 : 1.5;
+            box.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+            box.lineWidth = 1.5;
             box.hidden = NO;
         } else {
             box.hidden = YES;
         }
 
-        // 2. Snapline:
+        // 2. Snapline: Màu trắng
         if (g_pubgEspLine) {
             UIBezierPath *linePath = [UIBezierPath bezierPath];
             [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
             line.path = linePath.CGPath;
-            line.strokeColor = ai
-                ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.85].CGColor
-                : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:0.85].CGColor;
+            line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
             line.lineWidth = 1.2;
             line.hidden = NO;
         } else {
@@ -3156,7 +3147,7 @@ static void ds_hosted_apply_pubg(void) {
             [triPath closePath];
             aiMark.path = triPath.CGPath;
             aiMark.fillColor = [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.85].CGColor;
-            aiMark.strokeColor = mainColor;
+            aiMark.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
             aiMark.lineWidth = 1.0;
             aiMark.hidden = NO;
         } else if (aiMark) {
@@ -3236,7 +3227,8 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         // 6. Text label: below box at bottom center
-        // Thứ tự: Tên ở đầu -> ID team ở giữa (dòng riêng) -> Khoảng cách ở cuối
+        // Tên: Bot = Xanh nước biển, Người = Vàng
+        // Khoảng cách (và team): Trắng
         if (g_pubgEspName || g_pubgEspDist) {
             char teamStr[48] = {0};
             if (p.teamId >= 0 && p.teamId <= 200000000) {
@@ -3252,35 +3244,70 @@ static void ds_hosted_apply_pubg(void) {
             BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
             const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
 
-            char labelText[160] = {0};
+            UIFont *font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+            NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+            style.alignment = NSTextAlignmentCenter;
+            style.lineBreakMode = NSLineBreakByClipping;
+
+            // Màu Tên: Bot = Xanh nước biển, Người = Vàng
+            UIColor *nameColor = ai
+                ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:1.0]
+                : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0];
+
+            // Màu Khoảng cách và team = Trắng
+            UIColor *whiteColor = [UIColor colorWithWhite:1.0 alpha:1.0];
+
+            NSMutableAttributedString *attrText = [[NSMutableAttributedString alloc] init];
+
+            if (g_pubgEspName) {
+                NSString *nameStr = [NSString stringWithUTF8String:displayName];
+                [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
+                    NSFontAttributeName: font,
+                    NSForegroundColorAttributeName: nameColor,
+                    NSParagraphStyleAttributeName: style
+                }]];
+            }
+
+            if (teamStr[0] != '\0') {
+                if (attrText.length > 0) {
+                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:@{
+                        NSFontAttributeName: font,
+                        NSParagraphStyleAttributeName: style
+                    }]];
+                }
+                NSString *tStr = [NSString stringWithUTF8String:teamStr];
+                [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:tStr attributes:@{
+                    NSFontAttributeName: font,
+                    NSForegroundColorAttributeName: whiteColor,
+                    NSParagraphStyleAttributeName: style
+                }]];
+            }
+
+            if (g_pubgEspDist) {
+                if (attrText.length > 0) {
+                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:@{
+                        NSFontAttributeName: font,
+                        NSParagraphStyleAttributeName: style
+                    }]];
+                }
+                NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
+                [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
+                    NSFontAttributeName: font,
+                    NSForegroundColorAttributeName: whiteColor,
+                    NSParagraphStyleAttributeName: style
+                }]];
+            }
+
             CGFloat labelH = 16.0f;
             if (g_pubgEspName && g_pubgEspDist) {
                 labelH = (teamStr[0] != '\0') ? 44.0f : 30.0f;
-                if (teamStr[0] != '\0') {
-                    snprintf(labelText, sizeof(labelText), "%s\n%s\n%.0fm", displayName, teamStr, p.distanceMeters);
-                } else {
-                    snprintf(labelText, sizeof(labelText), "%s\n%.0fm", displayName, p.distanceMeters);
-                }
-            } else if (g_pubgEspName) {
+            } else if (g_pubgEspName || g_pubgEspDist) {
                 labelH = (teamStr[0] != '\0') ? 30.0f : 16.0f;
-                if (teamStr[0] != '\0') {
-                    snprintf(labelText, sizeof(labelText), "%s\n%s", displayName, teamStr);
-                } else {
-                    snprintf(labelText, sizeof(labelText), "%s", displayName);
-                }
-            } else {
-                labelH = (teamStr[0] != '\0') ? 30.0f : 16.0f;
-                if (teamStr[0] != '\0') {
-                    snprintf(labelText, sizeof(labelText), "%s\n%.0fm", teamStr, p.distanceMeters);
-                } else {
-                    snprintf(labelText, sizeof(labelText), "%.0fm", p.distanceMeters);
-                }
             }
 
             CGFloat labelW = 160.0f;
             info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
-            info.string = [NSString stringWithUTF8String:labelText];
-            info.foregroundColor = mainColor;
+            info.string = attrText;
             info.hidden = NO;
         } else {
             info.hidden = YES;
@@ -3352,7 +3379,7 @@ static void ds_hosted_apply_pubg(void) {
 
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
-                    skel.strokeColor = mainColor;
+                    skel.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
                     skel.lineWidth = 1.2;
                     skel.hidden = NO;
                 } else {
@@ -3756,6 +3783,10 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 info.wrapped = YES;
                 info.fontSize = 11.0;
                 info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+                info.shadowColor = [UIColor blackColor].CGColor;
+                info.shadowOpacity = 0.85f;
+                info.shadowRadius = 1.0f;
+                info.shadowOffset = CGSizeMake(0, 0);
                 info.hidden = YES;
                 [g_hostedLayer addSublayer:info];
                 g_hostedPUBGInfoLabels[i] = info;
