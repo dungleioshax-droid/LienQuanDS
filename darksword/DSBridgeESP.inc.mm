@@ -1187,9 +1187,9 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [_panelView addSubview:_resetButton];
 
     auto pubgCreateSwitch = ^(SEL sel) {
-        UISwitch *s = [[UISwitch alloc] initWithFrame:CGRectZero];
+        UISwitch *s = [[UISwitch alloc] initWithFrame:CGRectMake(0, 0, 51.0, 31.0)];
         s.onTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-        s.transform = CGAffineTransformMakeScale(0.62, 0.62);
+        s.transform = CGAffineTransformMakeScale(0.70, 0.70);
         [s addTarget:self action:sel forControlEvents:UIControlEventValueChanged];
         [_panelView addSubview:s];
         return s;
@@ -1198,7 +1198,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         UILabel *l = [[UILabel alloc] initWithFrame:CGRectZero];
         l.text = text;
         l.textColor = [UIColor colorWithWhite:0.95 alpha:1.0];
-        l.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
+        l.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium];
         [_panelView addSubview:l];
         return l;
     };
@@ -1282,7 +1282,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     }
     if (ds_active_game() == 1) {
         _titleLabel.text = @"DARKPUBG";
-        _zoomLabel.text = @"Khoảng Cách Quét";
+        _zoomLabel.text = @"Khoảng cách hiện địch";
         _zoomSlider.minimumValue = 50.0f;
         _zoomSlider.maximumValue = 500.0f;
         _zoomSlider.value = g_dspubgMaxDistance;
@@ -1346,7 +1346,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = (ds_active_game() == 1) ? 300.0 : MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 298.0 : 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 304.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1409,14 +1409,14 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _resetButton.hidden = YES;
 
         _masterCard.hidden = NO;
-        _masterCard.frame = CGRectMake(12.0, 39.0, panelW - 24.0, 36.0);
+        _masterCard.frame = CGRectMake(12.0, 38.0, panelW - 24.0, 36.0);
         _espLabel.hidden = NO;
         _espLabel.text = @"Bật ESP Master";
         _espLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
         _espLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
-        _espLabel.frame = CGRectMake(22.0, 47.0, 150.0, 20.0);
+        _espLabel.frame = CGRectMake(22.0, 46.0, 150.0, 20.0);
         _espSwitch.hidden = NO;
-        _espSwitch.frame = CGRectMake(panelW - 68.0, 41.5, 51.0, 31.0);
+        _espSwitch.transform = CGAffineTransformMakeScale(0.70, 0.70);
 
         _pubgBoxLabel.hidden = NO;
         _pubgBoxSwitch.hidden = NO;
@@ -1436,69 +1436,77 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgVehicleSwitch.hidden = YES;
 
         CGFloat cardW = (panelW - 32.0) * 0.5;
-        CGFloat cardH = 32.0;
+        CGFloat cardH = 34.0;
         CGFloat col1X = 12.0;
         CGFloat col2X = 12.0 + cardW + 8.0;
+        CGFloat switchRightPadding = 8.0 + (51.0 * 0.70 * 0.5); // uniform right alignment for all cards
+
+        auto layoutCardSwitch = ^(UISwitch *s, CGFloat cardRightX, CGFloat cardCenterY) {
+            s.bounds = CGRectMake(0, 0, 51.0, 31.0);
+            s.center = CGPointMake(cardRightX - switchRightPadding, cardCenterY);
+        };
+
+        layoutCardSwitch(_espSwitch, panelW - 12.0, 38.0 + 18.0);
 
         // Row 1: Box 2D & Xương
-        CGFloat y0 = 81.0;
+        CGFloat y0 = 80.0;
         _pubgCards[0].frame = CGRectMake(col1X, y0, cardW, cardH);
         _pubgCards[0].hidden = NO;
-        _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 6.0, cardW - 54.0, 20.0);
-        _pubgBoxSwitch.frame = CGRectMake(col1X + cardW - 46.0, y0 + 0.5, 42.0, 31.0);
+        _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 7.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgBoxSwitch, col1X + cardW, y0 + cardH * 0.5);
 
         _pubgCards[1].frame = CGRectMake(col2X, y0, cardW, cardH);
         _pubgCards[1].hidden = NO;
-        _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 6.0, cardW - 54.0, 20.0);
-        _pubgSkeletonSwitch.frame = CGRectMake(col2X + cardW - 46.0, y0 + 0.5, 42.0, 31.0);
+        _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 7.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgSkeletonSwitch, col2X + cardW, y0 + cardH * 0.5);
 
         // Row 2: Tia Line & Thanh Máu
-        CGFloat y1 = 118.0;
+        CGFloat y1 = 119.0;
         _pubgCards[2].frame = CGRectMake(col1X, y1, cardW, cardH);
         _pubgCards[2].hidden = NO;
-        _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 6.0, cardW - 54.0, 20.0);
-        _pubgLineSwitch.frame = CGRectMake(col1X + cardW - 46.0, y1 + 0.5, 42.0, 31.0);
+        _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 7.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgLineSwitch, col1X + cardW, y1 + cardH * 0.5);
 
         _pubgCards[3].frame = CGRectMake(col2X, y1, cardW, cardH);
         _pubgCards[3].hidden = NO;
-        _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 6.0, cardW - 54.0, 20.0);
-        _pubgHealthSwitch.frame = CGRectMake(col2X + cardW - 46.0, y1 + 0.5, 42.0, 31.0);
+        _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 7.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgHealthSwitch, col2X + cardW, y1 + cardH * 0.5);
 
         // Row 3: Tên Địch & Khoảng Cách
-        CGFloat y2 = 155.0;
+        CGFloat y2 = 158.0;
         _pubgCards[4].frame = CGRectMake(col1X, y2, cardW, cardH);
         _pubgCards[4].hidden = NO;
-        _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 6.0, cardW - 54.0, 20.0);
-        _pubgNameSwitch.frame = CGRectMake(col1X + cardW - 46.0, y2 + 0.5, 42.0, 31.0);
+        _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 7.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgNameSwitch, col1X + cardW, y2 + cardH * 0.5);
 
         _pubgCards[5].frame = CGRectMake(col2X, y2, cardW, cardH);
         _pubgCards[5].hidden = NO;
-        _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 6.0, cardW - 54.0, 20.0);
-        _pubgDistSwitch.frame = CGRectMake(col2X + cardW - 46.0, y2 + 0.5, 42.0, 31.0);
+        _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 7.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgDistSwitch, col2X + cardW, y2 + cardH * 0.5);
 
         // Row 4: Hiện Bot AI (Full width card)
-        CGFloat y3 = 192.0;
+        CGFloat y3 = 197.0;
         _pubgCards[6].frame = CGRectMake(col1X, y3, panelW - 24.0, cardH);
         _pubgCards[6].hidden = NO;
-        _pubgBotLabel.frame = CGRectMake(col1X + 10.0, y3 + 6.0, panelW - 84.0, 20.0);
-        _pubgBotSwitch.frame = CGRectMake(panelW - 68.0, y3 + 0.5, 42.0, 31.0);
+        _pubgBotLabel.frame = CGRectMake(col1X + 10.0, y3 + 7.0, panelW - 80.0, 20.0);
+        layoutCardSwitch(_pubgBotSwitch, panelW - 12.0, y3 + cardH * 0.5);
 
-        // Row 5: Scan Distance Card
-        CGFloat y4 = 229.0;
-        _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 57.0);
+        // Row 5: Scan Distance Card (Khoảng cách hiện địch)
+        CGFloat y4 = 236.0;
+        _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 56.0);
         _scanCard.hidden = NO;
-        _zoomLabel.text = @"Khoảng Cách Quét";
+        _zoomLabel.text = @"Khoảng cách hiện địch";
         _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-        _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+        _zoomLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightSemibold];
         _zoomLabel.hidden = NO;
         _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
         _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightBold];
         _zoomValueLabel.hidden = NO;
         _zoomSlider.hidden = NO;
         _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-        _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 6.0, 130.0, 18.0);
-        _zoomValueLabel.frame = CGRectMake(panelW - 84.0, y4 + 6.0, 64.0, 18.0);
-        _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 27.0, panelW - 40.0, 24.0);
+        _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 6.0, 160.0, 18.0);
+        _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 6.0, 78.0, 18.0);
+        _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 27.0, panelW - 40.0, 22.0);
     } else {
         _masterCard.hidden = YES;
         for (int ci = 0; ci < 7; ci++) _pubgCards[ci].hidden = YES;
@@ -3157,10 +3165,13 @@ static void ds_hosted_apply_pubg(void) {
 
         // 5. Horizontal Health Bar (Máu ngang kiểu thanh nằm trên đầu)
         BOOL showHp = (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0);
+        // Fixed dimensions: Doesn't zoom with scope, doesn't shrink with distance
+        CGFloat barW = 50.0f;
         CGFloat barH = 3.5f;
-        CGFloat barY = topY - barH - 3.0f; // nằm ngay phía trên đầu / box
+        CGFloat barX = centerX - barW * 0.5f;
+        // Lowered slightly so it sits right above the head/box instead of floating too high
+        CGFloat barY = topY - barH - 1.0f;
         if (showHp) {
-            CGFloat barW = p.boxWidth;
             float hpRatio = p.health / p.healthMax;
             if (hpRatio < 0.0f) hpRatio = 0.0f;
             if (hpRatio > 1.0f) hpRatio = 1.0f;
@@ -3168,11 +3179,11 @@ static void ds_hosted_apply_pubg(void) {
             if (fillW < 1.0f && p.health > 0.0f) fillW = 1.0f;
 
             if (hpBg) {
-                hpBg.frame = CGRectMake(p.screenX - 0.5f, barY - 0.5f, barW + 1.0f, barH + 1.0f);
+                hpBg.frame = CGRectMake(barX - 0.5f, barY - 0.5f, barW + 1.0f, barH + 1.0f);
                 hpBg.hidden = NO;
             }
 
-            hpBar.frame = CGRectMake(p.screenX, barY, fillW, barH);
+            hpBar.frame = CGRectMake(barX, barY, fillW, barH);
             if (p.isKnocked) {
                 // Bright safety orange for knocked down (gục ngã / bò)
                 hpBar.backgroundColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
@@ -3213,7 +3224,7 @@ static void ds_hosted_apply_pubg(void) {
                 CGFloat wLblW = 130.0f;
                 CGFloat wLblH = 13.0f;
                 CGFloat baseTop = showHp ? barY : topY;
-                CGFloat wLblY = baseTop - wLblH - 1.5f;
+                CGFloat wLblY = baseTop - wLblH - 1.0f;
                 wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
                 wLabel.string = weaponText;
                 wLabel.foregroundColor = weaponColor;
