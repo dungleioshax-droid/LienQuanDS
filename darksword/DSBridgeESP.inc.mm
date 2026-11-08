@@ -3156,9 +3156,10 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         // 5. Horizontal Health Bar (Máu ngang kiểu thanh nằm trên đầu)
-        if (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0) {
-            CGFloat barH = 3.5f;
-            CGFloat barY = topY - barH - 3.0f; // nằm ngay phía trên đầu / box
+        BOOL showHp = (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0);
+        CGFloat barH = 3.5f;
+        CGFloat barY = topY - barH - 3.0f; // nằm ngay phía trên đầu / box
+        if (showHp) {
             CGFloat barW = p.boxWidth;
             float hpRatio = p.health / p.healthMax;
             if (hpRatio < 0.0f) hpRatio = 0.0f;
@@ -3183,43 +3184,43 @@ static void ds_hosted_apply_pubg(void) {
                         : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
             }
             hpBar.hidden = NO;
-
-            // Weapon ESP: Above health bar
-            if (wLabel) {
-                BOOL showWeapon = NO;
-                NSString *weaponText = nil;
-                CGColorRef weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
-
-                if (p.isKnocked) {
-                    showWeapon = YES;
-                    weaponColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
-                    if (p.weaponName[0] != '\0') {
-                        weaponText = [NSString stringWithFormat:@"⚠️ GỤC | 🔫 %s", p.weaponName];
-                    } else {
-                        weaponText = @"⚠️ ĐANG BÒ";
-                    }
-                } else if (p.weaponName[0] != '\0') {
-                    showWeapon = YES;
-                    weaponText = [NSString stringWithFormat:@"🔫 %s", p.weaponName];
-                    weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
-                }
-
-                if (showWeapon && weaponText) {
-                    CGFloat wLblW = 120.0f;
-                    CGFloat wLblH = 13.0f;
-                    CGFloat wLblY = barY - wLblH - 1.5f;
-                    wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
-                    wLabel.string = weaponText;
-                    wLabel.foregroundColor = weaponColor;
-                    wLabel.hidden = NO;
-                } else {
-                    wLabel.hidden = YES;
-                }
-            }
         } else {
             if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
-            if (wLabel) wLabel.hidden = YES;
+        }
+
+        // Weapon ESP: Above health bar (or above head if health bar hidden)
+        if (wLabel) {
+            NSString *weaponText = nil;
+            CGColorRef weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
+
+            if (p.isKnocked) {
+                weaponColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
+                if (p.weaponName[0] != '\0') {
+                    weaponText = [NSString stringWithFormat:@"⚠️ GỤC | %s", p.weaponName];
+                } else {
+                    weaponText = @"⚠️ ĐANG BÒ";
+                }
+            } else if (p.weaponName[0] != '\0') {
+                weaponText = [NSString stringWithUTF8String:p.weaponName];
+                weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
+            } else {
+                weaponText = @"Tay Không";
+                weaponColor = [UIColor colorWithWhite:0.88 alpha:0.95].CGColor;
+            }
+
+            if (weaponText) {
+                CGFloat wLblW = 130.0f;
+                CGFloat wLblH = 13.0f;
+                CGFloat baseTop = showHp ? barY : topY;
+                CGFloat wLblY = baseTop - wLblH - 1.5f;
+                wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
+                wLabel.string = weaponText;
+                wLabel.foregroundColor = weaponColor;
+                wLabel.hidden = NO;
+            } else {
+                wLabel.hidden = YES;
+            }
         }
 
         // 6. Text label: below box at bottom center
@@ -3763,8 +3764,12 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 wLabel.actions = noAnim;
                 wLabel.contentsScale = scale;
                 wLabel.alignmentMode = kCAAlignmentCenter;
-                wLabel.fontSize = 9.5;
-                wLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:9.5 weight:UIFontWeightBold];
+                wLabel.fontSize = 10.0;
+                wLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
+                wLabel.shadowColor = [UIColor blackColor].CGColor;
+                wLabel.shadowOpacity = 0.85f;
+                wLabel.shadowRadius = 1.0f;
+                wLabel.shadowOffset = CGSizeMake(0, 0);
                 wLabel.hidden = YES;
                 [g_hostedLayer addSublayer:wLabel];
                 g_hostedPUBGWeaponLabels[i] = wLabel;

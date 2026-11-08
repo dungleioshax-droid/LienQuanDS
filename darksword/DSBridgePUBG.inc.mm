@@ -886,6 +886,17 @@ static const char *ds_pubg_weapon_name_by_id(int32_t id) {
         case 108002: return "Crowbar";
         case 108003: return "Machete";
         case 108004: return "Sickle";
+
+        // Throwables / Grenades
+        case 601001: return "Frag Grenade";
+        case 601002: return "Smoke Grenade";
+        case 601003: return "Molotov";
+        case 601004: return "Stun Grenade";
+        case 601005: return "Grenade";
+        case 602001: return "Smoke Grenade";
+        case 602002: return "Frag Grenade";
+        case 602003: return "Molotov";
+        case 602004: return "Stun Grenade";
         default: return NULL;
     }
 }
@@ -894,20 +905,101 @@ static int32_t ds_pubg_read_equipped_weapon_id(uint64_t pawn) {
     if (!pawn || !ds_pubg_valid(pawn)) return 0;
 
     auto isValidWeaponId = [](int32_t wid) -> bool {
-        return (wid >= 101001 && wid <= 108999);
+        return (wid >= 101001 && wid <= 108999) || (wid >= 601001 && wid <= 603999);
     };
 
+    auto extractWeaponIdFromActor = [&](uint64_t weapon) -> int32_t {
+        if (!weapon || !ds_pubg_valid(weapon)) return 0;
+
+        // 1. WeaponCfg.KeyID (0x798 on ASTExtraWeapon)
+        int32_t wid = ds_pubg_read_i32(weapon + 0x798ULL);
+        if (isValidWeaponId(wid)) return wid;
+
+        // 2. OwnerClientCreateWeaponData.ID.TypeSpecificID (0x68C on ASTExtraWeapon: 0x670 + 0x18 + 0x4)
+        wid = ds_pubg_read_i32(weapon + 0x68CULL);
+        if (isValidWeaponId(wid)) return wid;
+
+        // 3. WeaponEntityComp (0x868) -> WeaponId (0x1E0 on UWeaponEntity)
+        uint64_t wepEntity = ds_pubg_read_ptr(weapon + 0x868ULL);
+        if (wepEntity && ds_pubg_valid(wepEntity)) {
+            wid = ds_pubg_read_i32(wepEntity + 0x1E0ULL);
+            if (isValidWeaponId(wid)) return wid;
+        }
+
+        // 4. ShootID (0xCBC on ASTExtraShootWeapon)
+        wid = ds_pubg_read_i32(weapon + 0xCBCULL);
+        if (isValidWeaponId(wid)) return wid;
+
+        // 5. Standard heuristic offsets on weapon
+        static const uint64_t idOffsets[] = { 0x74ULL, 0x1E0ULL, 0x200ULL, 0x220ULL, 0x238ULL, 0x280ULL };
+        for (uint64_t idOff : idOffsets) {
+            wid = ds_pubg_read_i32(weapon + idOff);
+            if (isValidWeaponId(wid)) return wid;
+        }
+        return 0;
+    };
+
+    // Step 1: Check WeaponManagerComponent on pawn
+    // Offsets on ASTExtraBaseCharacter: 0x2628 (primary dump), 0x25B8, 0x15B8, 0x2600, 0x2618, 0x2620, 0x2630
+    static const uint64_t wmOffsets[] = { 0x2628ULL, 0x25B8ULL, 0x15B8ULL, 0x2600ULL, 0x2618ULL, 0x2620ULL, 0x2630ULL };
+    for (uint64_t wmOff : wmOffsets) {
+        uint64_t wm = ds_pubg_read_ptr(pawn + wmOff);
+        if (!wm || !ds_pubg_valid(wm)) continue;
+
+        // Check active / held weapons:
+        // CurrentWeaponReplicated (0x5E8), CurrentWeaponSimulate (0x5F8), TemporaryWeaponReplicated (0x5F0), CurrentShield (0x600, 0x608)
+        static const uint64_t cwOffsets[] = { 0x5E8ULL, 0x5F8ULL, 0x5F0ULL, 0x600ULL, 0x608ULL };
+        for (uint64_t cwOff : cwOffsets) {
+            uint64_t w = ds_pubg_read_ptr(wm + cwOff);
+            if (w && ds_pubg_valid(w)) {
+                int32_t wid = extractWeaponIdFromActor(w);
+                if (wid > 0) return wid;
+            }
+        }
+
+        // If held weapon pointer was temporarily null during switch, check active socket:
+        // CurUseWeaponLogicSocketRep: 1=Slot1, 2=Slot2, 3=SubSlot, 4=MeleeSlot
+        uint8_t curSlot = ds_pubg_read_u8(wm + 0x320ULL);
+        if (curSlot >= 1 && curSlot <= 4) {
+            uint64_t slotOff = 0;
+            if (curSlot == 1) slotOff = 0x4C8ULL;
+            else if (curSlot == 2) slotOff = 0x500ULL;
+            else if (curSlot == 3) slotOff = 0x538ULL;
+            else if (curSlot == 4) slotOff = 0x570ULL;
+
+            if (slotOff != 0) {
+                // Check TargetWeapon at slot + 0x0
+                uint64_t w = ds_pubg_read_ptr(wm + slotOff);
+                if (w && ds_pubg_valid(w)) {
+                    int32_t wid = extractWeaponIdFromActor(w);
+                    if (wid > 0) return wid;
+                }
+                // Check ID.TypeSpecificID at slot + 0x1C (0x18 + 0x4)
+                int32_t slotWid = ds_pubg_read_i32(wm + slotOff + 0x1CULL);
+                if (isValidWeaponId(slotWid)) return slotWid;
+            }
+        } else if (curSlot == 0) {
+            // curSlot == 0 (SWPS_None) explicitly means Unarmed (tay không)
+            return 0;
+        }
+    }
+
+    // Step 2: Check CurrentReloadWeapon on ASTExtraBaseCharacter (0x3220ULL)
+    uint64_t reloadWep = ds_pubg_read_ptr(pawn + 0x3220ULL);
+    if (reloadWep && ds_pubg_valid(reloadWep)) {
+        int32_t wid = extractWeaponIdFromActor(reloadWep);
+        if (wid > 0) return wid;
+    }
+
+    // Step 3: Check fallback direct weapon pointers on pawn
     static const uint64_t directWeaponOffsets[] = {
-        0x2AF4ULL, 0x2A84ULL, 0x2B00ULL, 0x2A70ULL, 0x2B10ULL, 0x2AA0ULL
+        0x2AF4ULL, 0x2A84ULL, 0x2B00ULL, 0x2A70ULL, 0x2B10ULL, 0x2AA0ULL, 0x21F0ULL, 0x1A00ULL
     };
     for (uint64_t off : directWeaponOffsets) {
         uint64_t w = ds_pubg_read_ptr(pawn + off);
         if (w && ds_pubg_valid(w)) {
-            static const uint64_t idOffsets[] = { 0x1E0ULL, 0x200ULL, 0x220ULL, 0x238ULL, 0x280ULL };
-            for (uint64_t idOff : idOffsets) {
-                int32_t wid = ds_pubg_read_i32(w + idOff);
-                if (isValidWeaponId(wid)) return wid;
-            }
+            int32_t wid = extractWeaponIdFromActor(w);
+            if (wid > 0) return wid;
         }
     }
 
@@ -1439,6 +1531,8 @@ static void ds_pubg_tick(void) {
             const char *wName = ds_pubg_weapon_name_by_id(wid);
             if (wName) {
                 strncpy(p.weaponName, wName, sizeof(p.weaponName) - 1);
+            } else {
+                snprintf(p.weaponName, sizeof(p.weaponName), "Gun %d", wid);
             }
         }
 
