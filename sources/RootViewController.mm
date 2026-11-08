@@ -1944,17 +1944,21 @@ static BOOL IsPUBGProcessRunning(void) {
     [self dismissWarningPopup];
 
     BOOL isEN = IsEnglish();
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile & auto-activating HUD..." : @"Đang mở PUBG Mobile & tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile VNG..." : @"Đang mở PUBG Mobile VNG...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
 
     // 1. Launch PUBG Mobile immediately to switch app
     [self launchPUBGGameProcess];
 
-    // 2. Immediately trigger HUD enable in DarkPubg
-    [self doEnableHUD];
-
-    // 3. Re-trigger launch after 0.4s to ensure foreground switch
+    // 2. Re-trigger launch after 0.4s to ensure foreground switch
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self launchPUBGGameProcess];
+    });
+
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Waiting 5s for game initialization before auto-enabling HUD..." : @"Chờ 5 giây khởi tạo game rồi tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+
+    // 3. Wait 5.0 seconds for game to load, then automatically activate HUD
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self doEnableHUD];
     });
 }
 
