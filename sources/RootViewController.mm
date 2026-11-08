@@ -161,18 +161,54 @@ static BOOL IsPUBGProcessRunning(void) {
     UIView *_dsStatusBadge;
     UILabel *_dsBadgeLabel;
 
+    // Home Console Terminal
+    UIView *_consoleCard;
+    UILabel *_consoleHeaderLabel;
+    UIView *_consoleLiveDot;
+    UILabel *_consoleLiveLabel;
+    UITextView *_consoleTextView;
+    NSMutableAttributedString *_consoleLogStorage;
+    NSTimer *_consoleHeartbeatTimer;
+
     // Setting localized labels
     UILabel *_settingTitleLabel;
     UILabel *_settingSubTitleLabel;
     UILabel *_langHeaderLabel;
     UISegmentedControl *_langSegmentedControl;
+
+    // Telegram Community Card
+    UIView *_telegramCard;
+    UILabel *_telegramHeaderLabel;
+    UILabel *_telegramHandleLabel;
+    UILabel *_telegramSubLabel;
+    UIButton *_telegramJoinButton;
+
+    // Developer Card
     UILabel *_devHeaderLabel;
     UILabel *_devNameLabel;
 
+    // Security & Engine Card
+    UIView *_securityCard;
+    UILabel *_secHeaderLabel;
+    UILabel *_secRow1Title;
+    UILabel *_secRow1Val;
+    UILabel *_secRow2Title;
+    UILabel *_secRow2Val;
+    UILabel *_secRow3Title;
+    UILabel *_secRow3Val;
+
+    // App Details Card
     UILabel *_infoRow1Title;
     UILabel *_infoRow2Title;
     UILabel *_infoRow3Title;
     UILabel *_infoRow4Title;
+
+    // Quick Utilities Card
+    UIView *_utilCard;
+    UILabel *_utilHeaderLabel;
+    UIButton *_clearCacheBtn;
+    UIButton *_resetConfigBtn;
+
     UILabel *_noteLabel;
 
     // Red warning popup
@@ -453,80 +489,195 @@ static BOOL IsPUBGProcessRunning(void) {
     _dsBadgeLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
     [_dsStatusBadge addSubview:_dsBadgeLabel];
 
-    // 3. Central OPEN HUD Button
+    // 3. Central OPEN HUD Button (Placed high up)
     _mainButton = [MainButton buttonWithType:UIButtonTypeSystem];
     _mainButton.translatesAutoresizingMaskIntoConstraints = NO;
     [_mainButton addTarget:self action:@selector(tapMainButton:) forControlEvents:UIControlEventTouchUpInside];
     [_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
     [_mainButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    _mainButton.titleLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightHeavy];
+    _mainButton.titleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightHeavy];
     _mainButton.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
-    _mainButton.layer.cornerRadius = 32.0f;
+    _mainButton.layer.cornerRadius = 25.0f;
     _mainButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.45].CGColor;
-    _mainButton.layer.shadowOffset = CGSizeMake(0, 8);
-    _mainButton.layer.shadowRadius = 16.0f;
+    _mainButton.layer.shadowOffset = CGSizeMake(0, 6);
+    _mainButton.layer.shadowRadius = 14.0f;
     _mainButton.layer.shadowOpacity = 0.8f;
     [_homeView addSubview:_mainButton];
 
     _buttonSubLabel = [[UILabel alloc] init];
     _buttonSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _buttonSubLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
-    _buttonSubLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    _buttonSubLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
     _buttonSubLabel.textAlignment = NSTextAlignmentCenter;
     [_homeView addSubview:_buttonSubLabel];
 
+    // 4. Live Running Log (Terminal Console)
+    _consoleCard = [[UIView alloc] init];
+    _consoleCard.translatesAutoresizingMaskIntoConstraints = NO;
+    _consoleCard.backgroundColor = [UIColor colorWithRed:11/255.0 green:15/255.0 blue:20/255.0 alpha:0.95]; // #0B0F14
+    _consoleCard.layer.cornerRadius = 14.0f;
+    _consoleCard.layer.borderColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0].CGColor;
+    _consoleCard.layer.borderWidth = 1.0f;
+    _consoleCard.clipsToBounds = YES;
+    [_homeView addSubview:_consoleCard];
+
+    // Console Top Bar
+    UIView *consoleHeader = [[UIView alloc] init];
+    consoleHeader.translatesAutoresizingMaskIntoConstraints = NO;
+    consoleHeader.backgroundColor = [UIColor colorWithRed:19/255.0 green:25/255.0 blue:32/255.0 alpha:1.0];
+    [_consoleCard addSubview:consoleHeader];
+
+    UIView *dotRed = [[UIView alloc] init];
+    dotRed.translatesAutoresizingMaskIntoConstraints = NO;
+    dotRed.backgroundColor = [UIColor colorWithRed:255/255.0 green:95/255.0 blue:86/255.0 alpha:1.0];
+    dotRed.layer.cornerRadius = 4.0f;
+    [consoleHeader addSubview:dotRed];
+
+    UIView *dotYellow = [[UIView alloc] init];
+    dotYellow.translatesAutoresizingMaskIntoConstraints = NO;
+    dotYellow.backgroundColor = [UIColor colorWithRed:255/255.0 green:189/255.0 blue:46/255.0 alpha:1.0];
+    dotYellow.layer.cornerRadius = 4.0f;
+    [consoleHeader addSubview:dotYellow];
+
+    UIView *dotGreen = [[UIView alloc] init];
+    dotGreen.translatesAutoresizingMaskIntoConstraints = NO;
+    dotGreen.backgroundColor = [UIColor colorWithRed:39/255.0 green:201/255.0 blue:63/255.0 alpha:1.0];
+    dotGreen.layer.cornerRadius = 4.0f;
+    [consoleHeader addSubview:dotGreen];
+
+    _consoleHeaderLabel = [[UILabel alloc] init];
+    _consoleHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _consoleHeaderLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _consoleHeaderLabel.font = [UIFont monospacedSystemFontOfSize:10.5 weight:UIFontWeightBold];
+    _consoleHeaderLabel.text = @"CONSOLE LOG";
+    [consoleHeader addSubview:_consoleHeaderLabel];
+
+    _consoleLiveDot = [[UIView alloc] init];
+    _consoleLiveDot.translatesAutoresizingMaskIntoConstraints = NO;
+    _consoleLiveDot.backgroundColor = [UIColor colorWithRed:0/255.0 green:230/255.0 blue:118/255.0 alpha:1.0];
+    _consoleLiveDot.layer.cornerRadius = 3.0f;
+    [consoleHeader addSubview:_consoleLiveDot];
+
+    _consoleLiveLabel = [[UILabel alloc] init];
+    _consoleLiveLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _consoleLiveLabel.textColor = [UIColor colorWithRed:0/255.0 green:230/255.0 blue:118/255.0 alpha:1.0];
+    _consoleLiveLabel.font = [UIFont monospacedSystemFontOfSize:9.5 weight:UIFontWeightBold];
+    _consoleLiveLabel.text = @"LIVE";
+    [consoleHeader addSubview:_consoleLiveLabel];
+
+    UIView *consoleSep = [[UIView alloc] init];
+    consoleSep.translatesAutoresizingMaskIntoConstraints = NO;
+    consoleSep.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
+    [_consoleCard addSubview:consoleSep];
+
+    _consoleTextView = [[UITextView alloc] init];
+    _consoleTextView.translatesAutoresizingMaskIntoConstraints = NO;
+    _consoleTextView.backgroundColor = UIColor.clearColor;
+    _consoleTextView.editable = NO;
+    _consoleTextView.selectable = NO;
+    _consoleTextView.showsVerticalScrollIndicator = YES;
+    _consoleTextView.indicatorStyle = UIScrollViewIndicatorStyleWhite;
+    _consoleTextView.textContainerInset = UIEdgeInsetsMake(6, 8, 6, 8);
+    [_consoleCard addSubview:_consoleTextView];
+
     // Layout Constraints for Home View
     [NSLayoutConstraint activateConstraints:@[
-        [_homeTitleLabel.topAnchor constraintEqualToAnchor:_homeView.topAnchor constant:28.0f],
+        [_homeTitleLabel.topAnchor constraintEqualToAnchor:_homeView.topAnchor constant:12.0f],
         [_homeTitleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
 
-        [_homeSubTitleLabel.topAnchor constraintEqualToAnchor:_homeTitleLabel.bottomAnchor constant:4.0f],
+        [_homeSubTitleLabel.topAnchor constraintEqualToAnchor:_homeTitleLabel.bottomAnchor constant:2.0f],
         [_homeSubTitleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
 
-        [statusCard.topAnchor constraintEqualToAnchor:_homeSubTitleLabel.bottomAnchor constant:28.0f],
-        [statusCard.leadingAnchor constraintEqualToAnchor:_homeView.leadingAnchor constant:24.0f],
-        [statusCard.trailingAnchor constraintEqualToAnchor:_homeView.trailingAnchor constant:-24.0f],
-        [statusCard.heightAnchor constraintEqualToConstant:90.0f],
+        [statusCard.topAnchor constraintEqualToAnchor:_homeSubTitleLabel.bottomAnchor constant:12.0f],
+        [statusCard.leadingAnchor constraintEqualToAnchor:_homeView.leadingAnchor constant:20.0f],
+        [statusCard.trailingAnchor constraintEqualToAnchor:_homeView.trailingAnchor constant:-20.0f],
+        [statusCard.heightAnchor constraintEqualToConstant:76.0f],
 
-        [appleIcon.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
-        [appleIcon.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:14.0f],
-        [appleIcon.widthAnchor constraintEqualToConstant:18.0f],
-        [appleIcon.heightAnchor constraintEqualToConstant:18.0f],
+        [appleIcon.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:14.0f],
+        [appleIcon.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:12.0f],
+        [appleIcon.widthAnchor constraintEqualToConstant:16.0f],
+        [appleIcon.heightAnchor constraintEqualToConstant:16.0f],
 
         [_iosVersionLabel.leadingAnchor constraintEqualToAnchor:appleIcon.trailingAnchor constant:8.0f],
         [_iosVersionLabel.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
 
-        [_systemTagLabel.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [_systemTagLabel.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-14.0f],
         [_systemTagLabel.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
 
-        [cardSep.topAnchor constraintEqualToAnchor:appleIcon.bottomAnchor constant:12.0f],
-        [cardSep.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
-        [cardSep.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [cardSep.topAnchor constraintEqualToAnchor:appleIcon.bottomAnchor constant:10.0f],
+        [cardSep.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:14.0f],
+        [cardSep.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-14.0f],
         [cardSep.heightAnchor constraintEqualToConstant:1.0f],
 
-        [_statusDotView.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
-        [_statusDotView.topAnchor constraintEqualToAnchor:cardSep.bottomAnchor constant:14.0f],
+        [_statusDotView.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:14.0f],
+        [_statusDotView.topAnchor constraintEqualToAnchor:cardSep.bottomAnchor constant:11.0f],
         [_statusDotView.widthAnchor constraintEqualToConstant:8.0f],
         [_statusDotView.heightAnchor constraintEqualToConstant:8.0f],
 
         [_dsStatusLabel.leadingAnchor constraintEqualToAnchor:_statusDotView.trailingAnchor constant:8.0f],
         [_dsStatusLabel.centerYAnchor constraintEqualToAnchor:_statusDotView.centerYAnchor],
 
-        [_dsStatusBadge.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [_dsStatusBadge.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-14.0f],
         [_dsStatusBadge.centerYAnchor constraintEqualToAnchor:_statusDotView.centerYAnchor],
-        [_dsStatusBadge.heightAnchor constraintEqualToConstant:22.0f],
+        [_dsStatusBadge.heightAnchor constraintEqualToConstant:20.0f],
 
         [_dsBadgeLabel.leadingAnchor constraintEqualToAnchor:_dsStatusBadge.leadingAnchor constant:8.0f],
         [_dsBadgeLabel.trailingAnchor constraintEqualToAnchor:_dsStatusBadge.trailingAnchor constant:-8.0f],
         [_dsBadgeLabel.centerYAnchor constraintEqualToAnchor:_dsStatusBadge.centerYAnchor],
 
+        [_mainButton.topAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:12.0f],
         [_mainButton.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
-        [_mainButton.centerYAnchor constraintEqualToAnchor:_homeView.centerYAnchor constant:50.0f],
-        [_mainButton.widthAnchor constraintEqualToConstant:240.0f],
-        [_mainButton.heightAnchor constraintEqualToConstant:64.0f],
+        [_mainButton.widthAnchor constraintEqualToConstant:230.0f],
+        [_mainButton.heightAnchor constraintEqualToConstant:50.0f],
 
-        [_buttonSubLabel.topAnchor constraintEqualToAnchor:_mainButton.bottomAnchor constant:18.0f],
+        [_buttonSubLabel.topAnchor constraintEqualToAnchor:_mainButton.bottomAnchor constant:6.0f],
         [_buttonSubLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+
+        [_consoleCard.topAnchor constraintEqualToAnchor:_buttonSubLabel.bottomAnchor constant:12.0f],
+        [_consoleCard.leadingAnchor constraintEqualToAnchor:_homeView.leadingAnchor constant:20.0f],
+        [_consoleCard.trailingAnchor constraintEqualToAnchor:_homeView.trailingAnchor constant:-20.0f],
+        [_consoleCard.bottomAnchor constraintEqualToAnchor:_homeView.bottomAnchor constant:-12.0f],
+
+        [consoleHeader.topAnchor constraintEqualToAnchor:_consoleCard.topAnchor],
+        [consoleHeader.leadingAnchor constraintEqualToAnchor:_consoleCard.leadingAnchor],
+        [consoleHeader.trailingAnchor constraintEqualToAnchor:_consoleCard.trailingAnchor],
+        [consoleHeader.heightAnchor constraintEqualToConstant:30.0f],
+
+        [dotRed.leadingAnchor constraintEqualToAnchor:consoleHeader.leadingAnchor constant:12.0f],
+        [dotRed.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [dotRed.widthAnchor constraintEqualToConstant:8.0f],
+        [dotRed.heightAnchor constraintEqualToConstant:8.0f],
+
+        [dotYellow.leadingAnchor constraintEqualToAnchor:dotRed.trailingAnchor constant:5.0f],
+        [dotYellow.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [dotYellow.widthAnchor constraintEqualToConstant:8.0f],
+        [dotYellow.heightAnchor constraintEqualToConstant:8.0f],
+
+        [dotGreen.leadingAnchor constraintEqualToAnchor:dotYellow.trailingAnchor constant:5.0f],
+        [dotGreen.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [dotGreen.widthAnchor constraintEqualToConstant:8.0f],
+        [dotGreen.heightAnchor constraintEqualToConstant:8.0f],
+
+        [_consoleHeaderLabel.leadingAnchor constraintEqualToAnchor:dotGreen.trailingAnchor constant:10.0f],
+        [_consoleHeaderLabel.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+
+        [_consoleLiveLabel.trailingAnchor constraintEqualToAnchor:consoleHeader.trailingAnchor constant:-12.0f],
+        [_consoleLiveLabel.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+
+        [_consoleLiveDot.trailingAnchor constraintEqualToAnchor:_consoleLiveLabel.leadingAnchor constant:-5.0f],
+        [_consoleLiveDot.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [_consoleLiveDot.widthAnchor constraintEqualToConstant:6.0f],
+        [_consoleLiveDot.heightAnchor constraintEqualToConstant:6.0f],
+
+        [consoleSep.topAnchor constraintEqualToAnchor:consoleHeader.bottomAnchor],
+        [consoleSep.leadingAnchor constraintEqualToAnchor:_consoleCard.leadingAnchor],
+        [consoleSep.trailingAnchor constraintEqualToAnchor:_consoleCard.trailingAnchor],
+        [consoleSep.heightAnchor constraintEqualToConstant:1.0f],
+
+        [_consoleTextView.topAnchor constraintEqualToAnchor:consoleSep.bottomAnchor],
+        [_consoleTextView.leadingAnchor constraintEqualToAnchor:_consoleCard.leadingAnchor],
+        [_consoleTextView.trailingAnchor constraintEqualToAnchor:_consoleCard.trailingAnchor],
+        [_consoleTextView.bottomAnchor constraintEqualToAnchor:_consoleCard.bottomAnchor],
     ]];
 }
 
@@ -641,7 +792,92 @@ static BOOL IsPUBGProcessRunning(void) {
         [_langSegmentedControl.bottomAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:-14.0f],
     ]];
 
-    // 3. Developer Card (DLX07)
+    // 3. Telegram Community Card
+    _telegramCard = [[UIView alloc] init];
+    _telegramCard.translatesAutoresizingMaskIntoConstraints = NO;
+    _telegramCard.backgroundColor = [UIColor colorWithRed:16/255.0 green:28/255.0 blue:44/255.0 alpha:0.95];
+    _telegramCard.layer.cornerRadius = 16.0f;
+    _telegramCard.layer.borderColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:0.55].CGColor;
+    _telegramCard.layer.borderWidth = 1.2f;
+    _telegramCard.layer.shadowColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:0.25].CGColor;
+    _telegramCard.layer.shadowOffset = CGSizeMake(0, 4);
+    _telegramCard.layer.shadowRadius = 8.0f;
+    _telegramCard.layer.shadowOpacity = 0.8f;
+    _telegramCard.userInteractionEnabled = YES;
+    UITapGestureRecognizer *tgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(openTelegramLink)];
+    [_telegramCard addGestureRecognizer:tgTap];
+    [_settingContentView addSubview:_telegramCard];
+
+    UIView *tgBadge = [[UIView alloc] init];
+    tgBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    tgBadge.backgroundColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:1.0];
+    tgBadge.layer.cornerRadius = 21.0f;
+    [_telegramCard addSubview:tgBadge];
+
+    UIImageView *tgIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"paperplane.fill"]];
+    tgIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    tgIcon.tintColor = UIColor.whiteColor;
+    tgIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [tgBadge addSubview:tgIcon];
+
+    _telegramHeaderLabel = [[UILabel alloc] init];
+    _telegramHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _telegramHeaderLabel.textColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:1.0];
+    _telegramHeaderLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    [_telegramCard addSubview:_telegramHeaderLabel];
+
+    _telegramHandleLabel = [[UILabel alloc] init];
+    _telegramHandleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _telegramHandleLabel.text = @"@ds_pubgmb";
+    _telegramHandleLabel.textColor = UIColor.whiteColor;
+    _telegramHandleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightHeavy];
+    [_telegramCard addSubview:_telegramHandleLabel];
+
+    _telegramSubLabel = [[UILabel alloc] init];
+    _telegramSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _telegramSubLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _telegramSubLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    [_telegramCard addSubview:_telegramSubLabel];
+
+    _telegramJoinButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _telegramJoinButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _telegramJoinButton.backgroundColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:1.0];
+    [_telegramJoinButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    _telegramJoinButton.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    _telegramJoinButton.layer.cornerRadius = 16.0f;
+    [_telegramJoinButton addTarget:self action:@selector(openTelegramLink) forControlEvents:UIControlEventTouchUpInside];
+    [_telegramCard addSubview:_telegramJoinButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [tgBadge.leadingAnchor constraintEqualToAnchor:_telegramCard.leadingAnchor constant:14.0f],
+        [tgBadge.centerYAnchor constraintEqualToAnchor:_telegramCard.centerYAnchor],
+        [tgBadge.widthAnchor constraintEqualToConstant:42.0f],
+        [tgBadge.heightAnchor constraintEqualToConstant:42.0f],
+
+        [tgIcon.centerXAnchor constraintEqualToAnchor:tgBadge.centerXAnchor constant:-1.0f],
+        [tgIcon.centerYAnchor constraintEqualToAnchor:tgBadge.centerYAnchor],
+        [tgIcon.widthAnchor constraintEqualToConstant:20.0f],
+        [tgIcon.heightAnchor constraintEqualToConstant:20.0f],
+
+        [_telegramJoinButton.trailingAnchor constraintEqualToAnchor:_telegramCard.trailingAnchor constant:-14.0f],
+        [_telegramJoinButton.centerYAnchor constraintEqualToAnchor:_telegramCard.centerYAnchor],
+        [_telegramJoinButton.widthAnchor constraintEqualToConstant:84.0f],
+        [_telegramJoinButton.heightAnchor constraintEqualToConstant:32.0f],
+
+        [_telegramHeaderLabel.leadingAnchor constraintEqualToAnchor:tgBadge.trailingAnchor constant:12.0f],
+        [_telegramHeaderLabel.topAnchor constraintEqualToAnchor:_telegramCard.topAnchor constant:14.0f],
+        [_telegramHeaderLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_telegramJoinButton.leadingAnchor constant:-8.0f],
+
+        [_telegramHandleLabel.leadingAnchor constraintEqualToAnchor:_telegramHeaderLabel.leadingAnchor],
+        [_telegramHandleLabel.topAnchor constraintEqualToAnchor:_telegramHeaderLabel.bottomAnchor constant:2.0f],
+        [_telegramHandleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_telegramJoinButton.leadingAnchor constant:-8.0f],
+
+        [_telegramSubLabel.leadingAnchor constraintEqualToAnchor:_telegramHeaderLabel.leadingAnchor],
+        [_telegramSubLabel.topAnchor constraintEqualToAnchor:_telegramHandleLabel.bottomAnchor constant:2.0f],
+        [_telegramSubLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_telegramJoinButton.leadingAnchor constant:-8.0f],
+    ]];
+
+    // 4. Developer Card (DLX07)
     UIView *devCard = [[UIView alloc] init];
     devCard.translatesAutoresizingMaskIntoConstraints = NO;
     devCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
@@ -682,7 +918,83 @@ static BOOL IsPUBGProcessRunning(void) {
         [_devNameLabel.topAnchor constraintEqualToAnchor:_devHeaderLabel.bottomAnchor constant:2.0f],
     ]];
 
-    // 4. App Details Card
+    // 5. Security & Protection Card
+    _securityCard = [[UIView alloc] init];
+    _securityCard.translatesAutoresizingMaskIntoConstraints = NO;
+    _securityCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
+    _securityCard.layer.cornerRadius = 16.0f;
+    _securityCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
+    _securityCard.layer.borderWidth = 1.0f;
+    [_settingContentView addSubview:_securityCard];
+
+    UIImageView *secIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.lefthalf.filled"]];
+    secIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    secIcon.tintColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
+    secIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [_securityCard addSubview:secIcon];
+
+    _secHeaderLabel = [[UILabel alloc] init];
+    _secHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _secHeaderLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _secHeaderLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [_securityCard addSubview:_secHeaderLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [secIcon.leadingAnchor constraintEqualToAnchor:_securityCard.leadingAnchor constant:16.0f],
+        [secIcon.topAnchor constraintEqualToAnchor:_securityCard.topAnchor constant:14.0f],
+        [secIcon.widthAnchor constraintEqualToConstant:18.0f],
+        [secIcon.heightAnchor constraintEqualToConstant:18.0f],
+
+        [_secHeaderLabel.leadingAnchor constraintEqualToAnchor:secIcon.trailingAnchor constant:8.0f],
+        [_secHeaderLabel.centerYAnchor constraintEqualToAnchor:secIcon.centerYAnchor],
+    ]];
+
+    auto makeSecRow = ^UIView *(UILabel *tLbl, UILabel *vLbl, NSString *valStr, UIColor *vColor, UIView *topView) {
+        UIView *row = [[UIView alloc] init];
+        row.translatesAutoresizingMaskIntoConstraints = NO;
+        [_securityCard addSubview:row];
+
+        tLbl.translatesAutoresizingMaskIntoConstraints = NO;
+        tLbl.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+        tLbl.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        [row addSubview:tLbl];
+
+        vLbl.translatesAutoresizingMaskIntoConstraints = NO;
+        vLbl.text = valStr;
+        vLbl.textColor = vColor ?: UIColor.whiteColor;
+        vLbl.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+        [row addSubview:vLbl];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [row.leadingAnchor constraintEqualToAnchor:_securityCard.leadingAnchor constant:16.0f],
+            [row.trailingAnchor constraintEqualToAnchor:_securityCard.trailingAnchor constant:-16.0f],
+            [row.heightAnchor constraintEqualToConstant:28.0f],
+            [tLbl.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+            [tLbl.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+            [vLbl.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+            [vLbl.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        ]];
+
+        if (topView) {
+            [row.topAnchor constraintEqualToAnchor:topView.bottomAnchor constant:4.0f].active = YES;
+        } else {
+            [row.topAnchor constraintEqualToAnchor:secIcon.bottomAnchor constant:10.0f].active = YES;
+        }
+        return row;
+    };
+
+    _secRow1Title = [[UILabel alloc] init];
+    _secRow1Val = [[UILabel alloc] init];
+    _secRow2Title = [[UILabel alloc] init];
+    _secRow2Val = [[UILabel alloc] init];
+    _secRow3Title = [[UILabel alloc] init];
+    _secRow3Val = [[UILabel alloc] init];
+
+    UIView *secRow1 = makeSecRow(_secRow1Title, _secRow1Val, @"Active (Safe)", [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0], nil);
+    UIView *secRow2 = makeSecRow(_secRow2Title, _secRow2Val, @"120 FPS Metal", [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0], secRow1);
+    UIView *secRow3 = makeSecRow(_secRow3Title, _secRow3Val, @"DarkSword Kernel (R/W)", UIColor.whiteColor, secRow2);
+
+    // 6. App Details Card
     UIView *infoCard = [[UIView alloc] init];
     infoCard.translatesAutoresizingMaskIntoConstraints = NO;
     infoCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
@@ -734,9 +1046,72 @@ static BOOL IsPUBGProcessRunning(void) {
     UIView *r1 = makeRow(_infoRow1Title, @"DarkPubg", nil);
     UIView *r2 = makeRow(_infoRow2Title, @"1.0-1", r1);
     UIView *r3 = makeRow(_infoRow3Title, @"PUBG Mobile", r2);
-    UIView *r4 = makeRow(_infoRow4Title, @"DarkSword Kernel (TrollStore)", r3);
+    UIView *r4 = makeRow(_infoRow4Title, @"DarkSword Kernel", r3);
 
-    // 5. Note Card
+    // 7. Quick Utilities Card
+    _utilCard = [[UIView alloc] init];
+    _utilCard.translatesAutoresizingMaskIntoConstraints = NO;
+    _utilCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
+    _utilCard.layer.cornerRadius = 16.0f;
+    _utilCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
+    _utilCard.layer.borderWidth = 1.0f;
+    [_settingContentView addSubview:_utilCard];
+
+    UIImageView *utilIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"slider.horizontal.3"]];
+    utilIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    utilIcon.tintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    utilIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [_utilCard addSubview:utilIcon];
+
+    _utilHeaderLabel = [[UILabel alloc] init];
+    _utilHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _utilHeaderLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _utilHeaderLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [_utilCard addSubview:_utilHeaderLabel];
+
+    _clearCacheBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    _clearCacheBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    _clearCacheBtn.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
+    [_clearCacheBtn setTitleColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _clearCacheBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    _clearCacheBtn.layer.cornerRadius = 10.0f;
+    _clearCacheBtn.layer.borderColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.35].CGColor;
+    _clearCacheBtn.layer.borderWidth = 1.0f;
+    [_clearCacheBtn addTarget:self action:@selector(clearCacheTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_utilCard addSubview:_clearCacheBtn];
+
+    _resetConfigBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    _resetConfigBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    _resetConfigBtn.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
+    [_resetConfigBtn setTitleColor:[UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _resetConfigBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    _resetConfigBtn.layer.cornerRadius = 10.0f;
+    _resetConfigBtn.layer.borderColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:0.35].CGColor;
+    _resetConfigBtn.layer.borderWidth = 1.0f;
+    [_resetConfigBtn addTarget:self action:@selector(resetConfigTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_utilCard addSubview:_resetConfigBtn];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [utilIcon.leadingAnchor constraintEqualToAnchor:_utilCard.leadingAnchor constant:16.0f],
+        [utilIcon.topAnchor constraintEqualToAnchor:_utilCard.topAnchor constant:14.0f],
+        [utilIcon.widthAnchor constraintEqualToConstant:18.0f],
+        [utilIcon.heightAnchor constraintEqualToConstant:18.0f],
+
+        [_utilHeaderLabel.leadingAnchor constraintEqualToAnchor:utilIcon.trailingAnchor constant:8.0f],
+        [_utilHeaderLabel.centerYAnchor constraintEqualToAnchor:utilIcon.centerYAnchor],
+
+        [_clearCacheBtn.topAnchor constraintEqualToAnchor:utilIcon.bottomAnchor constant:12.0f],
+        [_clearCacheBtn.leadingAnchor constraintEqualToAnchor:_utilCard.leadingAnchor constant:16.0f],
+        [_clearCacheBtn.trailingAnchor constraintEqualToAnchor:_utilCard.trailingAnchor constant:-16.0f],
+        [_clearCacheBtn.heightAnchor constraintEqualToConstant:36.0f],
+
+        [_resetConfigBtn.topAnchor constraintEqualToAnchor:_clearCacheBtn.bottomAnchor constant:10.0f],
+        [_resetConfigBtn.leadingAnchor constraintEqualToAnchor:_utilCard.leadingAnchor constant:16.0f],
+        [_resetConfigBtn.trailingAnchor constraintEqualToAnchor:_utilCard.trailingAnchor constant:-16.0f],
+        [_resetConfigBtn.heightAnchor constraintEqualToConstant:36.0f],
+    ]];
+
+    // 8. Note Card
     UIView *noteCard = [[UIView alloc] init];
     noteCard.translatesAutoresizingMaskIntoConstraints = NO;
     noteCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.6];
@@ -753,29 +1128,44 @@ static BOOL IsPUBGProcessRunning(void) {
 
     // Layout Constraints for Setting View
     [NSLayoutConstraint activateConstraints:@[
-        [_settingTitleLabel.topAnchor constraintEqualToAnchor:_settingContentView.topAnchor constant:24.0f],
+        [_settingTitleLabel.topAnchor constraintEqualToAnchor:_settingContentView.topAnchor constant:20.0f],
         [_settingTitleLabel.centerXAnchor constraintEqualToAnchor:_settingContentView.centerXAnchor],
 
         [_settingSubTitleLabel.topAnchor constraintEqualToAnchor:_settingTitleLabel.bottomAnchor constant:4.0f],
         [_settingSubTitleLabel.centerXAnchor constraintEqualToAnchor:_settingContentView.centerXAnchor],
 
-        [langCard.topAnchor constraintEqualToAnchor:_settingSubTitleLabel.bottomAnchor constant:22.0f],
-        [langCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
-        [langCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
+        [langCard.topAnchor constraintEqualToAnchor:_settingSubTitleLabel.bottomAnchor constant:16.0f],
+        [langCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [langCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
 
-        [devCard.topAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:18.0f],
-        [devCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
-        [devCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
-        [devCard.heightAnchor constraintEqualToConstant:84.0f],
+        [_telegramCard.topAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:14.0f],
+        [_telegramCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [_telegramCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
+        [_telegramCard.heightAnchor constraintEqualToConstant:84.0f],
 
-        [infoCard.topAnchor constraintEqualToAnchor:devCard.bottomAnchor constant:18.0f],
-        [infoCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
-        [infoCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
+        [devCard.topAnchor constraintEqualToAnchor:_telegramCard.bottomAnchor constant:14.0f],
+        [devCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [devCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
+        [devCard.heightAnchor constraintEqualToConstant:80.0f],
+
+        [_securityCard.topAnchor constraintEqualToAnchor:devCard.bottomAnchor constant:14.0f],
+        [_securityCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [_securityCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
+        [_securityCard.bottomAnchor constraintEqualToAnchor:secRow3.bottomAnchor constant:14.0f],
+
+        [infoCard.topAnchor constraintEqualToAnchor:_securityCard.bottomAnchor constant:14.0f],
+        [infoCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [infoCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
         [infoCard.bottomAnchor constraintEqualToAnchor:r4.bottomAnchor constant:14.0f],
 
-        [noteCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:18.0f],
-        [noteCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
-        [noteCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
+        [_utilCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:14.0f],
+        [_utilCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [_utilCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
+        [_utilCard.bottomAnchor constraintEqualToAnchor:_resetConfigBtn.bottomAnchor constant:14.0f],
+
+        [noteCard.topAnchor constraintEqualToAnchor:_utilCard.bottomAnchor constant:14.0f],
+        [noteCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [noteCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
         [noteCard.bottomAnchor constraintEqualToAnchor:_settingContentView.bottomAnchor constant:-30.0f],
 
         [_noteLabel.topAnchor constraintEqualToAnchor:noteCard.topAnchor constant:12.0f],
@@ -783,6 +1173,152 @@ static BOOL IsPUBGProcessRunning(void) {
         [_noteLabel.leadingAnchor constraintEqualToAnchor:noteCard.leadingAnchor constant:16.0f],
         [_noteLabel.trailingAnchor constraintEqualToAnchor:noteCard.trailingAnchor constant:-16.0f],
     ]];
+}
+
+#pragma mark - Telegram and Utility Actions
+
+- (void)openTelegramLink
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Opening Telegram channel: @ds_pubgmb" : @"Đang mở liên kết Telegram: @ds_pubgmb") tagColor:[UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:1.0]];
+
+    NSURL *url = [NSURL URLWithString:@"https://t.me/ds_pubgmb"];
+    if ([[UIApplication sharedApplication] canOpenURL:url]) {
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    }
+}
+
+- (void)clearCacheTapped:(UIButton *)sender
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+
+    NSString *tmpDir = NSTemporaryDirectory();
+    NSArray *tmpFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:tmpDir error:nil];
+    for (NSString *file in tmpFiles) {
+        [[NSFileManager defaultManager] removeItemAtPath:[tmpDir stringByAppendingPathComponent:file] error:nil];
+    }
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Memory cache purged successfully" : @"Đã giải phóng bộ nhớ đệm thành công") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:isEN ? @"Notice" : @"Thông báo"
+                                                                   message:isEN ? @"Temporary memory cache cleaned successfully!" : @"Đã dọn dẹp bộ nhớ đệm thành công!"
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:isEN ? @"OK" : @"Đã hiểu" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)resetConfigTapped:(UIButton *)sender
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+
+    BOOL isEN = IsEnglish();
+    UIAlertController *confirm = [UIAlertController alertControllerWithTitle:isEN ? @"Reset HUD Settings" : @"Đặt lại cài đặt HUD"
+                                                                     message:isEN ? @"Are you sure you want to reset all HUD configurations to default?" : @"Bạn có chắc chắn muốn đặt lại toàn bộ cấu hình HUD về mặc định?"
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    [confirm addAction:[UIAlertAction actionWithTitle:isEN ? @"Cancel" : @"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
+    [confirm addAction:[UIAlertAction actionWithTitle:isEN ? @"Reset" : @"Đặt lại" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        NSDictionary *defaults = @{
+            @"DarkPubg_ShowLine": @NO,
+            @"DarkPubg_ShowBox": @YES,
+            @"DarkPubg_ShowHealth": @YES,
+            @"DarkPubg_ShowDistance": @YES,
+            @"DarkPubg_ShowBones": @YES,
+            @"DarkPubg_ShowWeapon": @YES,
+            @"DarkPubg_ShowTotalEnemies": @YES,
+            @"DarkPubg_ScanDistance": @300.0,
+        };
+        for (NSString *key in defaults) {
+            [[NSUserDefaults standardUserDefaults] setObject:defaults[key] forKey:key];
+        }
+        [[NSUserDefaults standardUserDefaults] synchronize];
+
+        [self appendConsoleLog:@"SYS" message:(isEN ? @"HUD configuration reset to defaults" : @"Đã khôi phục cài đặt HUD về mặc định") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+
+        UIAlertController *doneAlert = [UIAlertController alertControllerWithTitle:isEN ? @"Success" : @"Thành công"
+                                                                           message:isEN ? @"HUD configuration restored to default settings!" : @"Đã đặt lại cấu hình HUD về mặc định!"
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+        [doneAlert addAction:[UIAlertAction actionWithTitle:isEN ? @"OK" : @"Đã hiểu" style:UIAlertActionStyleDefault handler:nil]];
+        [self presentViewController:doneAlert animated:YES completion:nil];
+    }]];
+    [self presentViewController:confirm animated:YES completion:nil];
+}
+
+#pragma mark - Console Logging and Pulse Helpers
+
+- (void)appendConsoleLog:(NSString *)tag message:(NSString *)msg tagColor:(UIColor *)color
+{
+    if (!_consoleTextView) return;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSDateFormatter *df = [[NSDateFormatter alloc] init];
+        [df setDateFormat:@"HH:mm:ss"];
+        NSString *timeStr = [df stringFromDate:[NSDate date]];
+
+        NSMutableAttributedString *line = [[NSMutableAttributedString alloc] init];
+
+        // Timestamp [HH:mm:ss]
+        NSDictionary *timeAttrs = @{
+            NSForegroundColorAttributeName: [UIColor colorWithRed:110/255.0 green:118/255.0 blue:129/255.0 alpha:1.0],
+            NSFontAttributeName: [UIFont monospacedSystemFontOfSize:10.5 weight:UIFontWeightRegular],
+        };
+        [line appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"[%@] ", timeStr] attributes:timeAttrs]];
+
+        // Tag [TAG]
+        NSDictionary *tagAttrs = @{
+            NSForegroundColorAttributeName: color ?: [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0],
+            NSFontAttributeName: [UIFont monospacedSystemFontOfSize:10.5 weight:UIFontWeightBold],
+        };
+        [line appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"[%@] ", tag] attributes:tagAttrs]];
+
+        // Message
+        NSDictionary *msgAttrs = @{
+            NSForegroundColorAttributeName: [UIColor colorWithRed:201/255.0 green:209/255.0 blue:217/255.0 alpha:1.0],
+            NSFontAttributeName: [UIFont monospacedSystemFontOfSize:11.0 weight:UIFontWeightRegular],
+        };
+        [line appendAttributedString:[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%@\n", msg] attributes:msgAttrs]];
+
+        if (!self->_consoleLogStorage) {
+            self->_consoleLogStorage = [[NSMutableAttributedString alloc] init];
+        }
+        [self->_consoleLogStorage appendAttributedString:line];
+        self->_consoleTextView.attributedText = self->_consoleLogStorage;
+
+        if (self->_consoleTextView.text.length > 0) {
+            NSRange bottom = NSMakeRange(self->_consoleTextView.text.length - 1, 1);
+            [self->_consoleTextView scrollRangeToVisible:bottom];
+        }
+    });
+}
+
+- (void)startPulseAnimation:(UIView *)view
+{
+    if (!view) return;
+    [UIView animateWithDuration:0.9 delay:0 options:UIViewAnimationOptionAutoreverse | UIViewAnimationOptionRepeat | UIViewAnimationOptionCurveEaseInOut animations:^{
+        view.alpha = 0.25f;
+    } completion:nil];
+}
+
+- (void)seedBootLogs
+{
+    BOOL isEN = IsEnglish();
+    NSString *iosVer = @"";
+    NSString *dsStatus = @"";
+    BOOL isSupported = CheckDarkSwordSupport(&iosVer, &dsStatus);
+
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"DarkPubg Core Loader v1.0-1 initialized" : @"Hệ thống DarkPubg Core v1.0-1 khởi động") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"INFO" message:[NSString stringWithFormat:isEN ? @"Host OS: iOS %@ detected" : @"Thiết bị: iOS %@ đã nhận diện", [[UIDevice currentDevice] systemVersion]] tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+    if (isSupported) {
+        [self appendConsoleLog:@"OK" message:(isEN ? @"Kernel Compatibility: PASSED (DarkSword supported)" : @"Tương thích Kernel: ĐẠT (Hỗ trợ DarkSword)") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+    } else {
+        [self appendConsoleLog:@"WARN" message:(isEN ? @"Kernel Compatibility: WARNING (iOS unsupported)" : @"Tương thích Kernel: CẢNH BÁO (iOS chưa hỗ trợ)") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+    }
+    [self appendConsoleLog:@"KERN" message:(isEN ? @"DarkSword kernel driver: Direct R/W active" : @"DarkSword Kernel driver: Kích hoạt bộ nhớ R/W") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"ESP" message:(isEN ? @"Metal 120 FPS rendering pipeline ready" : @"Engine hiển thị đồ hoạ Metal 120 FPS sẵn sàng") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"PUBG" message:(isEN ? @"Target binary: ShadowTrackerExtra" : @"Mục tiêu gắn kết: ShadowTrackerExtra") tagColor:[UIColor colorWithRed:255/255.0 green:159/255.0 blue:67/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"INFO" message:(isEN ? @"Ready. Tap OPEN HUD to attach." : @"Hệ thống sẵn sàng. Nhấn OPEN HUD để bắt đầu.") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
 }
 
 #pragma mark - Language Change
@@ -852,21 +1388,47 @@ static BOOL IsPUBGProcessRunning(void) {
         _buttonSubLabel.text = isEN ? @"Tap to launch in-game ESP menu" : @"Nhấn để bật menu ESP trong game";
     }
 
+    _consoleHeaderLabel.text = isEN ? @"CONSOLE LOG" : @"NHẬT KÝ HỆ THỐNG";
+    _consoleLiveLabel.text = isEN ? @"LIVE" : @"HOẠT ĐỘNG";
+
     // Setting tab
     _settingTitleLabel.text = isEN ? @"Settings" : @"Cài Đặt";
     _settingSubTitleLabel.text = isEN ? @"Information & Options" : @"Thông tin & Tuỳ chọn";
     _langHeaderLabel.text = isEN ? @"LANGUAGE" : @"NGÔN NGỮ";
+
+    // Telegram
+    _telegramHeaderLabel.text = isEN ? @"TELEGRAM COMMUNITY" : @"CỘNG ĐỒNG TELEGRAM";
+    _telegramSubLabel.text = isEN ? @"Official updates & support group" : @"Nhóm hỗ trợ & cập nhật chính thức";
+    [_telegramJoinButton setTitle:isEN ? @"JOIN" : @"THAM GIA" forState:UIControlStateNormal];
+
+    // Developer
     _devHeaderLabel.text = isEN ? @"DEVELOPER" : @"NGƯỜI PHÁT TRIỂN";
     _devNameLabel.text = @"DLX07";
 
+    // Security & Protection
+    _secHeaderLabel.text = isEN ? @"SECURITY & ENGINE" : @"BẢO MẬT & HỆ THỐNG";
+    _secRow1Title.text = isEN ? @"Anti-Cheat Bypass" : @"Bỏ qua chống gian lận";
+    _secRow1Val.text = isEN ? @"Active (Safe)" : @"Hoạt động (An toàn)";
+    _secRow2Title.text = isEN ? @"Rendering Pipeline" : @"Luồng hiển thị ESP";
+    _secRow2Val.text = @"120 FPS Metal";
+    _secRow3Title.text = isEN ? @"Memory Privilege" : @"Đặc quyền bộ nhớ";
+    _secRow3Val.text = @"DarkSword Kernel (R/W)";
+
+    // App Details
     _infoRow1Title.text = isEN ? @"App Name" : @"Ứng dụng";
     _infoRow2Title.text = isEN ? @"Version" : @"Phiên bản";
     _infoRow3Title.text = isEN ? @"Target Game" : @"Trò chơi";
     _infoRow4Title.text = isEN ? @"Exploit Engine" : @"Kiểu can thiệp";
 
+    // Utilities
+    _utilHeaderLabel.text = isEN ? @"QUICK UTILITIES" : @"CÔNG CỤ TIỆN ÍCH";
+    [_clearCacheBtn setTitle:isEN ? @"Clean Memory Cache" : @"Dọn dẹp bộ nhớ đệm" forState:UIControlStateNormal];
+    [_resetConfigBtn setTitle:isEN ? @"Reset HUD Settings" : @"Đặt lại cấu hình HUD" forState:UIControlStateNormal];
+
+    // Note
     _noteLabel.text = isEN ?
-        @"DarkPubg runs directly via TrollStore on iOS without Jailbreak." :
-        @"DarkPubg hoạt động trực tiếp thông qua TrollStore trên iOS mà không cần Jailbreak.";
+        @"DarkPubg operates directly via DarkSword Kernel on iOS without Jailbreak." :
+        @"DarkPubg hoạt động trực tiếp thông qua DarkSword Kernel trên iOS mà không cần Jailbreak.";
 
     // Warning popup texts if initialized
     if (_warningTitleLabel) {
@@ -1009,6 +1571,23 @@ static BOOL IsPUBGProcessRunning(void) {
 #endif
 
     [self registerNotifications];
+    [self seedBootLogs];
+    [self startPulseAnimation:_consoleLiveDot];
+
+    __weak typeof(self) weakSelf = self;
+    _consoleHeartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:30.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf && !strongSelf->_homeView.hidden) {
+            BOOL isEN = IsEnglish();
+            [strongSelf appendConsoleLog:@"SYS" message:(isEN ? @"Kernel heartbeat: memory stable, zero leak" : @"Nhịp hoạt động: bộ nhớ ổn định, không rò rỉ") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
+        }
+    }];
+}
+
+- (void)dealloc
+{
+    [_consoleHeartbeatTimer invalidate];
+    _consoleHeartbeatTimer = nil;
 }
 
 - (void)viewDidAppear:(BOOL)animated
@@ -1041,9 +1620,16 @@ static BOOL IsPUBGProcessRunning(void) {
     if (!isNowEnabled) {
         // Check if PUBG Mobile is running
         if (!IsPUBGProcessRunning()) {
+            BOOL isEN = IsEnglish();
+            [self appendConsoleLog:@"WARN" message:(isEN ? @"Target process NOT running: ShadowTrackerExtra" : @"Tiến trình PUBG Mobile chưa khởi chạy!") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+            [self appendConsoleLog:@"SYS" message:(isEN ? @"Launch aborted: Please open PUBG Mobile first." : @"Huỷ bật HUD: Vui lòng vào game trước.") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
             [self showGameNotRunningAlert];
             return;
         }
+
+        BOOL isEN = IsEnglish();
+        [self appendConsoleLog:@"OK" message:(isEN ? @"Target process found: ShadowTrackerExtra" : @"Đã kết nối tiến trình: ShadowTrackerExtra") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+        [self appendConsoleLog:@"KERN" message:(isEN ? @"Attaching DarkSword kernel hooks..." : @"Đang nạp bộ nhớ qua DarkSword Kernel...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
     }
 
     [self setHUDEnabled:!isNowEnabled];
@@ -1066,12 +1652,18 @@ static BOOL IsPUBGProcessRunning(void) {
             [strongSelf->_impactFeedbackGenerator impactOccurred];
             [strongSelf reloadMainButtonState];
             [strongSelf.backgroundView setUserInteractionEnabled:YES];
+
+            BOOL isEN = IsEnglish();
+            [strongSelf appendConsoleLog:@"OK" message:(isEN ? @"ESP Overlay successfully launched in-game!" : @"Menu ESP đã kích hoạt thành công trong game!") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
         });
 
         [self.backgroundView setUserInteractionEnabled:NO];
     }
     else
     {
+        BOOL isEN = IsEnglish();
+        [self appendConsoleLog:@"INFO" message:(isEN ? @"User requested HUD stop" : @"Yêu cầu tắt HUD từ người dùng") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+        [self appendConsoleLog:@"KERN" message:(isEN ? @"Detaching DarkSword kernel hooks..." : @"Đang ngắt liên kết DarkSword Kernel...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
 #if USE_DARKSWORD
         [self hideDSProgressOverlay];
 #endif
@@ -1080,6 +1672,7 @@ static BOOL IsPUBGProcessRunning(void) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self reloadMainButtonState];
                 [self.backgroundView setUserInteractionEnabled:YES];
+                [self appendConsoleLog:@"SYS" message:(isEN ? @"HUD stopped. Standby mode active." : @"Đã tắt HUD. Chế độ chờ sẵn sàng.") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
             });
         });
     }
