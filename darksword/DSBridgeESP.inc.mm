@@ -943,6 +943,25 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UISwitch *_pubgBotSwitch;
     UILabel *_pubgVehicleLabel;
     UISwitch *_pubgVehicleSwitch;
+    int _pubgCurrentTab;
+    UIView *_pubgTabBar;
+    UIButton *_pubgTabButtonPlayer;
+    UIButton *_pubgTabButtonItems;
+    UIView *_pubgItemCards[6];
+    UILabel *_pubgWeaponLabel;
+    UISwitch *_pubgWeaponSwitch;
+    UILabel *_pubgArmorLabel;
+    UISwitch *_pubgArmorSwitch;
+    UILabel *_pubgBagLabel;
+    UISwitch *_pubgBagSwitch;
+    UILabel *_pubgScopeLabel;
+    UISwitch *_pubgScopeSwitch;
+    UILabel *_pubgCrateLabel;
+    UISwitch *_pubgCrateSwitch;
+    UIView *_pubgItemScanCard;
+    UILabel *_pubgItemScanLabel;
+    UILabel *_pubgItemScanValueLabel;
+    UISlider *_pubgItemScanSlider;
     CGPoint _buttonAnchorUnit;
     CGPoint _panelAnchorUnit;
     CGPoint _dragStartAnchor;
@@ -994,6 +1013,39 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [_panelView addSubview:card];
         _pubgCards[ci] = card;
     }
+
+    for (int ci = 0; ci < 6; ci++) {
+        UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
+        card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+        card.layer.cornerRadius = 8.0;
+        card.layer.borderWidth = 0.8;
+        card.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+        card.hidden = YES;
+        [_panelView addSubview:card];
+        _pubgItemCards[ci] = card;
+    }
+
+    _pubgTabBar = [[UIView alloc] initWithFrame:CGRectZero];
+    _pubgTabBar.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.04];
+    _pubgTabBar.layer.cornerRadius = 8.0;
+    _pubgTabBar.layer.borderWidth = 0.8;
+    _pubgTabBar.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.08].CGColor;
+    _pubgTabBar.hidden = YES;
+    [_panelView addSubview:_pubgTabBar];
+
+    _pubgTabButtonPlayer = [UIButton buttonWithType:UIButtonTypeCustom];
+    [_pubgTabButtonPlayer setTitle:@"👤 ESP Địch" forState:UIControlStateNormal];
+    _pubgTabButtonPlayer.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgTabButtonPlayer.layer.cornerRadius = 6.0;
+    [_pubgTabButtonPlayer addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_pubgTabBar addSubview:_pubgTabButtonPlayer];
+
+    _pubgTabButtonItems = [UIButton buttonWithType:UIButtonTypeCustom];
+    [_pubgTabButtonItems setTitle:@"📦 Vật Phẩm" forState:UIControlStateNormal];
+    _pubgTabButtonItems.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgTabButtonItems.layer.cornerRadius = 6.0;
+    [_pubgTabButtonItems addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_pubgTabBar addSubview:_pubgTabButtonItems];
 
     _scanCard = [[UIView alloc] initWithFrame:CGRectZero];
     _scanCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
@@ -1232,6 +1284,50 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
+    _pubgWeaponLabel = pubgCreateLabel(@"Hiện Súng");
+    _pubgWeaponSwitch = pubgCreateSwitch(@selector(dsPubgWeaponChanged:));
+    _pubgArmorLabel = pubgCreateLabel(@"Giáp & Mũ");
+    _pubgArmorSwitch = pubgCreateSwitch(@selector(dsPubgArmorChanged:));
+    _pubgBagLabel = pubgCreateLabel(@"Hiện Balo");
+    _pubgBagSwitch = pubgCreateSwitch(@selector(dsPubgBagChanged:));
+    _pubgScopeLabel = pubgCreateLabel(@"Ống Ngắm");
+    _pubgScopeSwitch = pubgCreateSwitch(@selector(dsPubgScopeChanged:));
+    _pubgCrateLabel = pubgCreateLabel(@"Hòm & Thính");
+    _pubgCrateSwitch = pubgCreateSwitch(@selector(dsPubgCrateChanged:));
+
+    _pubgItemScanCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _pubgItemScanCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+    _pubgItemScanCard.layer.cornerRadius = 9.0;
+    _pubgItemScanCard.layer.borderWidth = 0.8;
+    _pubgItemScanCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+    _pubgItemScanCard.hidden = YES;
+    [_panelView addSubview:_pubgItemScanCard];
+
+    _pubgItemScanLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgItemScanLabel.text = @"Khoảng cách vật phẩm";
+    _pubgItemScanLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    _pubgItemScanLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+    _pubgItemScanLabel.hidden = YES;
+    [_panelView addSubview:_pubgItemScanLabel];
+
+    _pubgItemScanValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgItemScanValueLabel.textColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0];
+    _pubgItemScanValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgItemScanValueLabel.textAlignment = NSTextAlignmentRight;
+    _pubgItemScanValueLabel.text = @"150m";
+    _pubgItemScanValueLabel.hidden = YES;
+    [_panelView addSubview:_pubgItemScanValueLabel];
+
+    _pubgItemScanSlider = [[UISlider alloc] initWithFrame:CGRectZero];
+    _pubgItemScanSlider.minimumValue = 50.0f;
+    _pubgItemScanSlider.maximumValue = 300.0f;
+    _pubgItemScanSlider.value = g_pubgItemMaxDistance;
+    _pubgItemScanSlider.continuous = YES;
+    _pubgItemScanSlider.minimumTrackTintColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0];
+    _pubgItemScanSlider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
+    [_pubgItemScanSlider addTarget:self action:@selector(dsPubgItemScanSliderChanged:) forControlEvents:UIControlEventValueChanged];
+    _pubgItemScanSlider.hidden = YES;
+    [_panelView addSubview:_pubgItemScanSlider];
 
     _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _toggleButton.backgroundColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.92];
@@ -1313,6 +1409,19 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgArrowSwitch.on = g_pubgEspArrow;
         if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
         _pubgVehicleSwitch.on = g_pubgEspVehicle;
+        if ([defaults objectForKey:@"pubg_weapon"] != nil) g_pubgEspWeapon = [defaults boolForKey:@"pubg_weapon"];
+        _pubgWeaponSwitch.on = g_pubgEspWeapon;
+        if ([defaults objectForKey:@"pubg_armor"] != nil) g_pubgEspArmor = [defaults boolForKey:@"pubg_armor"];
+        _pubgArmorSwitch.on = g_pubgEspArmor;
+        if ([defaults objectForKey:@"pubg_bag"] != nil) g_pubgEspBag = [defaults boolForKey:@"pubg_bag"];
+        _pubgBagSwitch.on = g_pubgEspBag;
+        if ([defaults objectForKey:@"pubg_scope"] != nil) g_pubgEspScope = [defaults boolForKey:@"pubg_scope"];
+        _pubgScopeSwitch.on = g_pubgEspScope;
+        if ([defaults objectForKey:@"pubg_crate"] != nil) g_pubgEspCrate = [defaults boolForKey:@"pubg_crate"];
+        _pubgCrateSwitch.on = g_pubgEspCrate;
+        if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
+        _pubgItemScanSlider.value = g_pubgItemMaxDistance;
+        _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_pubgItemMaxDistance];
     } else {
         _titleLabel.text = @"LQ Tools";
         _zoomLabel.text = @"Zoom";
@@ -1357,7 +1466,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = (ds_active_game() == 1) ? 300.0 : MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 294.0 : 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 328.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1441,93 +1550,194 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _espSwitch.transform = CGAffineTransformMakeScale(0.70, 0.70);
         layoutCardSwitch(_espSwitch, panelW - 12.0, 36.0 + 16.0);
 
-        _pubgBoxLabel.hidden = NO;
-        _pubgBoxSwitch.hidden = NO;
-        _pubgSkeletonLabel.hidden = NO;
-        _pubgSkeletonSwitch.hidden = NO;
-        _pubgLineLabel.hidden = NO;
-        _pubgLineSwitch.hidden = NO;
-        _pubgHealthLabel.hidden = NO;
-        _pubgHealthSwitch.hidden = NO;
-        _pubgNameLabel.hidden = NO;
-        _pubgNameSwitch.hidden = NO;
-        _pubgDistLabel.hidden = NO;
-        _pubgDistSwitch.hidden = NO;
-        _pubgBotLabel.hidden = NO;
-        _pubgBotSwitch.hidden = NO;
-        _pubgArrowLabel.hidden = NO;
-        _pubgArrowSwitch.hidden = NO;
-        _pubgVehicleLabel.hidden = YES;
-        _pubgVehicleSwitch.hidden = YES;
+        // Tab Bar setup
+        _pubgTabBar.hidden = NO;
+        _pubgTabBar.frame = CGRectMake(12.0, 70.0, panelW - 24.0, 26.0);
+        CGFloat tabW = (panelW - 24.0 - 6.0) * 0.5;
+        _pubgTabButtonPlayer.frame = CGRectMake(0, 0, tabW, 26.0);
+        _pubgTabButtonItems.frame = CGRectMake(tabW + 6.0, 0, tabW, 26.0);
 
-        // Row 1: Box 2D & Xương
-        CGFloat y0 = 72.0;
-        _pubgCards[0].frame = CGRectMake(col1X, y0, cardW, cardH);
-        _pubgCards[0].hidden = NO;
-        _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgBoxSwitch, col1X + cardW, y0 + cardH * 0.5);
+        if (_pubgCurrentTab == 0) {
+            _pubgTabButtonPlayer.backgroundColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.18];
+            _pubgTabButtonPlayer.layer.borderWidth = 1.0;
+            _pubgTabButtonPlayer.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.6].CGColor;
+            [_pubgTabButtonPlayer setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
 
-        _pubgCards[1].frame = CGRectMake(col2X, y0, cardW, cardH);
-        _pubgCards[1].hidden = NO;
-        _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgSkeletonSwitch, col2X + cardW, y0 + cardH * 0.5);
+            _pubgTabButtonItems.backgroundColor = [UIColor clearColor];
+            _pubgTabButtonItems.layer.borderWidth = 0.0;
+            [_pubgTabButtonItems setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
 
-        // Row 2: Tia Line & Thanh Máu
-        CGFloat y1 = 106.0;
-        _pubgCards[2].frame = CGRectMake(col1X, y1, cardW, cardH);
-        _pubgCards[2].hidden = NO;
-        _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgLineSwitch, col1X + cardW, y1 + cardH * 0.5);
+            // Hide Tab 1 (Items)
+            for (int ci = 0; ci < 6; ci++) _pubgItemCards[ci].hidden = YES;
+            _pubgVehicleLabel.hidden = YES; _pubgVehicleSwitch.hidden = YES;
+            _pubgWeaponLabel.hidden = YES; _pubgWeaponSwitch.hidden = YES;
+            _pubgArmorLabel.hidden = YES; _pubgArmorSwitch.hidden = YES;
+            _pubgBagLabel.hidden = YES; _pubgBagSwitch.hidden = YES;
+            _pubgScopeLabel.hidden = YES; _pubgScopeSwitch.hidden = YES;
+            _pubgCrateLabel.hidden = YES; _pubgCrateSwitch.hidden = YES;
+            _pubgItemScanCard.hidden = YES; _pubgItemScanLabel.hidden = YES;
+            _pubgItemScanValueLabel.hidden = YES; _pubgItemScanSlider.hidden = YES;
 
-        _pubgCards[3].frame = CGRectMake(col2X, y1, cardW, cardH);
-        _pubgCards[3].hidden = NO;
-        _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgHealthSwitch, col2X + cardW, y1 + cardH * 0.5);
+            // Show & Layout Tab 0 (Player ESP)
+            CGFloat cardH0 = 28.0;
+            CGFloat y0 = 100.0;
+            _pubgCards[0].frame = CGRectMake(col1X, y0, cardW, cardH0);
+            _pubgCards[0].hidden = NO;
+            _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 4.0, cardW - 48.0, 20.0);
+            _pubgBoxLabel.hidden = NO;
+            _pubgBoxSwitch.hidden = NO;
+            layoutCardSwitch(_pubgBoxSwitch, col1X + cardW, y0 + cardH0 * 0.5);
 
-        // Row 3: Tên Địch & Khoảng Cách
-        CGFloat y2 = 140.0;
-        _pubgCards[4].frame = CGRectMake(col1X, y2, cardW, cardH);
-        _pubgCards[4].hidden = NO;
-        _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgNameSwitch, col1X + cardW, y2 + cardH * 0.5);
+            _pubgCards[1].frame = CGRectMake(col2X, y0, cardW, cardH0);
+            _pubgCards[1].hidden = NO;
+            _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 4.0, cardW - 48.0, 20.0);
+            _pubgSkeletonLabel.hidden = NO;
+            _pubgSkeletonSwitch.hidden = NO;
+            layoutCardSwitch(_pubgSkeletonSwitch, col2X + cardW, y0 + cardH0 * 0.5);
 
-        _pubgCards[5].frame = CGRectMake(col2X, y2, cardW, cardH);
-        _pubgCards[5].hidden = NO;
-        _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgDistSwitch, col2X + cardW, y2 + cardH * 0.5);
+            CGFloat y1 = 132.0;
+            _pubgCards[2].frame = CGRectMake(col1X, y1, cardW, cardH0);
+            _pubgCards[2].hidden = NO;
+            _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
+            _pubgLineLabel.hidden = NO;
+            _pubgLineSwitch.hidden = NO;
+            layoutCardSwitch(_pubgLineSwitch, col1X + cardW, y1 + cardH0 * 0.5);
 
-        // Row 4: Hiện Bot AI & Mũi Tên
-        CGFloat y3 = 174.0;
-        _pubgCards[6].frame = CGRectMake(col1X, y3, cardW, cardH);
-        _pubgCards[6].hidden = NO;
-        _pubgBotLabel.frame = CGRectMake(col1X + 8.0, y3 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgBotSwitch, col1X + cardW, y3 + cardH * 0.5);
+            _pubgCards[3].frame = CGRectMake(col2X, y1, cardW, cardH0);
+            _pubgCards[3].hidden = NO;
+            _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
+            _pubgHealthLabel.hidden = NO;
+            _pubgHealthSwitch.hidden = NO;
+            layoutCardSwitch(_pubgHealthSwitch, col2X + cardW, y1 + cardH0 * 0.5);
 
-        _pubgCards[7].frame = CGRectMake(col2X, y3, cardW, cardH);
-        _pubgCards[7].hidden = NO;
-        _pubgArrowLabel.frame = CGRectMake(col2X + 8.0, y3 + 5.0, cardW - 48.0, 20.0);
-        layoutCardSwitch(_pubgArrowSwitch, col2X + cardW, y3 + cardH * 0.5);
+            CGFloat y2 = 164.0;
+            _pubgCards[4].frame = CGRectMake(col1X, y2, cardW, cardH0);
+            _pubgCards[4].hidden = NO;
+            _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgNameLabel.hidden = NO;
+            _pubgNameSwitch.hidden = NO;
+            layoutCardSwitch(_pubgNameSwitch, col1X + cardW, y2 + cardH0 * 0.5);
 
-        // Row 5: Scan Distance Card (Khoảng cách hiện địch)
-        CGFloat y4 = 208.0;
-        _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
-        _scanCard.hidden = NO;
-        _zoomLabel.text = @"Khoảng cách hiện địch";
-        _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-        _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
-        _zoomLabel.hidden = NO;
-        _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-        _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
-        _zoomValueLabel.hidden = NO;
-        _zoomSlider.hidden = NO;
-        _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-        _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
-        _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
-        _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
+            _pubgCards[5].frame = CGRectMake(col2X, y2, cardW, cardH0);
+            _pubgCards[5].hidden = NO;
+            _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgDistLabel.hidden = NO;
+            _pubgDistSwitch.hidden = NO;
+            layoutCardSwitch(_pubgDistSwitch, col2X + cardW, y2 + cardH0 * 0.5);
 
-        // Row 6: Reset button
+            CGFloat y3 = 196.0;
+            _pubgCards[6].frame = CGRectMake(col1X, y3, cardW, cardH0);
+            _pubgCards[6].hidden = NO;
+            _pubgBotLabel.frame = CGRectMake(col1X + 8.0, y3 + 4.0, cardW - 48.0, 20.0);
+            _pubgBotLabel.hidden = NO;
+            _pubgBotSwitch.hidden = NO;
+            layoutCardSwitch(_pubgBotSwitch, col1X + cardW, y3 + cardH0 * 0.5);
+
+            _pubgCards[7].frame = CGRectMake(col2X, y3, cardW, cardH0);
+            _pubgCards[7].hidden = NO;
+            _pubgArrowLabel.frame = CGRectMake(col2X + 8.0, y3 + 4.0, cardW - 48.0, 20.0);
+            _pubgArrowLabel.hidden = NO;
+            _pubgArrowSwitch.hidden = NO;
+            layoutCardSwitch(_pubgArrowSwitch, col2X + cardW, y3 + cardH0 * 0.5);
+
+            CGFloat y4 = 230.0;
+            _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
+            _scanCard.hidden = NO;
+            _zoomLabel.text = @"Khoảng cách hiện địch";
+            _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+            _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+            _zoomLabel.hidden = NO;
+            _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+            _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
+            _zoomValueLabel.hidden = NO;
+            _zoomSlider.hidden = NO;
+            _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+            _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
+            _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
+            _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
+        } else {
+            _pubgTabButtonItems.backgroundColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.18];
+            _pubgTabButtonItems.layer.borderWidth = 1.0;
+            _pubgTabButtonItems.layer.borderColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.6].CGColor;
+            [_pubgTabButtonItems setTitleColor:[UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0] forState:UIControlStateNormal];
+
+            _pubgTabButtonPlayer.backgroundColor = [UIColor clearColor];
+            _pubgTabButtonPlayer.layer.borderWidth = 0.0;
+            [_pubgTabButtonPlayer setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
+
+            // Hide Tab 0 (Player ESP)
+            for (int ci = 0; ci < 8; ci++) _pubgCards[ci].hidden = YES;
+            _pubgBoxLabel.hidden = YES; _pubgBoxSwitch.hidden = YES;
+            _pubgSkeletonLabel.hidden = YES; _pubgSkeletonSwitch.hidden = YES;
+            _pubgLineLabel.hidden = YES; _pubgLineSwitch.hidden = YES;
+            _pubgHealthLabel.hidden = YES; _pubgHealthSwitch.hidden = YES;
+            _pubgNameLabel.hidden = YES; _pubgNameSwitch.hidden = YES;
+            _pubgDistLabel.hidden = YES; _pubgDistSwitch.hidden = YES;
+            _pubgBotLabel.hidden = YES; _pubgBotSwitch.hidden = YES;
+            _pubgArrowLabel.hidden = YES; _pubgArrowSwitch.hidden = YES;
+            _scanCard.hidden = YES; _zoomLabel.hidden = YES; _zoomValueLabel.hidden = YES; _zoomSlider.hidden = YES;
+
+            // Show & Layout Tab 1 (Items)
+            CGFloat cardH1 = 28.0;
+            CGFloat y0 = 100.0;
+            _pubgItemCards[0].frame = CGRectMake(col1X, y0, cardW, cardH1);
+            _pubgItemCards[0].hidden = NO;
+            _pubgVehicleLabel.frame = CGRectMake(col1X + 8.0, y0 + 4.0, cardW - 48.0, 20.0);
+            _pubgVehicleLabel.hidden = NO;
+            _pubgVehicleSwitch.hidden = NO;
+            layoutCardSwitch(_pubgVehicleSwitch, col1X + cardW, y0 + cardH1 * 0.5);
+
+            _pubgItemCards[1].frame = CGRectMake(col2X, y0, cardW, cardH1);
+            _pubgItemCards[1].hidden = NO;
+            _pubgWeaponLabel.frame = CGRectMake(col2X + 8.0, y0 + 4.0, cardW - 48.0, 20.0);
+            _pubgWeaponLabel.hidden = NO;
+            _pubgWeaponSwitch.hidden = NO;
+            layoutCardSwitch(_pubgWeaponSwitch, col2X + cardW, y0 + cardH1 * 0.5);
+
+            CGFloat y1 = 132.0;
+            _pubgItemCards[2].frame = CGRectMake(col1X, y1, cardW, cardH1);
+            _pubgItemCards[2].hidden = NO;
+            _pubgArmorLabel.frame = CGRectMake(col1X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
+            _pubgArmorLabel.hidden = NO;
+            _pubgArmorSwitch.hidden = NO;
+            layoutCardSwitch(_pubgArmorSwitch, col1X + cardW, y1 + cardH1 * 0.5);
+
+            _pubgItemCards[3].frame = CGRectMake(col2X, y1, cardW, cardH1);
+            _pubgItemCards[3].hidden = NO;
+            _pubgBagLabel.frame = CGRectMake(col2X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
+            _pubgBagLabel.hidden = NO;
+            _pubgBagSwitch.hidden = NO;
+            layoutCardSwitch(_pubgBagSwitch, col2X + cardW, y1 + cardH1 * 0.5);
+
+            CGFloat y2 = 164.0;
+            _pubgItemCards[4].frame = CGRectMake(col1X, y2, cardW, cardH1);
+            _pubgItemCards[4].hidden = NO;
+            _pubgScopeLabel.frame = CGRectMake(col1X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgScopeLabel.hidden = NO;
+            _pubgScopeSwitch.hidden = NO;
+            layoutCardSwitch(_pubgScopeSwitch, col1X + cardW, y2 + cardH1 * 0.5);
+
+            _pubgItemCards[5].frame = CGRectMake(col2X, y2, cardW, cardH1);
+            _pubgItemCards[5].hidden = NO;
+            _pubgCrateLabel.frame = CGRectMake(col2X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgCrateLabel.hidden = NO;
+            _pubgCrateSwitch.hidden = NO;
+            layoutCardSwitch(_pubgCrateSwitch, col2X + cardW, y2 + cardH1 * 0.5);
+
+            CGFloat y4 = 206.0;
+            _pubgItemScanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
+            _pubgItemScanCard.hidden = NO;
+            _pubgItemScanLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
+            _pubgItemScanLabel.hidden = NO;
+            _pubgItemScanValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
+            _pubgItemScanValueLabel.hidden = NO;
+            _pubgItemScanSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
+            _pubgItemScanSlider.hidden = NO;
+        }
+
+        // Reset button
         _resetButton.hidden = NO;
-        _resetButton.frame = CGRectMake(12.0, 260.0, panelW - 24.0, 26.0);
+        _resetButton.frame = CGRectMake(12.0, 286.0, panelW - 24.0, 26.0);
         [_panelView bringSubviewToFront:_resetButton];
     } else {
         _masterCard.hidden = YES;
@@ -1557,6 +1767,15 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgArrowSwitch.hidden = YES;
         _pubgVehicleLabel.hidden = YES;
         _pubgVehicleSwitch.hidden = YES;
+        _pubgTabBar.hidden = YES;
+        for (int ci = 0; ci < 6; ci++) _pubgItemCards[ci].hidden = YES;
+        _pubgWeaponLabel.hidden = YES; _pubgWeaponSwitch.hidden = YES;
+        _pubgArmorLabel.hidden = YES; _pubgArmorSwitch.hidden = YES;
+        _pubgBagLabel.hidden = YES; _pubgBagSwitch.hidden = YES;
+        _pubgScopeLabel.hidden = YES; _pubgScopeSwitch.hidden = YES;
+        _pubgCrateLabel.hidden = YES; _pubgCrateSwitch.hidden = YES;
+        _pubgItemScanCard.hidden = YES; _pubgItemScanLabel.hidden = YES;
+        _pubgItemScanValueLabel.hidden = YES; _pubgItemScanSlider.hidden = YES;
 
         _titleLabel.text = @"LQ Tools";
         _enableLabel.hidden = NO;
@@ -1770,6 +1989,46 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
 }
 
+- (void)dsPubgWeaponChanged:(UISwitch *)sender {
+    g_pubgEspWeapon = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_weapon"];
+}
+
+- (void)dsPubgArmorChanged:(UISwitch *)sender {
+    g_pubgEspArmor = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_armor"];
+}
+
+- (void)dsPubgBagChanged:(UISwitch *)sender {
+    g_pubgEspBag = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bag"];
+}
+
+- (void)dsPubgScopeChanged:(UISwitch *)sender {
+    g_pubgEspScope = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_scope"];
+}
+
+- (void)dsPubgCrateChanged:(UISwitch *)sender {
+    g_pubgEspCrate = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_crate"];
+}
+
+- (void)dsPubgItemScanSliderChanged:(UISlider *)sender {
+    g_pubgItemMaxDistance = sender.value;
+    _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_pubgItemMaxDistance];
+    [NSUserDefaults.standardUserDefaults setFloat:g_pubgItemMaxDistance forKey:@"pubg_item_dist"];
+}
+
+- (void)dsPubgTabTapped:(UIButton *)sender {
+    if (sender == _pubgTabButtonItems) {
+        _pubgCurrentTab = 1;
+    } else {
+        _pubgCurrentTab = 0;
+    }
+    [self dsLayoutMenu];
+}
+
 - (void)dsZoomSliderChanged:(UISlider *)sender {
     if (ds_active_game() == 1) {
         g_dspubgMaxDistance = sender.value;
@@ -1854,6 +2113,31 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [defaults setBool:YES forKey:@"pubg_dist"];
         [defaults setBool:YES forKey:@"pubg_bot"];
         [defaults setBool:YES forKey:@"pubg_arrow"];
+
+        [_pubgVehicleSwitch setOn:YES animated:YES];
+        [_pubgWeaponSwitch setOn:YES animated:YES];
+        [_pubgArmorSwitch setOn:YES animated:YES];
+        [_pubgBagSwitch setOn:YES animated:YES];
+        [_pubgScopeSwitch setOn:YES animated:YES];
+        [_pubgCrateSwitch setOn:YES animated:YES];
+        [_pubgItemScanSlider setValue:150.0f animated:YES];
+        _pubgItemScanValueLabel.text = @"150m";
+
+        g_pubgEspVehicle = YES;
+        g_pubgEspWeapon = YES;
+        g_pubgEspArmor = YES;
+        g_pubgEspBag = YES;
+        g_pubgEspScope = YES;
+        g_pubgEspCrate = YES;
+        g_pubgItemMaxDistance = 150.0f;
+
+        [defaults setBool:YES forKey:@"pubg_vehicle"];
+        [defaults setBool:YES forKey:@"pubg_weapon"];
+        [defaults setBool:YES forKey:@"pubg_armor"];
+        [defaults setBool:YES forKey:@"pubg_bag"];
+        [defaults setBool:YES forKey:@"pubg_scope"];
+        [defaults setBool:YES forKey:@"pubg_crate"];
+        [defaults setFloat:150.0f forKey:@"pubg_item_dist"];
 
         [self dsUpdateValueLabel];
         return;
@@ -3088,6 +3372,7 @@ static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGArrowLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGArrowTextLayers[kDSPUBGMaxPlayers] = {};
+static CATextLayer *g_hostedPUBGItemLabels[kDSPUBGMaxItems] = {};
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -3103,6 +3388,9 @@ static void ds_hosted_pubg_hide_all(void) {
         if (g_hostedPUBGWeaponLabels[i] && !g_hostedPUBGWeaponLabels[i].hidden) g_hostedPUBGWeaponLabels[i].hidden = YES;
         if (g_hostedPUBGArrowLayers[i] && !g_hostedPUBGArrowLayers[i].hidden) g_hostedPUBGArrowLayers[i].hidden = YES;
         if (g_hostedPUBGArrowTextLayers[i] && !g_hostedPUBGArrowTextLayers[i].hidden) g_hostedPUBGArrowTextLayers[i].hidden = YES;
+    }
+    for (int i = 0; i < kDSPUBGMaxItems; i++) {
+        if (g_hostedPUBGItemLabels[i] && !g_hostedPUBGItemLabels[i].hidden) g_hostedPUBGItemLabels[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -3616,6 +3904,63 @@ static void ds_hosted_apply_pubg(void) {
             g_hostedPUBGTopCountLabel.hidden = YES;
         }
     }
+
+    // Render Items / Loot ESP
+    DSPUBGProjectedItem items[kDSPUBGMaxItems];
+    uint64_t itemEpoch = 0;
+    int itemCount = ds_pubg_copy_projected_items(items, &itemEpoch);
+
+    for (int i = 0; i < kDSPUBGMaxItems; i++) {
+        CATextLayer *lbl = g_hostedPUBGItemLabels[i];
+        if (!lbl) continue;
+
+        if (i >= itemCount) {
+            if (!lbl.hidden) lbl.hidden = YES;
+            continue;
+        }
+
+        const DSPUBGProjectedItem &it = items[i];
+        bool show = false;
+        switch (it.category) {
+            case DSPUBGItemCategoryVehicle: show = g_pubgEspVehicle; break;
+            case DSPUBGItemCategoryWeapon:  show = g_pubgEspWeapon; break;
+            case DSPUBGItemCategoryScope:   show = g_pubgEspScope; break;
+            case DSPUBGItemCategoryArmor:   show = g_pubgEspArmor; break;
+            case DSPUBGItemCategoryBag:     show = g_pubgEspBag; break;
+            case DSPUBGItemCategoryCrate:   show = g_pubgEspCrate; break;
+            default: break;
+        }
+
+        if (!show || !it.isVisible || it.distanceMeters > g_pubgItemMaxDistance) {
+            if (!lbl.hidden) lbl.hidden = YES;
+            continue;
+        }
+
+        UIColor *color = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95]; // Gold default
+        if (it.category == DSPUBGItemCategoryVehicle) {
+            color = [UIColor colorWithRed:50/255.0 green:255/255.0 blue:50/255.0 alpha:0.95]; // Green
+        } else if (it.category == DSPUBGItemCategoryScope) {
+            color = [UIColor colorWithRed:190/255.0 green:110/255.0 blue:255/255.0 alpha:0.95]; // Purple
+        } else if (it.category == DSPUBGItemCategoryArmor) {
+            color = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.95]; // Cyan
+        } else if (it.category == DSPUBGItemCategoryBag) {
+            color = [UIColor colorWithRed:38/255.0 green:222/255.0 blue:129/255.0 alpha:0.95]; // Mint
+        } else if (it.category == DSPUBGItemCategoryCrate) {
+            color = [UIColor colorWithRed:255/255.0 green:75/255.0 blue:75/255.0 alpha:0.95]; // Red
+        }
+
+        NSString *str = [NSString stringWithFormat:@"%s [%.0fm]", it.name, it.distanceMeters];
+        CGFloat strW = 120.0f;
+        CGFloat strH = 16.0f;
+        lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
+        lbl.fontSize = 10.0f;
+        lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
+        lbl.foregroundColor = color.CGColor;
+        lbl.backgroundColor = [UIColor colorWithRed:10/255.0 green:14/255.0 blue:20/255.0 alpha:0.65].CGColor;
+        lbl.cornerRadius = 3.0f;
+        lbl.string = str;
+        lbl.hidden = NO;
+    }
 }
 
 static void ds_hosted_consume_render_snapshot(bool fallback,
@@ -4031,6 +4376,21 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 arrowText.hidden = YES;
                 [g_hostedLayer addSublayer:arrowText];
                 g_hostedPUBGArrowTextLayers[i] = arrowText;
+            }
+
+            for (int i = 0; i < kDSPUBGMaxItems; i++) {
+                CATextLayer *itemLbl = [CATextLayer layer];
+                itemLbl.actions = noAnim;
+                itemLbl.contentsScale = scale;
+                itemLbl.alignmentMode = kCAAlignmentCenter;
+                itemLbl.wrapped = NO;
+                itemLbl.shadowColor = UIColor.blackColor.CGColor;
+                itemLbl.shadowRadius = 2.0;
+                itemLbl.shadowOpacity = 0.85;
+                itemLbl.shadowOffset = CGSizeMake(0, 1);
+                itemLbl.hidden = YES;
+                [g_hostedLayer addSublayer:itemLbl];
+                g_hostedPUBGItemLabels[i] = itemLbl;
             }
 
             CAShapeLayer *topBg = [CAShapeLayer layer];

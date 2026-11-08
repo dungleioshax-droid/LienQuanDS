@@ -93,6 +93,14 @@ static DSPUBGProjectedPlayer g_dspubgPlayers[kDSPUBGMaxPlayers] = {};
 static int g_dspubgPlayerCount = 0;
 static uint64_t g_dspubgEpoch = 1;
 
+static DSPUBGProjectedItem g_dspubgItems[kDSPUBGMaxItems] = {};
+static int g_dspubgItemCount = 0;
+static uint64_t g_dspubgItemEpoch = 1;
+
+static uint64_t g_dspubgGNames = 0;
+static uint32_t g_dspubgFNameEntryOffset = 0x10;
+static bool g_dspubgGNamesIsChunkArray = true;
+
 // Vector and Rotator types for projection
 struct DSPUBGVector {
     float X, Y, Z;
@@ -232,53 +240,13 @@ static bool ds_pubg_is_valid_engine(uint64_t vmMap, uint64_t gengine, uint64_t *
     return false;
 }
 
-// Automatically scans __DATA sections of the main Mach-O image to discover GEngine or GWorld dynamically.
-// This allows DarkPubg to work across different PUBG Mobile versions (Global, VN, KR, TW, updates)
-// without breaking on static RVA changes.
-static bool ds_pubg_scan_for_engine_and_world(uint64_t vmMap, uint64_t base) {
-    if (!vmMap || !base) return false;
+struct ScanRange {
+    uint64_t start;
+    uint64_t size;
+    int priority; // 0 = high (__bss, __common), 1 = medium (__data), 2 = other
+};
 
-    // 1. Check currently configured RVA
-    if (g_dspubgEngineRva) {
-        uint64_t ge = 0;
-        if (ds_debug_read_bytes(vmMap, base + g_dspubgEngineRva, &ge, sizeof(ge))) {
-            ge &= 0x0000FFFFFFFFFFFFULL;
-            uint64_t vpOff = 0, world = 0;
-            if (ds_pubg_is_valid_engine(vmMap, ge, &vpOff, &world)) {
-                g_dspubgEngineViewportOffset = vpOff;
-                g_dspubgCachedWorld = world;
-                return true;
-            }
-        }
-    }
-
-    // 2. Check known common RVAs across PUBG Mobile versions
-    static const uint64_t kKnownRVAs[] = {
-        0x0A8AA8A0ULL, // v3.4 Global
-        0x0A8A98A0ULL,
-        0x0A8B08A0ULL,
-        0x0A88B8A0ULL,
-        0x0A8B88A0ULL,
-        0x0A9008A0ULL,
-        0x0A7AA8A0ULL,
-        0x0A692D18ULL,
-        0x0A692D28ULL
-    };
-    for (uint64_t rva : kKnownRVAs) {
-        uint64_t ge = 0;
-        if (ds_debug_read_bytes(vmMap, base + rva, &ge, sizeof(ge))) {
-            ge &= 0x0000FFFFFFFFFFFFULL;
-            uint64_t vpOff = 0, world = 0;
-            if (ds_pubg_is_valid_engine(vmMap, ge, &vpOff, &world)) {
-                g_dspubgEngineRva = rva;
-                g_dspubgEngineViewportOffset = vpOff;
-                g_dspubgCachedWorld = world;
-                return true;
-            }
-        }
-    }
-
-    // 3. Parse Mach-O load commands to scan __DATA sections (__bss, __common, __data)
+static bool ds_pubg_get_data_ranges(uint64_t vmMap, uint64_t base, std::vector<ScanRange> &outRanges) {
     struct mach_header_64 header = {};
     if (!ds_debug_read_bytes(vmMap, base, &header, sizeof(header)) ||
         header.magic != MH_MAGIC_64 || header.ncmds == 0 || header.ncmds > 1024 ||
@@ -309,13 +277,6 @@ static bool ds_pubg_scan_for_engine_and_world(uint64_t vmMap, uint64_t base) {
     }
     if (!slideFound) return false;
 
-    struct ScanRange {
-        uint64_t start;
-        uint64_t size;
-        int priority; // 0 = high (__bss, __common), 1 = medium (__data), 2 = other
-    };
-    std::vector<ScanRange> scanRanges;
-
     cursor = 0;
     for (uint32_t i = 0; i < header.ncmds; i++) {
         if (cursor + sizeof(struct load_command) > commands.size()) break;
@@ -334,16 +295,449 @@ static bool ds_pubg_scan_for_engine_and_world(uint64_t vmMap, uint64_t base) {
                     } else if (strcmp(sec.sectname, "__data") == 0) {
                         prio = 1;
                     }
-                    scanRanges.push_back({sAddr, sec.size, prio});
+                    outRanges.push_back({sAddr, sec.size, prio});
                 }
             }
         }
         cursor += cmd->cmdsize;
     }
 
-    std::sort(scanRanges.begin(), scanRanges.end(), [](const ScanRange &a, const ScanRange &b) {
+    std::sort(outRanges.begin(), outRanges.end(), [](const ScanRange &a, const ScanRange &b) {
         return a.priority < b.priority;
     });
+
+    return !outRanges.empty();
+}
+
+static bool ds_pubg_is_valid_gnames(uint64_t vmMap, uint64_t candidate, uint32_t *outNameOffset) {
+    if (!candidate || !ds_pubg_valid(candidate)) return false;
+    uint64_t chunk0 = 0;
+    if (!ds_debug_read_bytes(vmMap, candidate, &chunk0, sizeof(chunk0))) return false;
+    chunk0 &= 0x0000FFFFFFFFFFFFULL;
+    if (!chunk0 || !ds_pubg_valid(chunk0)) return false;
+
+    uint64_t entry0 = 0;
+    if (!ds_debug_read_bytes(vmMap, chunk0, &entry0, sizeof(entry0))) return false;
+    entry0 &= 0x0000FFFFFFFFFFFFULL;
+    if (!entry0 || !ds_pubg_valid(entry0)) return false;
+
+    static const uint32_t kOffsets[] = { 0x10, 0x0C, 0x0E, 0x14 };
+    for (uint32_t off : kOffsets) {
+        char buf[16] = {0};
+        if (ds_debug_read_bytes(vmMap, entry0 + off, buf, sizeof(buf) - 1)) {
+            if (strcmp(buf, "None") == 0) {
+                uint64_t entry1 = 0;
+                if (ds_debug_read_bytes(vmMap, chunk0 + 8, &entry1, sizeof(entry1))) {
+                    entry1 &= 0x0000FFFFFFFFFFFFULL;
+                    char buf1[32] = {0};
+                    if (entry1 && ds_pubg_valid(entry1) && ds_debug_read_bytes(vmMap, entry1 + off, buf1, sizeof(buf1) - 1)) {
+                        if (strstr(buf1, "Byte") || strstr(buf1, "Int") || strstr(buf1, "Property") || strstr(buf1, "Bool")) {
+                            if (outNameOffset) *outNameOffset = off;
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+static void ds_pubg_scan_for_gnames(uint64_t vmMap, const std::vector<ScanRange> &scanRanges) {
+    if (g_dspubgGNames) return;
+    const size_t kChunkSize = 32768;
+    std::vector<uint8_t> chunk(kChunkSize);
+
+    for (const auto &range : scanRanges) {
+        uint64_t limitSize = range.size > (16ULL * 1024ULL * 1024ULL) ? (16ULL * 1024ULL * 1024ULL) : range.size;
+        for (uint64_t offset = 0; offset < limitSize; offset += kChunkSize) {
+            size_t toRead = (size_t)std::min((uint64_t)kChunkSize, limitSize - offset);
+            uint64_t chunkAddr = range.start + offset;
+            if (!ds_debug_read_bytes(vmMap, chunkAddr, chunk.data(), toRead)) continue;
+
+            size_t ptrCount = toRead / 8;
+            const uint64_t *ptrs = (const uint64_t *)chunk.data();
+            for (size_t p = 0; p < ptrCount; p++) {
+                uint64_t val = ptrs[p] & 0x0000FFFFFFFFFFFFULL;
+                if (!val || (val & 0x7ULL) != 0 || !ds_pubg_valid(val)) continue;
+
+                uint64_t ptrAddr = chunkAddr + p * 8;
+                uint32_t nameOff = 0x10;
+
+                // Check 1: ptrAddr holds pointer to chunk array (GNames as uint64_t*)
+                if (ds_pubg_is_valid_gnames(vmMap, val, &nameOff)) {
+                    g_dspubgGNames = val;
+                    g_dspubgFNameEntryOffset = nameOff;
+                    g_dspubgGNamesIsChunkArray = true;
+                    return;
+                }
+
+                // Check 2: ptrAddr is directly the chunk array (GNames as uint64_t[])
+                if (ds_pubg_is_valid_gnames(vmMap, ptrAddr, &nameOff)) {
+                    g_dspubgGNames = ptrAddr;
+                    g_dspubgFNameEntryOffset = nameOff;
+                    g_dspubgGNamesIsChunkArray = false;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+static bool ds_pubg_get_name_by_id(uint32_t id, char *outBuf, size_t outCap) {
+    if (!outBuf || outCap < 2) return false;
+    outBuf[0] = '\0';
+    if (!g_dspubgGNames || id == 0 || id > 500000) return false;
+
+    uint32_t chunkIdx = id / 16384;
+    uint32_t inChunkIdx = id % 16384;
+
+    uint64_t chunk = 0;
+    if (g_dspubgGNamesIsChunkArray) {
+        chunk = ds_pubg_read_ptr(g_dspubgGNames + (chunkIdx * 8ULL));
+    } else {
+        chunk = g_dspubgGNames;
+    }
+    if (!chunk || !ds_pubg_valid(chunk)) return false;
+
+    uint64_t entry = ds_pubg_read_ptr(chunk + (inChunkIdx * 8ULL));
+    if (!entry || !ds_pubg_valid(entry)) return false;
+
+    char raw[64] = {0};
+    if (!ds_debug_read_bytes(g_dspubgVmMap, entry + g_dspubgFNameEntryOffset, raw, sizeof(raw) - 1)) {
+        return false;
+    }
+    raw[sizeof(raw) - 1] = '\0';
+
+    if (raw[0] == '\0') return false;
+    for (size_t i = 0; i < sizeof(raw) && raw[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)raw[i];
+        if (c < 32 || c > 126) {
+            raw[i] = '\0';
+            break;
+        }
+    }
+    if (strlen(raw) < 2) return false;
+
+    strncpy(outBuf, raw, outCap - 1);
+    outBuf[outCap - 1] = '\0';
+    return true;
+}
+
+static bool ds_pubg_get_actor_name(uint64_t actor, char *outBuf, size_t outCap) {
+    if (!actor || !outBuf || outCap < 2) return false;
+    outBuf[0] = '\0';
+
+    // Try ClassPrivate first
+    uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
+    if (classPrivate && ds_pubg_valid(classPrivate)) {
+        uint32_t classFId = ds_pubg_read_u32(classPrivate + 0x18ULL);
+        if (classFId > 0 && ds_pubg_get_name_by_id(classFId, outBuf, outCap)) {
+            if (strlen(outBuf) > 1) return true;
+        }
+        uint32_t classFId2 = ds_pubg_read_u32(classPrivate + 0x20ULL);
+        if (classFId2 > 0 && ds_pubg_get_name_by_id(classFId2, outBuf, outCap)) {
+            if (strlen(outBuf) > 1) return true;
+        }
+    }
+
+    // Fallback: actor's own FName
+    uint32_t actorFId = ds_pubg_read_u32(actor + 0x18ULL);
+    if (actorFId > 0 && ds_pubg_get_name_by_id(actorFId, outBuf, outCap)) {
+        if (strlen(outBuf) > 1) return true;
+    }
+    uint32_t actorFId2 = ds_pubg_read_u32(actor + 0x20ULL);
+    if (actorFId2 > 0 && ds_pubg_get_name_by_id(actorFId2, outBuf, outCap)) {
+        if (strlen(outBuf) > 1) return true;
+    }
+
+    return false;
+}
+
+static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDisplay, size_t outCap) {
+    if (!name || !outDisplay || outCap < 4) return DSPUBGItemCategoryNone;
+    outDisplay[0] = '\0';
+
+    // 1. Vehicles
+    if (strstr(name, "Buggy")) {
+        snprintf(outDisplay, outCap, "🚗 Buggy");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "UAZ")) {
+        snprintf(outDisplay, outCap, "🚙 UAZ");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "Dacia")) {
+        snprintf(outDisplay, outCap, "🚗 Dacia");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "PickUp") || strstr(name, "Pickup") || strstr(name, "Truck")) {
+        snprintf(outDisplay, outCap, "🛻 Bán Tải");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "Motorcycle") || strstr(name, "Bike")) {
+        snprintf(outDisplay, outCap, "🏍️ Xe Máy");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "Scooter")) {
+        snprintf(outDisplay, outCap, "🛵 Scooter");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "Tuk") || strstr(name, "TukTuk")) {
+        snprintf(outDisplay, outCap, "🛺 TukTuk");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "PG117") || strstr(name, "Boat")) {
+        snprintf(outDisplay, outCap, "🚤 Thuyền Cano");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "AquaRail") || strstr(name, "JetSki")) {
+        snprintf(outDisplay, outCap, "🚤 Moto Nước");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "BRDM")) {
+        snprintf(outDisplay, outCap, "🛡️ BRDM");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "CoupeRB") || strstr(name, "Coupe")) {
+        snprintf(outDisplay, outCap, "🏎️ Coupe RB");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "MonsterTruck")) {
+        snprintf(outDisplay, outCap, "🚙 Quái Thú");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "Mirado") || strstr(name, "Lada")) {
+        snprintf(outDisplay, outCap, "🏎️ Mirado");
+        return DSPUBGItemCategoryVehicle;
+    }
+    if (strstr(name, "VH_") || strstr(name, "Vehicle")) {
+        snprintf(outDisplay, outCap, "🚗 Phương Tiện");
+        return DSPUBGItemCategoryVehicle;
+    }
+
+    // 2. Scopes
+    if (strstr(name, "8X") || strstr(name, "8x")) {
+        snprintf(outDisplay, outCap, "🔭 Scope 8x");
+        return DSPUBGItemCategoryScope;
+    }
+    if (strstr(name, "6X") || strstr(name, "6x")) {
+        snprintf(outDisplay, outCap, "🔭 Scope 6x");
+        return DSPUBGItemCategoryScope;
+    }
+    if (strstr(name, "4X") || strstr(name, "4x")) {
+        snprintf(outDisplay, outCap, "🔭 Scope 4x");
+        return DSPUBGItemCategoryScope;
+    }
+    if (strstr(name, "3X") || strstr(name, "3x")) {
+        snprintf(outDisplay, outCap, "🔭 Scope 3x");
+        return DSPUBGItemCategoryScope;
+    }
+    if (strstr(name, "2X") || strstr(name, "2x")) {
+        snprintf(outDisplay, outCap, "🔭 Scope 2x");
+        return DSPUBGItemCategoryScope;
+    }
+    if (strstr(name, "HD") || strstr(name, "RedDot")) {
+        snprintf(outDisplay, outCap, "🔴 Red Dot");
+        return DSPUBGItemCategoryScope;
+    }
+    if (strstr(name, "MZJ_QX") || strstr(name, "Holo")) {
+        snprintf(outDisplay, outCap, "🔘 Holo");
+        return DSPUBGItemCategoryScope;
+    }
+
+    // 3. Armor & Helmets
+    if (strstr(name, "Armor_Lv3") || strstr(name, "Armor3")) {
+        snprintf(outDisplay, outCap, "🛡️ Giáp 3");
+        return DSPUBGItemCategoryArmor;
+    }
+    if (strstr(name, "Armor_Lv2") || strstr(name, "Armor2")) {
+        snprintf(outDisplay, outCap, "🛡️ Giáp 2");
+        return DSPUBGItemCategoryArmor;
+    }
+    if (strstr(name, "Head_Lv3") || strstr(name, "Helmet_Lv3")) {
+        snprintf(outDisplay, outCap, "🪖 Mũ 3");
+        return DSPUBGItemCategoryArmor;
+    }
+    if (strstr(name, "Head_Lv2") || strstr(name, "Helmet_Lv2")) {
+        snprintf(outDisplay, outCap, "🪖 Mũ 2");
+        return DSPUBGItemCategoryArmor;
+    }
+
+    // 4. Backpacks
+    if (strstr(name, "Bag_Lv3")) {
+        snprintf(outDisplay, outCap, "🎒 Balo 3");
+        return DSPUBGItemCategoryBag;
+    }
+    if (strstr(name, "Bag_Lv2")) {
+        snprintf(outDisplay, outCap, "🎒 Balo 2");
+        return DSPUBGItemCategoryBag;
+    }
+
+    // 5. High-Value Weapons
+    if (strstr(name, "Flare")) {
+        snprintf(outDisplay, outCap, "✨ Flare Gun");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "AWM")) {
+        snprintf(outDisplay, outCap, "🔫 AWM");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "M416")) {
+        snprintf(outDisplay, outCap, "🔫 M416");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "AKM")) {
+        snprintf(outDisplay, outCap, "🔫 AKM");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "M24")) {
+        snprintf(outDisplay, outCap, "🔫 M24");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "Kar98")) {
+        snprintf(outDisplay, outCap, "🔫 Kar98k");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "Groza")) {
+        snprintf(outDisplay, outCap, "🔫 Groza");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "AUG")) {
+        snprintf(outDisplay, outCap, "🔫 AUG");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "M762")) {
+        snprintf(outDisplay, outCap, "🔫 M762");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "Mk14")) {
+        snprintf(outDisplay, outCap, "🔫 Mk14");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "SLR")) {
+        snprintf(outDisplay, outCap, "🔫 SLR");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "SKS")) {
+        snprintf(outDisplay, outCap, "🔫 SKS");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "Mini14")) {
+        snprintf(outDisplay, outCap, "🔫 Mini14");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "AMR")) {
+        snprintf(outDisplay, outCap, "🔫 Lynx AMR");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "MG3")) {
+        snprintf(outDisplay, outCap, "🔫 MG3");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "M249")) {
+        snprintf(outDisplay, outCap, "🔫 M249");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "DP28") || strstr(name, "DP-28")) {
+        snprintf(outDisplay, outCap, "🔫 DP-28");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "P90")) {
+        snprintf(outDisplay, outCap, "🔫 P90");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "Vector")) {
+        snprintf(outDisplay, outCap, "🔫 Vector");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "UMP")) {
+        snprintf(outDisplay, outCap, "🔫 UMP45");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strstr(name, "DBS")) {
+        snprintf(outDisplay, outCap, "🔫 DBS");
+        return DSPUBGItemCategoryWeapon;
+    }
+
+    // 6. Crates & AirDrops
+    if (strstr(name, "AirDrop")) {
+        snprintf(outDisplay, outCap, "📦 HÒM THÍNH");
+        return DSPUBGItemCategoryCrate;
+    }
+    if (strstr(name, "DeadBox") || strstr(name, "PlayerDeadInventoryBox")) {
+        snprintf(outDisplay, outCap, "⚰️ Hòm Xác");
+        return DSPUBGItemCategoryCrate;
+    }
+    if (strstr(name, "PickUpListWrapper")) {
+        snprintf(outDisplay, outCap, "📦 Đồ Rơi");
+        return DSPUBGItemCategoryCrate;
+    }
+
+    return DSPUBGItemCategoryNone;
+}
+
+// Automatically scans __DATA sections of the main Mach-O image to discover GEngine or GWorld dynamically.
+// This allows DarkPubg to work across different PUBG Mobile versions (Global, VN, KR, TW, updates)
+// without breaking on static RVA changes.
+static bool ds_pubg_scan_for_engine_and_world(uint64_t vmMap, uint64_t base) {
+    if (!vmMap || !base) return false;
+
+    // 1. Check currently configured RVA
+    if (g_dspubgEngineRva) {
+        uint64_t ge = 0;
+        if (ds_debug_read_bytes(vmMap, base + g_dspubgEngineRva, &ge, sizeof(ge))) {
+            ge &= 0x0000FFFFFFFFFFFFULL;
+            uint64_t vpOff = 0, world = 0;
+            if (ds_pubg_is_valid_engine(vmMap, ge, &vpOff, &world)) {
+                g_dspubgEngineViewportOffset = vpOff;
+                g_dspubgCachedWorld = world;
+                if (!g_dspubgGNames) {
+                    std::vector<ScanRange> ranges;
+                    if (ds_pubg_get_data_ranges(vmMap, base, ranges)) ds_pubg_scan_for_gnames(vmMap, ranges);
+                }
+                return true;
+            }
+        }
+    }
+
+    // 2. Check known common RVAs across PUBG Mobile versions
+    static const uint64_t kKnownRVAs[] = {
+        0x0A8AA8A0ULL, // v3.4 Global
+        0x0A8A98A0ULL,
+        0x0A8B08A0ULL,
+        0x0A88B8A0ULL,
+        0x0A8B88A0ULL,
+        0x0A9008A0ULL,
+        0x0A7AA8A0ULL,
+        0x0A692D18ULL,
+        0x0A692D28ULL
+    };
+    for (uint64_t rva : kKnownRVAs) {
+        uint64_t ge = 0;
+        if (ds_debug_read_bytes(vmMap, base + rva, &ge, sizeof(ge))) {
+            ge &= 0x0000FFFFFFFFFFFFULL;
+            uint64_t vpOff = 0, world = 0;
+            if (ds_pubg_is_valid_engine(vmMap, ge, &vpOff, &world)) {
+                g_dspubgEngineRva = rva;
+                g_dspubgEngineViewportOffset = vpOff;
+                g_dspubgCachedWorld = world;
+                if (!g_dspubgGNames) {
+                    std::vector<ScanRange> ranges;
+                    if (ds_pubg_get_data_ranges(vmMap, base, ranges)) ds_pubg_scan_for_gnames(vmMap, ranges);
+                }
+                return true;
+            }
+        }
+    }
+
+    // 3. Parse Mach-O load commands to scan __DATA sections (__bss, __common, __data)
+    std::vector<ScanRange> scanRanges;
+    if (!ds_pubg_get_data_ranges(vmMap, base, scanRanges)) return false;
+
+    if (!g_dspubgGNames) {
+        ds_pubg_scan_for_gnames(vmMap, scanRanges);
+    }
 
     const size_t kChunkSize = 32768;
     std::vector<uint8_t> chunk(kChunkSize);
@@ -392,6 +786,7 @@ static void ds_pubg_reset_state(void) {
     g_dspubgEngineRva = 0;
     g_dspubgWorldRva = 0;
     g_dspubgCachedWorld = 0;
+    g_dspubgGNames = 0;
     g_dspubgLastActorsCount = 0;
     g_dspubgLastEnemyCount = 0;
     g_dspubgLastBotCount = 0;
@@ -400,8 +795,11 @@ static void ds_pubg_reset_state(void) {
     g_dspubgTargetActive.store(false, std::memory_order_release);
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     g_dspubgPlayerCount = 0;
+    g_dspubgItemCount = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
+    memset(g_dspubgItems, 0, sizeof(g_dspubgItems));
     ++g_dspubgEpoch;
+    ++g_dspubgItemEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }
 
@@ -1027,13 +1425,28 @@ static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPl
     return count;
 }
 
+static int ds_pubg_copy_projected_items(DSPUBGProjectedItem out[kDSPUBGMaxItems], uint64_t *epochOut) {
+    os_unfair_lock_lock(&g_dspubgSnapshotLock);
+    int count = g_dspubgItemCount;
+    if (count > kDSPUBGMaxItems) count = kDSPUBGMaxItems;
+    if (count > 0 && out) {
+        memcpy(out, g_dspubgItems, count * sizeof(DSPUBGProjectedItem));
+    }
+    if (epochOut) *epochOut = g_dspubgItemEpoch;
+    os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+    return count;
+}
+
 static void ds_pubg_overlay_reset(void) {
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     g_dspubgPlayerCount = 0;
+    g_dspubgItemCount = 0;
     g_dspubgTotalEnemies = 0;
     g_dspubgTotalBots = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
+    memset(g_dspubgItems, 0, sizeof(g_dspubgItems));
     ++g_dspubgEpoch;
+    ++g_dspubgItemEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }
 
@@ -1345,43 +1758,43 @@ static void ds_pubg_tick(void) {
     int total360BotCount = 0;
     std::vector<uint64_t> seenPawns;
 
-    auto processPawn = [&](uint64_t pawn, uint64_t psHint, bool knownBot) {
-        if (!pawn || pawn == localPawn || !ds_pubg_valid(pawn)) return;
+    auto processPawn = [&](uint64_t pawn, uint64_t psHint, bool knownBot) -> bool {
+        if (!pawn || pawn == localPawn || !ds_pubg_valid(pawn)) return false;
         for (uint64_t seen : seenPawns) {
-            if (seen == pawn) return;
+            if (seen == pawn) return false;
         }
 
         // 1. Reject local player's own bullets, weapons, projectiles
         uint64_t owner = ds_pubg_read_ptr(pawn + 0x140ULL);
         uint64_t instigator = ds_pubg_read_ptr(pawn + 0x138ULL);
         if (localPawn && (owner == localPawn || instigator == localPawn)) {
-            return;
+            return false;
         }
 
         // 2. Check bHidden in AActor (offset 0xE8)
         uint8_t aHidden = ds_pubg_read_u8(pawn + 0xE8ULL);
-        if (aHidden & 0x1) return;
+        if (aHidden & 0x1) return false;
 
         // 3. Dead check - STExtraCharacter.bDead at 0xE7C
         uint8_t isDead = ds_pubg_read_u8(pawn + kDSPUBGCharacterDeadOffset) & 1;
-        if (isDead) return;
+        if (isDead) return false;
 
         // 4. Must have valid RootComponent and Mesh (standard UE4 character)
         uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
-        if (!rootComp || !ds_pubg_valid(rootComp)) return;
+        if (!rootComp || !ds_pubg_valid(rootComp)) return false;
 
         uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
-        if (!meshComp || !ds_pubg_valid(meshComp)) return;
+        if (!meshComp || !ds_pubg_valid(meshComp)) return false;
 
         // 5. Health check (same robust heuristic as DarkPubg):
         float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
         float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
-        if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return;
+        if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return false;
 
         if (!psHint) {
-            if (healthMax < 50.0f || healthMax > 2000.0f) return;
-            if (health < 0.0f || health > healthMax + 50.0f) return;
+            if (healthMax < 50.0f || healthMax > 2000.0f) return false;
+            if (health < 0.0f || health > healthMax + 50.0f) return false;
         } else {
             if (healthMax < 20.0f || healthMax > 2000.0f) healthMax = 100.0f;
             if (health < 0.0f) health = 0.0f;
@@ -1397,19 +1810,19 @@ static void ds_pubg_tick(void) {
 
         // 6. Team filter:
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
-        if (teamId < 0 || teamId > 200000000) return;
+        if (teamId < 0 || teamId > 200000000) return false;
         if (localTeamId > 0 && teamId == localTeamId) {
-            return;
+            return false;
         }
 
         seenPawns.push_back(pawn);
 
         DSPUBGVector rootLoc = {};
         if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
-            return;
+            return false;
         }
         if (isnan(rootLoc.X) || isinf(rootLoc.X) || (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f)) {
-            return;
+            return false;
         }
 
         uint64_t parent = ds_pubg_read_ptr(rootComp + kDSPUBGSceneCompAttachedParentOffset);
@@ -1434,7 +1847,7 @@ static void ds_pubg_tick(void) {
         float dz = rootLoc.Z - basis.lz;
         float dist3D = sqrtf(dx * dx + dy * dy + dz * dz) * 0.01f;
         if (isnan(dist3D) || isinf(dist3D) || dist3D > g_dspubgMaxDistance) {
-            return;
+            return false;
         }
 
         uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
@@ -1875,6 +2288,78 @@ static void ds_pubg_tick(void) {
             staging[publishedCount++] = p;
             if (isAI) botCount++; else enemyCount++;
         }
+        return true;
+    };
+
+    DSPUBGProjectedItem itemStaging[kDSPUBGMaxItems * 2];
+    int itemStagingCount = 0;
+
+    auto processItemOrVehicle = [&](uint64_t actor) {
+        if (itemStagingCount >= (kDSPUBGMaxItems * 2)) return;
+        if (!g_pubgEspVehicle && !g_pubgEspWeapon && !g_pubgEspArmor &&
+            !g_pubgEspBag && !g_pubgEspScope && !g_pubgEspCrate) {
+            return;
+        }
+
+        char actorName[64] = {0};
+        if (!ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
+            return;
+        }
+
+        char displayName[36] = {0};
+        DSPUBGItemCategory cat = ds_pubg_classify_item(actorName, displayName, sizeof(displayName));
+        if (cat == DSPUBGItemCategoryNone) {
+            return;
+        }
+
+        if (cat == DSPUBGItemCategoryVehicle && !g_pubgEspVehicle) return;
+        if (cat == DSPUBGItemCategoryWeapon && !g_pubgEspWeapon) return;
+        if (cat == DSPUBGItemCategoryScope && !g_pubgEspScope) return;
+        if (cat == DSPUBGItemCategoryArmor && !g_pubgEspArmor) return;
+        if (cat == DSPUBGItemCategoryBag && !g_pubgEspBag) return;
+        if (cat == DSPUBGItemCategoryCrate && !g_pubgEspCrate) return;
+
+        uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+        if (!rootComp || !ds_pubg_valid(rootComp)) {
+            rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
+        }
+        if (!rootComp || !ds_pubg_valid(rootComp)) return;
+
+        DSPUBGVector rootLoc = {};
+        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
+            return;
+        }
+
+        if (isnan(rootLoc.X) || isinf(rootLoc.X) ||
+            isnan(rootLoc.Y) || isinf(rootLoc.Y) ||
+            isnan(rootLoc.Z) || isinf(rootLoc.Z)) {
+            return;
+        }
+
+        float dx = (rootLoc.X - basis.lx) * 0.01f;
+        float dy = (rootLoc.Y - basis.ly) * 0.01f;
+        float dz = (rootLoc.Z - basis.lz) * 0.01f;
+        float dist3D = sqrtf(dx * dx + dy * dy + dz * dz);
+
+        if (dist3D < 1.0f || dist3D > g_pubgItemMaxDistance) return;
+
+        float sx = 0, sy = 0, dist = 0;
+        if (!ds_pubg_cam_basis_project(basis, rootLoc, sx, sy, dist)) {
+            return;
+        }
+
+        if (sx < -80.0f || sx > (screenW + 80.0f) || sy < -80.0f || sy > (screenH + 80.0f)) {
+            return;
+        }
+
+        DSPUBGProjectedItem &pi = itemStaging[itemStagingCount++];
+        pi.screenX = sx;
+        pi.screenY = sy;
+        pi.distanceMeters = dist3D;
+        pi.category = cat;
+        pi.isVisible = true;
+        strncpy(pi.name, displayName, sizeof(pi.name) - 1);
+        pi.name[sizeof(pi.name) - 1] = '\0';
     };
 
     // Source 1: GameState.PlayerArray
@@ -1937,7 +2422,9 @@ static void ds_pubg_tick(void) {
                     uint64_t actor = levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
                     uint64_t ps = ds_pubg_read_ptr(actor + 0x4D0ULL);
-                    processPawn(actor, ps, false);
+                    if (!processPawn(actor, ps, false)) {
+                        processItemOrVehicle(actor);
+                    }
                 }
             }
         }
@@ -1952,11 +2439,23 @@ static void ds_pubg_tick(void) {
         });
     }
 
+    if (itemStagingCount > 1) {
+        std::sort(itemStaging, itemStaging + itemStagingCount, [](const DSPUBGProjectedItem &a, const DSPUBGProjectedItem &b) {
+            return a.distanceMeters < b.distanceMeters;
+        });
+    }
+
+    int copyItemCount = itemStagingCount > kDSPUBGMaxItems ? kDSPUBGMaxItems : itemStagingCount;
+
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));
     g_dspubgPlayerCount = publishedCount;
     g_dspubgTotalEnemies = total360EnemyCount;
     g_dspubgTotalBots = total360BotCount;
     ++g_dspubgEpoch;
+
+    memcpy(g_dspubgItems, itemStaging, copyItemCount * sizeof(DSPUBGProjectedItem));
+    g_dspubgItemCount = copyItemCount;
+    ++g_dspubgItemEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }

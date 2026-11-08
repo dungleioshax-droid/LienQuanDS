@@ -974,8 +974,29 @@ typedef struct {
     float camRelZ;
 } DSPUBGProjectedPlayer;
 
+typedef enum {
+    DSPUBGItemCategoryNone = 0,
+    DSPUBGItemCategoryVehicle = 1,
+    DSPUBGItemCategoryWeapon = 2,
+    DSPUBGItemCategoryScope = 3,
+    DSPUBGItemCategoryArmor = 4,
+    DSPUBGItemCategoryBag = 5,
+    DSPUBGItemCategoryCrate = 6
+} DSPUBGItemCategory;
+
+typedef struct {
+    float screenX;
+    float screenY;
+    float distanceMeters;
+    char name[36];
+    DSPUBGItemCategory category;
+    bool isVisible;
+} DSPUBGProjectedItem;
+
 static const int kDSPUBGMaxPlayers = 96;
+static const int kDSPUBGMaxItems = 64;
 static float g_dspubgMaxDistance = 400.0f;
+static float g_pubgItemMaxDistance = 150.0f;
 static BOOL g_pubgEspBox = YES;
 static BOOL g_pubgEspSkeleton = YES;
 static BOOL g_pubgEspLine = YES;
@@ -985,11 +1006,18 @@ static BOOL g_pubgEspName = YES;
 static BOOL g_pubgEspDist = YES;
 static BOOL g_pubgEspBot = YES;
 static BOOL g_pubgEspVehicle = YES;
+static BOOL g_pubgEspWeapon = YES;
+static BOOL g_pubgEspArmor = YES;
+static BOOL g_pubgEspBag = YES;
+static BOOL g_pubgEspScope = YES;
+static BOOL g_pubgEspCrate = YES;
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);
 static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPlayers],
                                           uint64_t *epochOut);
+static int ds_pubg_copy_projected_items(DSPUBGProjectedItem out[kDSPUBGMaxItems],
+                                        uint64_t *epochOut);
 static void ds_pubg_get_total_counts(int *outEnemies, int *outBots);
 static void ds_pubg_overlay_reset(void);
 
