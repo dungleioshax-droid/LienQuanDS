@@ -1706,6 +1706,10 @@ BOOL DSBridgeIsRunning(void) {
     return g_dsRunning.load();
 }
 
+BOOL DSBridgeStartKeepalive(void) {
+    return ds_start_keepalive();
+}
+
 #else
 
 BOOL DSBridgeCompiledIn(void) { return NO; }
@@ -1721,6 +1725,9 @@ BOOL DSBridgeBootstrap(void) {
 }
 BOOL DSBridgeSetHUDEnabled(BOOL enabled) {
     (void)enabled;
+    return NO;
+}
+BOOL DSBridgeStartKeepalive(void) {
     return NO;
 }
 void DSBridgeTeardownForTermination(void) {}

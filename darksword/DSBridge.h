@@ -28,6 +28,9 @@ OBJC_EXTERN BOOL DSBridgeBootstrap(void);
 /// Adopt KRW sockets handed over through DS_HELPER_* / DS_* environment values.
 OBJC_EXTERN BOOL DSBridgeAdoptFromEnvironment(void);
 
+/// Explicitly start background audio keepalive so the app never gets suspended by iOS
+OBJC_EXTERN BOOL DSBridgeStartKeepalive(void);
+
 /// Create or remove the HUD directly inside SpringBoard using RemoteCall.
 /// Returns YES if the bridge handled the request (caller should return).
 /// Returns NO to fall through to the stock TrollStore persona spawn.

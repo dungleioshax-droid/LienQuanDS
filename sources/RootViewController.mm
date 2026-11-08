@@ -1946,19 +1946,39 @@ static BOOL IsPUBGProcessRunning(void) {
     BOOL isEN = IsEnglish();
     [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile VNG..." : @"Đang mở PUBG Mobile VNG...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
 
-    // 1. Launch PUBG Mobile immediately to switch app
+    // 1. Immediately request background execution from iOS so this app NEVER gets frozen/suspended
+    __block UIBackgroundTaskIdentifier bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"PUBGAutoHUD" expirationHandler:^{
+        if (bgTask != UIBackgroundTaskInvalid) {
+            [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+            bgTask = UIBackgroundTaskInvalid;
+        }
+    }];
+
+    // 2. Start audio keepalive immediately so iOS background audio permission keeps us running
+#if USE_DARKSWORD
+    DSBridgeStartKeepalive();
+#endif
+
+    // 3. Launch PUBG Mobile immediately to switch app
     [self launchPUBGGameProcess];
 
-    // 2. Re-trigger launch after 0.4s to ensure foreground switch
+    // 4. Re-trigger launch after 0.4s to ensure foreground switch
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self launchPUBGGameProcess];
     });
 
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Waiting 5s for game initialization before auto-enabling HUD..." : @"Chờ 5 giây khởi tạo game rồi tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Waiting 5s in background for game initialization then auto-enabling HUD..." : @"Chờ 5 giây trong nền để game khởi tạo rồi tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
 
-    // 3. Wait 5.0 seconds for game to load, then automatically activate HUD
+    // 5. Wait 5.0 seconds for game to load, then automatically activate HUD in the background
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self doEnableHUD];
+
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (bgTask != UIBackgroundTaskInvalid) {
+                [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+                bgTask = UIBackgroundTaskInvalid;
+            }
+        });
     });
 }
 
