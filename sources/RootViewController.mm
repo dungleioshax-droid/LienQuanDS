@@ -9,6 +9,25 @@
 #import <notify.h>
 #import <sys/sysctl.h>
 
+#include <string>
+#include <vector>
+#include <chrono>
+#include <thread>
+#include <atomic>
+#include <algorithm>
+
+#include "../Auth/auth_types.h"
+#include "../Auth/auth_manager.h"
+#include "../Auth/auth_guard.h"
+#include "../Auth/auth_storage.h"
+#include "../Auth/auth_network.h"
+#include "../Auth/auth_integrity.h"
+#include "../Auth/setting.h"
+
+#include "../Auth/auth_network.mm"
+#include "../Auth/auth_chat.mm"
+#include "../Auth/auth_manager.mm"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,6 +57,28 @@ static NSString *CurrentLanguage(void) {
 
 static BOOL IsEnglish(void) {
     return [CurrentLanguage() isEqualToString:@"en"];
+}
+
+static NSString *GetDeviceHWID(void) {
+    NSString *uuid = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
+    return uuid ?: @"00000000-0000-0000-0000-000000000000";
+}
+
+static NSString *GetFormattedExpiryString(time_t exp) {
+    if (exp <= 0) return IsEnglish() ? @"Not Activated" : @"Chưa kích hoạt";
+    if (exp >= 2000000000) return IsEnglish() ? @"Lifetime (VIP)" : @"Vĩnh viễn (Trọn đời)";
+    NSDate *date = [NSDate dateWithTimeIntervalSince1970:(NSTimeInterval)exp];
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.dateFormat = @"dd/MM/yyyy HH:mm";
+    return [df stringFromDate:date];
+}
+
+static NSString *GetMaskedKeyString(NSString *rawKey) {
+    if (!rawKey || rawKey.length == 0) return IsEnglish() ? @"No Key" : @"Chưa có key";
+    if (rawKey.length <= 8) return rawKey;
+    NSString *start = [rawKey substringToIndex:4];
+    NSString *end = [rawKey substringFromIndex:rawKey.length - 4];
+    return [NSString stringWithFormat:@"%@-****-****-%@", start, end];
 }
 
 static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatusStr) {
@@ -217,6 +258,36 @@ static BOOL IsPUBGProcessRunning(void) {
     UILabel *_warningSubLabel;
     UIButton *_warningDismissBtn;
 
+    // Auth Gate UI
+    UIView *_authGateOverlay;
+    UIView *_authCardView;
+    UITextField *_authKeyTextField;
+    UILabel *_authTitleLabel;
+    UILabel *_authSubTitleLabel;
+    UILabel *_authHwidTitleLabel;
+    UILabel *_authHwidValueLabel;
+    UIButton *_authCopyHwidButton;
+    UILabel *_authKeyInputTitleLabel;
+    UIButton *_authPasteKeyButton;
+    UILabel *_authStatusLabel;
+    UIButton *_authActivateBtn;
+    UIActivityIndicatorView *_authSpinner;
+    UIButton *_authTelegramBtn;
+    UIButton *_authCloseBtn;
+    BOOL _isAuthValidating;
+
+    // Setting Tab License Card
+    UIView *_licenseCard;
+    UILabel *_licenseHeaderLabel;
+    UIView *_licenseStatusBadge;
+    UILabel *_licenseBadgeLabel;
+    UILabel *_licenseKeyTitle;
+    UILabel *_licenseKeyVal;
+    UILabel *_licenseExpTitle;
+    UILabel *_licenseExpVal;
+    UIButton *_changeKeyBtn;
+    UIButton *_settingCopyHwidBtn;
+
     BOOL _isRemoteHUDActive;
     UIImpactFeedbackGenerator *_impactFeedbackGenerator;
 
@@ -283,6 +354,7 @@ static BOOL IsPUBGProcessRunning(void) {
     [self setupBottomTabBar];
     [self setupHomeView];
     [self setupSettingView];
+    [self setupAuthGateOverlay];
 
     [self updateTabSelection:0];
     [self applyLanguageTexts];
@@ -792,6 +864,146 @@ static BOOL IsPUBGProcessRunning(void) {
         [_langSegmentedControl.bottomAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:-14.0f],
     ]];
 
+    // 2.5 License Info Card
+    _licenseCard = [[UIView alloc] init];
+    _licenseCard.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
+    _licenseCard.layer.cornerRadius = 16.0f;
+    _licenseCard.layer.borderColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.45].CGColor;
+    _licenseCard.layer.borderWidth = 1.0f;
+    [_settingContentView addSubview:_licenseCard];
+
+    UIImageView *licIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.fill"]];
+    licIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    licIcon.tintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    licIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [_licenseCard addSubview:licIcon];
+
+    _licenseHeaderLabel = [[UILabel alloc] init];
+    _licenseHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseHeaderLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _licenseHeaderLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [_licenseCard addSubview:_licenseHeaderLabel];
+
+    _licenseStatusBadge = [[UIView alloc] init];
+    _licenseStatusBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseStatusBadge.layer.cornerRadius = 10.0f;
+    _licenseStatusBadge.backgroundColor = [UIColor colorWithRed:20/255.0 green:45/255.0 blue:35/255.0 alpha:1.0];
+    [_licenseCard addSubview:_licenseStatusBadge];
+
+    _licenseBadgeLabel = [[UILabel alloc] init];
+    _licenseBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseBadgeLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    _licenseBadgeLabel.textColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
+    [_licenseStatusBadge addSubview:_licenseBadgeLabel];
+
+    // Row: Key
+    UIView *keyRow = [[UIView alloc] init];
+    keyRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [_licenseCard addSubview:keyRow];
+
+    _licenseKeyTitle = [[UILabel alloc] init];
+    _licenseKeyTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseKeyTitle.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _licenseKeyTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    [keyRow addSubview:_licenseKeyTitle];
+
+    _licenseKeyVal = [[UILabel alloc] init];
+    _licenseKeyVal.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseKeyVal.textColor = UIColor.whiteColor;
+    _licenseKeyVal.font = [UIFont fontWithName:@"Menlo" size:12] ?: [UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightBold];
+    [keyRow addSubview:_licenseKeyVal];
+
+    // Row: Expiry
+    UIView *expRow = [[UIView alloc] init];
+    expRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [_licenseCard addSubview:expRow];
+
+    _licenseExpTitle = [[UILabel alloc] init];
+    _licenseExpTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseExpTitle.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _licenseExpTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    [expRow addSubview:_licenseExpTitle];
+
+    _licenseExpVal = [[UILabel alloc] init];
+    _licenseExpVal.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseExpVal.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    _licenseExpVal.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    [expRow addSubview:_licenseExpVal];
+
+    // Action buttons inside License Card
+    _changeKeyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    _changeKeyBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    _changeKeyBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.18];
+    [_changeKeyBtn setTitleColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _changeKeyBtn.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    _changeKeyBtn.layer.cornerRadius = 8.0f;
+    _changeKeyBtn.layer.borderColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.4].CGColor;
+    _changeKeyBtn.layer.borderWidth = 1.0f;
+    [_changeKeyBtn addTarget:self action:@selector(changeKeyTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_licenseCard addSubview:_changeKeyBtn];
+
+    _settingCopyHwidBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    _settingCopyHwidBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingCopyHwidBtn.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
+    [_settingCopyHwidBtn setTitleColor:[UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _settingCopyHwidBtn.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    _settingCopyHwidBtn.layer.cornerRadius = 8.0f;
+    _settingCopyHwidBtn.layer.borderColor = [UIColor colorWithRed:48/255.0 green:54/255.0 blue:61/255.0 alpha:1.0].CGColor;
+    _settingCopyHwidBtn.layer.borderWidth = 1.0f;
+    [_settingCopyHwidBtn addTarget:self action:@selector(copyHwidTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_licenseCard addSubview:_settingCopyHwidBtn];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [licIcon.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
+        [licIcon.topAnchor constraintEqualToAnchor:_licenseCard.topAnchor constant:14.0f],
+        [licIcon.widthAnchor constraintEqualToConstant:18.0f],
+        [licIcon.heightAnchor constraintEqualToConstant:18.0f],
+
+        [_licenseHeaderLabel.leadingAnchor constraintEqualToAnchor:licIcon.trailingAnchor constant:8.0f],
+        [_licenseHeaderLabel.centerYAnchor constraintEqualToAnchor:licIcon.centerYAnchor],
+
+        [_licenseStatusBadge.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-14.0f],
+        [_licenseStatusBadge.centerYAnchor constraintEqualToAnchor:licIcon.centerYAnchor],
+        [_licenseStatusBadge.heightAnchor constraintEqualToConstant:20.0f],
+
+        [_licenseBadgeLabel.leadingAnchor constraintEqualToAnchor:_licenseStatusBadge.leadingAnchor constant:8.0f],
+        [_licenseBadgeLabel.trailingAnchor constraintEqualToAnchor:_licenseStatusBadge.trailingAnchor constant:-8.0f],
+        [_licenseBadgeLabel.centerYAnchor constraintEqualToAnchor:_licenseStatusBadge.centerYAnchor],
+
+        [keyRow.topAnchor constraintEqualToAnchor:licIcon.bottomAnchor constant:10.0f],
+        [keyRow.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
+        [keyRow.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-16.0f],
+        [keyRow.heightAnchor constraintEqualToConstant:24.0f],
+
+        [_licenseKeyTitle.leadingAnchor constraintEqualToAnchor:keyRow.leadingAnchor],
+        [_licenseKeyTitle.centerYAnchor constraintEqualToAnchor:keyRow.centerYAnchor],
+        [_licenseKeyVal.trailingAnchor constraintEqualToAnchor:keyRow.trailingAnchor],
+        [_licenseKeyVal.centerYAnchor constraintEqualToAnchor:keyRow.centerYAnchor],
+
+        [expRow.topAnchor constraintEqualToAnchor:keyRow.bottomAnchor constant:4.0f],
+        [expRow.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
+        [expRow.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-16.0f],
+        [expRow.heightAnchor constraintEqualToConstant:24.0f],
+
+        [_licenseExpTitle.leadingAnchor constraintEqualToAnchor:expRow.leadingAnchor],
+        [_licenseExpTitle.centerYAnchor constraintEqualToAnchor:expRow.centerYAnchor],
+        [_licenseExpVal.trailingAnchor constraintEqualToAnchor:expRow.trailingAnchor],
+        [_licenseExpVal.centerYAnchor constraintEqualToAnchor:expRow.centerYAnchor],
+
+        [_changeKeyBtn.topAnchor constraintEqualToAnchor:expRow.bottomAnchor constant:10.0f],
+        [_changeKeyBtn.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
+        [_changeKeyBtn.heightAnchor constraintEqualToConstant:30.0f],
+        [_changeKeyBtn.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-14.0f],
+
+        [_settingCopyHwidBtn.topAnchor constraintEqualToAnchor:expRow.bottomAnchor constant:10.0f],
+        [_settingCopyHwidBtn.leadingAnchor constraintEqualToAnchor:_changeKeyBtn.trailingAnchor constant:10.0f],
+        [_settingCopyHwidBtn.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-16.0f],
+        [_settingCopyHwidBtn.widthAnchor constraintEqualToAnchor:_changeKeyBtn.widthAnchor],
+        [_settingCopyHwidBtn.heightAnchor constraintEqualToConstant:30.0f],
+        [_settingCopyHwidBtn.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-14.0f],
+    ]];
+
     // 3. Telegram Community Card
     _telegramCard = [[UIView alloc] init];
     _telegramCard.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1138,7 +1350,11 @@ static BOOL IsPUBGProcessRunning(void) {
         [langCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
         [langCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
 
-        [_telegramCard.topAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:14.0f],
+        [_licenseCard.topAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:14.0f],
+        [_licenseCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
+        [_licenseCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
+
+        [_telegramCard.topAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:14.0f],
         [_telegramCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:20.0f],
         [_telegramCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-20.0f],
         [_telegramCard.heightAnchor constraintEqualToConstant:84.0f],
@@ -1425,6 +1641,52 @@ static BOOL IsPUBGProcessRunning(void) {
     [_clearCacheBtn setTitle:isEN ? @"Clean Memory Cache" : @"Dọn dẹp bộ nhớ đệm" forState:UIControlStateNormal];
     [_resetConfigBtn setTitle:isEN ? @"Reset HUD Settings" : @"Đặt lại cấu hình HUD" forState:UIControlStateNormal];
 
+    // License Card
+    if (_licenseHeaderLabel) {
+        _licenseHeaderLabel.text = isEN ? @"LICENSE & ACTIVATION" : @"BẢN QUYỀN & GIẤY PHÉP";
+    }
+    if (_licenseKeyTitle) {
+        _licenseKeyTitle.text = isEN ? @"License Key:" : @"Mã Key:";
+    }
+    if (_licenseExpTitle) {
+        _licenseExpTitle.text = isEN ? @"Expiration:" : @"Hạn dùng:";
+    }
+    if (_changeKeyBtn) {
+        [_changeKeyBtn setTitle:isEN ? @"Change Key" : @"Đổi Key" forState:UIControlStateNormal];
+    }
+    if (_settingCopyHwidBtn) {
+        [_settingCopyHwidBtn setTitle:isEN ? @"Copy HWID" : @"Chép HWID" forState:UIControlStateNormal];
+    }
+    [self updateLicenseCardUI];
+
+    // Auth Gate Modal
+    if (_authTitleLabel) {
+        _authTitleLabel.text = isEN ? @"DARKPUBG ACTIVATION" : @"KÍCH HOẠT BẢN QUYỀN";
+    }
+    if (_authSubTitleLabel) {
+        _authSubTitleLabel.text = isEN ?
+            @"Enter your license key to unlock DarkPubg." :
+            @"Nhập mã bản quyền để mở khoá ứng dụng DarkPubg.";
+    }
+    if (_authHwidTitleLabel) {
+        _authHwidTitleLabel.text = isEN ? @"DEVICE HWID" : @"MÃ THIẾT BỊ (HWID)";
+    }
+    if (_authCopyHwidButton) {
+        [_authCopyHwidButton setTitle:isEN ? @"Copy" : @"Chép" forState:UIControlStateNormal];
+    }
+    if (_authKeyTextField) {
+        _authKeyTextField.placeholder = isEN ? @"Enter license key..." : @"Nhập mã key của bạn...";
+    }
+    if (_authPasteKeyButton) {
+        [_authPasteKeyButton setTitle:isEN ? @"Paste" : @"Dán" forState:UIControlStateNormal];
+    }
+    if (_authActivateBtn && !_isAuthValidating) {
+        [_authActivateBtn setTitle:isEN ? @"ACTIVATE" : @"KÍCH HOẠT" forState:UIControlStateNormal];
+    }
+    if (_authTelegramBtn) {
+        [_authTelegramBtn setTitle:isEN ? @"Get Key / Telegram Support (@ds_pubgmb)" : @"Mua Key / Hỗ trợ Telegram (@ds_pubgmb)" forState:UIControlStateNormal];
+    }
+
     // Note
     _noteLabel.text = isEN ?
         @"DarkPubg operates directly via DarkSword Kernel on iOS without Jailbreak." :
@@ -1555,6 +1817,508 @@ static BOOL IsPUBGProcessRunning(void) {
     }];
 }
 
+#pragma mark - Key Authentication Gate (Auth System)
+
+- (void)setupAuthGateOverlay
+{
+    _authGateOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
+    _authGateOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _authGateOverlay.backgroundColor = [UIColor colorWithRed:10/255.0 green:14/255.0 blue:20/255.0 alpha:0.96];
+    _authGateOverlay.hidden = YES;
+    _authGateOverlay.alpha = 0.0f;
+
+    UITapGestureRecognizer *tapBg = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(dismissKeyboardTapped)];
+    tapBg.cancelsTouchesInView = NO;
+    [_authGateOverlay addGestureRecognizer:tapBg];
+
+    _authCardView = [[UIView alloc] init];
+    _authCardView.translatesAutoresizingMaskIntoConstraints = NO;
+    _authCardView.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.98];
+    _authCardView.layer.cornerRadius = 22.0f;
+    _authCardView.layer.borderColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.85].CGColor;
+    _authCardView.layer.borderWidth = 1.5f;
+    _authCardView.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.35].CGColor;
+    _authCardView.layer.shadowOffset = CGSizeMake(0, 8);
+    _authCardView.layer.shadowRadius = 18.0f;
+    _authCardView.layer.shadowOpacity = 0.9f;
+    [_authGateOverlay addSubview:_authCardView];
+
+    // Close button (top right)
+    _authCloseBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    _authCloseBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImage *xImg = [UIImage systemImageNamed:@"xmark.circle.fill"];
+    [_authCloseBtn setImage:xImg forState:UIControlStateNormal];
+    _authCloseBtn.tintColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    [_authCloseBtn addTarget:self action:@selector(authCloseButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_authCardView addSubview:_authCloseBtn];
+
+    // Icon (Lock shield)
+    UIImageView *lockIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"lock.shield.fill"]];
+    lockIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    lockIcon.tintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    lockIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [_authCardView addSubview:lockIcon];
+
+    _authTitleLabel = [[UILabel alloc] init];
+    _authTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _authTitleLabel.textColor = UIColor.whiteColor;
+    _authTitleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightHeavy];
+    _authTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [_authCardView addSubview:_authTitleLabel];
+
+    _authSubTitleLabel = [[UILabel alloc] init];
+    _authSubTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _authSubTitleLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _authSubTitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    _authSubTitleLabel.textAlignment = NSTextAlignmentCenter;
+    _authSubTitleLabel.numberOfLines = 2;
+    [_authCardView addSubview:_authSubTitleLabel];
+
+    // HWID Container
+    UIView *hwidBox = [[UIView alloc] init];
+    hwidBox.translatesAutoresizingMaskIntoConstraints = NO;
+    hwidBox.backgroundColor = [UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0];
+    hwidBox.layer.cornerRadius = 10.0f;
+    hwidBox.layer.borderColor = [UIColor colorWithRed:48/255.0 green:54/255.0 blue:61/255.0 alpha:1.0].CGColor;
+    hwidBox.layer.borderWidth = 1.0f;
+    [_authCardView addSubview:hwidBox];
+
+    _authHwidTitleLabel = [[UILabel alloc] init];
+    _authHwidTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _authHwidTitleLabel.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    _authHwidTitleLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold];
+    [hwidBox addSubview:_authHwidTitleLabel];
+
+    _authHwidValueLabel = [[UILabel alloc] init];
+    _authHwidValueLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _authHwidValueLabel.text = GetDeviceHWID();
+    _authHwidValueLabel.textColor = UIColor.whiteColor;
+    _authHwidValueLabel.font = [UIFont fontWithName:@"Menlo" size:10] ?: [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
+    _authHwidValueLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    [hwidBox addSubview:_authHwidValueLabel];
+
+    _authCopyHwidButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _authCopyHwidButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _authCopyHwidButton.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
+    [_authCopyHwidButton setTitleColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _authCopyHwidButton.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    _authCopyHwidButton.layer.cornerRadius = 6.0f;
+    [_authCopyHwidButton addTarget:self action:@selector(copyHwidTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [hwidBox addSubview:_authCopyHwidButton];
+
+    // Key Input Container
+    UIView *keyBox = [[UIView alloc] init];
+    keyBox.translatesAutoresizingMaskIntoConstraints = NO;
+    keyBox.backgroundColor = [UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0];
+    keyBox.layer.cornerRadius = 12.0f;
+    keyBox.layer.borderColor = [UIColor colorWithRed:48/255.0 green:54/255.0 blue:61/255.0 alpha:1.0].CGColor;
+    keyBox.layer.borderWidth = 1.0f;
+    [_authCardView addSubview:keyBox];
+
+    UIImageView *keyIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.horizontal.fill"]];
+    keyIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    keyIcon.tintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    keyIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [keyBox addSubview:keyIcon];
+
+    _authKeyTextField = [[UITextField alloc] init];
+    _authKeyTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    _authKeyTextField.textColor = UIColor.whiteColor;
+    _authKeyTextField.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    _authKeyTextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+    _authKeyTextField.autocorrectionType = UITextAutocorrectionTypeNo;
+    _authKeyTextField.clearButtonMode = UITextFieldViewModeWhileEditing;
+    _authKeyTextField.returnKeyType = UIReturnKeyDone;
+    [_authKeyTextField addTarget:self action:@selector(authTextFieldReturned:) forControlEvents:UIControlEventEditingDidEndOnExit];
+    [keyBox addSubview:_authKeyTextField];
+
+    _authPasteKeyButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _authPasteKeyButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _authPasteKeyButton.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.18];
+    [_authPasteKeyButton setTitleColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _authPasteKeyButton.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    _authPasteKeyButton.layer.cornerRadius = 8.0f;
+    [_authPasteKeyButton addTarget:self action:@selector(pasteKeyTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [keyBox addSubview:_authPasteKeyButton];
+
+    // Status Label
+    _authStatusLabel = [[UILabel alloc] init];
+    _authStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _authStatusLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    _authStatusLabel.textAlignment = NSTextAlignmentCenter;
+    _authStatusLabel.numberOfLines = 2;
+    _authStatusLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    [_authCardView addSubview:_authStatusLabel];
+
+    // Main Activate Button
+    _authActivateBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    _authActivateBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    _authActivateBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    [_authActivateBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    _authActivateBtn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightHeavy];
+    _authActivateBtn.layer.cornerRadius = 22.0f;
+    _authActivateBtn.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.45].CGColor;
+    _authActivateBtn.layer.shadowOffset = CGSizeMake(0, 4);
+    _authActivateBtn.layer.shadowRadius = 10.0f;
+    _authActivateBtn.layer.shadowOpacity = 0.8f;
+    [_authActivateBtn addTarget:self action:@selector(activateKeyTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_authCardView addSubview:_authActivateBtn];
+
+    _authSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
+    _authSpinner.translatesAutoresizingMaskIntoConstraints = NO;
+    _authSpinner.hidesWhenStopped = YES;
+    [_authActivateBtn addSubview:_authSpinner];
+
+    // Telegram Buy/Support Button
+    _authTelegramBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    _authTelegramBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    _authTelegramBtn.backgroundColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:0.2];
+    [_authTelegramBtn setTitleColor:[UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _authTelegramBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    _authTelegramBtn.layer.cornerRadius = 12.0f;
+    _authTelegramBtn.layer.borderColor = [UIColor colorWithRed:36/255.0 green:161/255.0 blue:222/255.0 alpha:0.45].CGColor;
+    _authTelegramBtn.layer.borderWidth = 1.0f;
+    [_authTelegramBtn addTarget:self action:@selector(openTelegramLink) forControlEvents:UIControlEventTouchUpInside];
+    [_authCardView addSubview:_authTelegramBtn];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_authCardView.centerXAnchor constraintEqualToAnchor:_authGateOverlay.centerXAnchor],
+        [_authCardView.centerYAnchor constraintEqualToAnchor:_authGateOverlay.centerYAnchor constant:-10.0f],
+        [_authCardView.leadingAnchor constraintEqualToAnchor:_authGateOverlay.leadingAnchor constant:24.0f],
+        [_authCardView.trailingAnchor constraintEqualToAnchor:_authGateOverlay.trailingAnchor constant:-24.0f],
+        [_authCardView.widthAnchor constraintLessThanOrEqualToConstant:420.0f],
+
+        [_authCloseBtn.topAnchor constraintEqualToAnchor:_authCardView.topAnchor constant:12.0f],
+        [_authCloseBtn.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-12.0f],
+        [_authCloseBtn.widthAnchor constraintEqualToConstant:32.0f],
+        [_authCloseBtn.heightAnchor constraintEqualToConstant:32.0f],
+
+        [lockIcon.topAnchor constraintEqualToAnchor:_authCardView.topAnchor constant:22.0f],
+        [lockIcon.centerXAnchor constraintEqualToAnchor:_authCardView.centerXAnchor],
+        [lockIcon.widthAnchor constraintEqualToConstant:40.0f],
+        [lockIcon.heightAnchor constraintEqualToConstant:40.0f],
+
+        [_authTitleLabel.topAnchor constraintEqualToAnchor:lockIcon.bottomAnchor constant:10.0f],
+        [_authTitleLabel.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [_authTitleLabel.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+
+        [_authSubTitleLabel.topAnchor constraintEqualToAnchor:_authTitleLabel.bottomAnchor constant:4.0f],
+        [_authSubTitleLabel.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [_authSubTitleLabel.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+
+        [hwidBox.topAnchor constraintEqualToAnchor:_authSubTitleLabel.bottomAnchor constant:14.0f],
+        [hwidBox.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [hwidBox.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+        [hwidBox.heightAnchor constraintEqualToConstant:46.0f],
+
+        [_authHwidTitleLabel.topAnchor constraintEqualToAnchor:hwidBox.topAnchor constant:6.0f],
+        [_authHwidTitleLabel.leadingAnchor constraintEqualToAnchor:hwidBox.leadingAnchor constant:12.0f],
+
+        [_authHwidValueLabel.bottomAnchor constraintEqualToAnchor:hwidBox.bottomAnchor constant:-6.0f],
+        [_authHwidValueLabel.leadingAnchor constraintEqualToAnchor:hwidBox.leadingAnchor constant:12.0f],
+        [_authHwidValueLabel.trailingAnchor constraintEqualToAnchor:_authCopyHwidButton.leadingAnchor constant:-8.0f],
+
+        [_authCopyHwidButton.trailingAnchor constraintEqualToAnchor:hwidBox.trailingAnchor constant:-8.0f],
+        [_authCopyHwidButton.centerYAnchor constraintEqualToAnchor:hwidBox.centerYAnchor],
+        [_authCopyHwidButton.widthAnchor constraintEqualToConstant:64.0f],
+        [_authCopyHwidButton.heightAnchor constraintEqualToConstant:28.0f],
+
+        [keyBox.topAnchor constraintEqualToAnchor:hwidBox.bottomAnchor constant:12.0f],
+        [keyBox.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [keyBox.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+        [keyBox.heightAnchor constraintEqualToConstant:46.0f],
+
+        [keyIcon.leadingAnchor constraintEqualToAnchor:keyBox.leadingAnchor constant:12.0f],
+        [keyIcon.centerYAnchor constraintEqualToAnchor:keyBox.centerYAnchor],
+        [keyIcon.widthAnchor constraintEqualToConstant:18.0f],
+        [keyIcon.heightAnchor constraintEqualToConstant:18.0f],
+
+        [_authKeyTextField.leadingAnchor constraintEqualToAnchor:keyIcon.trailingAnchor constant:8.0f],
+        [_authKeyTextField.trailingAnchor constraintEqualToAnchor:_authPasteKeyButton.leadingAnchor constant:-8.0f],
+        [_authKeyTextField.topAnchor constraintEqualToAnchor:keyBox.topAnchor],
+        [_authKeyTextField.bottomAnchor constraintEqualToAnchor:keyBox.bottomAnchor],
+
+        [_authPasteKeyButton.trailingAnchor constraintEqualToAnchor:keyBox.trailingAnchor constant:-8.0f],
+        [_authPasteKeyButton.centerYAnchor constraintEqualToAnchor:keyBox.centerYAnchor],
+        [_authPasteKeyButton.widthAnchor constraintEqualToConstant:52.0f],
+        [_authPasteKeyButton.heightAnchor constraintEqualToConstant:30.0f],
+
+        [_authStatusLabel.topAnchor constraintEqualToAnchor:keyBox.bottomAnchor constant:10.0f],
+        [_authStatusLabel.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [_authStatusLabel.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+        [_authStatusLabel.heightAnchor constraintGreaterThanOrEqualToConstant:20.0f],
+
+        [_authActivateBtn.topAnchor constraintEqualToAnchor:_authStatusLabel.bottomAnchor constant:12.0f],
+        [_authActivateBtn.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [_authActivateBtn.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+        [_authActivateBtn.heightAnchor constraintEqualToConstant:44.0f],
+
+        [_authSpinner.centerXAnchor constraintEqualToAnchor:_authActivateBtn.centerXAnchor],
+        [_authSpinner.centerYAnchor constraintEqualToAnchor:_authActivateBtn.centerYAnchor],
+
+        [_authTelegramBtn.topAnchor constraintEqualToAnchor:_authActivateBtn.bottomAnchor constant:10.0f],
+        [_authTelegramBtn.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
+        [_authTelegramBtn.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
+        [_authTelegramBtn.heightAnchor constraintEqualToConstant:38.0f],
+        [_authTelegramBtn.bottomAnchor constraintEqualToAnchor:_authCardView.bottomAnchor constant:-20.0f],
+    ]];
+}
+
+- (void)showAuthGateOverlayWithAnimation:(BOOL)animated
+{
+    if (!_authGateOverlay.superview) {
+        [self.view addSubview:_authGateOverlay];
+    }
+    [self.view bringSubviewToFront:_authGateOverlay];
+
+    BOOL hasActiveSession = authguard::session_looks_active() && authguard::menu_access_ok(auth::api_instance);
+    _authCloseBtn.hidden = !hasActiveSession;
+
+    std::string saved = auth::load_key();
+    if (_authKeyTextField.text.length == 0 && !saved.empty()) {
+        _authKeyTextField.text = [NSString stringWithUTF8String:saved.c_str()];
+    }
+
+    _authHwidValueLabel.text = GetDeviceHWID();
+    [self applyLanguageTexts];
+
+    _authGateOverlay.hidden = NO;
+    if (animated) {
+        _authGateOverlay.alpha = 0.0f;
+        _authCardView.transform = CGAffineTransformMakeScale(0.9, 0.9);
+        [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:1.0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+            self->_authGateOverlay.alpha = 1.0f;
+            self->_authCardView.transform = CGAffineTransformIdentity;
+        } completion:nil];
+    } else {
+        _authGateOverlay.alpha = 1.0f;
+        _authCardView.transform = CGAffineTransformIdentity;
+    }
+}
+
+- (void)dismissAuthGateOverlayWithAnimation:(BOOL)animated
+{
+    [self.view endEditing:YES];
+    if (animated) {
+        [UIView animateWithDuration:0.2 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
+            self->_authGateOverlay.alpha = 0.0f;
+            self->_authCardView.transform = CGAffineTransformMakeScale(0.9, 0.9);
+        } completion:^(BOOL finished) {
+            self->_authGateOverlay.hidden = YES;
+        }];
+    } else {
+        _authGateOverlay.alpha = 0.0f;
+        _authGateOverlay.hidden = YES;
+    }
+}
+
+- (void)authCloseButtonTapped:(UIButton *)sender
+{
+    if (authguard::session_looks_active() && authguard::menu_access_ok(auth::api_instance)) {
+        [self dismissAuthGateOverlayWithAnimation:YES];
+    }
+}
+
+- (void)activateKeyTapped:(UIButton *)sender
+{
+    if (_isAuthValidating) return;
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+    [self.view endEditing:YES];
+
+    NSString *rawKey = _authKeyTextField.text;
+    NSString *trimmed = [rawKey stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) {
+        UINotificationFeedbackGenerator *fb = [[UINotificationFeedbackGenerator alloc] init];
+        [fb notificationOccurred:UINotificationFeedbackTypeError];
+        _authStatusLabel.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+        _authStatusLabel.text = IsEnglish() ? @"Please enter a valid license key!" : @"Vui lòng nhập mã key của bạn!";
+        [self shakeView:_authCardView];
+        return;
+    }
+
+    _isAuthValidating = YES;
+    _authActivateBtn.userInteractionEnabled = NO;
+    [_authActivateBtn setTitle:@"" forState:UIControlStateNormal];
+    [_authSpinner startAnimating];
+
+    BOOL isEN = IsEnglish();
+    _authStatusLabel.textColor = [UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0];
+    _authStatusLabel.text = isEN ? @"Authenticating license with server..." : @"Đang xác thực bản quyền với máy chủ...";
+
+    [self appendConsoleLog:@"AUTH" message:[NSString stringWithFormat:(isEN ? @"Validating key: %.8s..." : @"Đang kiểm tra key: %.8s..."), [trimmed UTF8String]] tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        auth::username = [trimmed UTF8String];
+        auth::login();
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self->_isAuthValidating = NO;
+            self->_authActivateBtn.userInteractionEnabled = YES;
+            [self->_authSpinner stopAnimating];
+            [self->_authActivateBtn setTitle:(isEN ? @"ACTIVATE" : @"KÍCH HOẠT") forState:UIControlStateNormal];
+
+            if (authguard::session_looks_active() && authguard::menu_access_ok(auth::api_instance)) {
+                UINotificationFeedbackGenerator *fb = [[UINotificationFeedbackGenerator alloc] init];
+                [fb notificationOccurred:UINotificationFeedbackTypeSuccess];
+
+                self->_authStatusLabel.textColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
+                self->_authStatusLabel.text = isEN ? @"Activated successfully! Starting..." : @"Kích hoạt thành công! Đang khởi động...";
+
+                NSString *expStr = GetFormattedExpiryString(auth::api_instance.expiry);
+                [self appendConsoleLog:@"OK" message:[NSString stringWithFormat:(isEN ? @"License activated! Valid until: %@" : @"Kích hoạt thành công! Hạn dùng: %@"), expStr] tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+
+                [self updateLicenseCardUI];
+
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [self dismissAuthGateOverlayWithAnimation:YES];
+                });
+            } else {
+                UINotificationFeedbackGenerator *fb = [[UINotificationFeedbackGenerator alloc] init];
+                [fb notificationOccurred:UINotificationFeedbackTypeError];
+
+                self->_authStatusLabel.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+                NSString *msg = [NSString stringWithUTF8String:auth::auth_text.c_str()];
+                if (msg.length == 0) {
+                    msg = isEN ? @"Invalid license key or server error." : @"Mã key không hợp lệ hoặc lỗi kết nối máy chủ.";
+                }
+                self->_authStatusLabel.text = msg;
+                [self appendConsoleLog:@"ERR" message:[NSString stringWithFormat:(isEN ? @"Activation failed: %@" : @"Kích hoạt thất bại: %@"), msg] tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+                [self shakeView:self->_authCardView];
+            }
+        });
+    });
+}
+
+- (void)copyHwidTapped:(UIButton *)sender
+{
+    UINotificationFeedbackGenerator *fb = [[UINotificationFeedbackGenerator alloc] init];
+    [fb notificationOccurred:UINotificationFeedbackTypeSuccess];
+
+    NSString *hwid = GetDeviceHWID();
+    [UIPasteboard generalPasteboard].string = hwid;
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Device HWID copied to clipboard" : @"Đã sao chép mã thiết bị (HWID) vào bộ nhớ tạm") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+
+    NSString *origTitle = [sender titleForState:UIControlStateNormal];
+    [sender setTitle:(isEN ? @"Copied!" : @"Đã chép!") forState:UIControlStateNormal];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [sender setTitle:origTitle forState:UIControlStateNormal];
+    });
+}
+
+- (void)pasteKeyTapped:(UIButton *)sender
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+    NSString *pasted = [UIPasteboard generalPasteboard].string;
+    if (pasted && pasted.length > 0) {
+        _authKeyTextField.text = [pasted stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    }
+}
+
+- (void)changeKeyTapped:(UIButton *)sender
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+    [self showAuthGateOverlayWithAnimation:YES];
+}
+
+- (void)updateLicenseCardUI
+{
+    BOOL isEN = IsEnglish();
+    BOOL isActive = authguard::session_looks_active() && authguard::menu_access_ok(auth::api_instance);
+
+    if (isActive) {
+        _licenseStatusBadge.backgroundColor = [UIColor colorWithRed:20/255.0 green:45/255.0 blue:35/255.0 alpha:1.0];
+        _licenseBadgeLabel.textColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
+        _licenseBadgeLabel.text = isEN ? @"Active" : @"Đã kích hoạt";
+
+        std::string loaded = auth::load_key();
+        if (loaded.empty()) loaded = auth::username;
+        NSString *raw = [NSString stringWithUTF8String:loaded.c_str()];
+        _licenseKeyVal.text = GetMaskedKeyString(raw);
+
+        _licenseExpVal.text = GetFormattedExpiryString(auth::api_instance.expiry);
+        _licenseExpVal.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    } else {
+        _licenseStatusBadge.backgroundColor = [UIColor colorWithRed:58/255.0 green:28/255.0 blue:28/255.0 alpha:1.0];
+        _licenseBadgeLabel.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+        _licenseBadgeLabel.text = isEN ? @"Inactive" : @"Chưa kích hoạt";
+
+        _licenseKeyVal.text = isEN ? @"No Key" : @"Chưa có key";
+        _licenseExpVal.text = isEN ? @"Locked" : @"Đang khoá";
+        _licenseExpVal.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+    }
+}
+
+- (void)checkStoredLicenseOnBoot
+{
+    std::string savedKey = auth::load_key();
+    if (savedKey.empty()) {
+        BOOL isEN = IsEnglish();
+        [self appendConsoleLog:@"AUTH" message:(isEN ? @"Welcome to DarkPubg. License key required to unlock." : @"Chào mừng đến với DarkPubg. Cần nhập key để vào ứng dụng.") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+        [self showAuthGateOverlayWithAnimation:NO];
+    } else {
+        BOOL isEN = IsEnglish();
+        [self appendConsoleLog:@"AUTH" message:[NSString stringWithFormat:(isEN ? @"Found saved key (%.8s...). Verifying..." : @"Tìm thấy key đã lưu (%.8s...). Đang xác thực..."), savedKey.c_str()] tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            auth::username = savedKey;
+            auth::login();
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (authguard::session_looks_active() && authguard::menu_access_ok(auth::api_instance)) {
+                    NSString *expStr = GetFormattedExpiryString(auth::api_instance.expiry);
+                    [self appendConsoleLog:@"OK" message:[NSString stringWithFormat:(isEN ? @"License active! Valid until: %@" : @"Bản quyền hợp lệ! Hạn dùng: %@"), expStr] tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+                    [self updateLicenseCardUI];
+                } else {
+                    [self appendConsoleLog:@"AUTH" message:(isEN ? @"Stored key failed validation. Please enter key." : @"Key đã lưu không hợp lệ. Vui lòng nhập lại key.") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+                    [self showAuthGateOverlayWithAnimation:YES];
+                }
+            });
+        });
+    }
+}
+
+- (void)authKeyboardWillShow:(NSNotification *)note
+{
+    NSDictionary *userInfo = note.userInfo;
+    NSTimeInterval duration = [userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationCurve curve = (UIViewAnimationCurve)[userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue];
+
+    [UIView animateWithDuration:duration delay:0 options:(UIViewAnimationOptions)(curve << 16) animations:^{
+        self->_authCardView.transform = CGAffineTransformMakeTranslation(0, -65.0f);
+    } completion:nil];
+}
+
+- (void)authKeyboardWillHide:(NSNotification *)note
+{
+    NSDictionary *userInfo = note.userInfo;
+    NSTimeInterval duration = [userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationCurve curve = (UIViewAnimationCurve)[userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue];
+
+    [UIView animateWithDuration:duration delay:0 options:(UIViewAnimationOptions)(curve << 16) animations:^{
+        self->_authCardView.transform = CGAffineTransformIdentity;
+    } completion:nil];
+}
+
+- (void)dismissKeyboardTapped
+{
+    [self.view endEditing:YES];
+}
+
+- (void)authTextFieldReturned:(UITextField *)sender
+{
+    [self activateKeyTapped:_authActivateBtn];
+}
+
+- (void)shakeView:(UIView *)view
+{
+    CAKeyframeAnimation *animation = [CAKeyframeAnimation animationWithKeyPath:@"transform.translation.x"];
+    animation.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    animation.duration = 0.4;
+    animation.values = @[@(-12.0), @(12.0), @(-8.0), @(8.0), @(-4.0), @(4.0), @(0.0)];
+    [view.layer addAnimation:animation forKey:@"shake"];
+}
+
 #pragma mark - Lifecycle
 
 - (void)viewDidLoad
@@ -1574,6 +2338,11 @@ static BOOL IsPUBGProcessRunning(void) {
     [self seedBootLogs];
     [self startPulseAnimation:_consoleLiveDot];
 
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(authKeyboardWillShow:) name:UIKeyboardWillShowNotification object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(authKeyboardWillHide:) name:UIKeyboardWillHideNotification object:nil];
+
+    [self checkStoredLicenseOnBoot];
+
     __weak typeof(self) weakSelf = self;
     _consoleHeartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:30.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
@@ -1586,6 +2355,7 @@ static BOOL IsPUBGProcessRunning(void) {
 
 - (void)dealloc
 {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_consoleHeartbeatTimer invalidate];
     _consoleHeartbeatTimer = nil;
 }
@@ -1618,6 +2388,14 @@ static BOOL IsPUBGProcessRunning(void) {
 
     // If HUD is currently OFF and user taps to OPEN HUD:
     if (!isNowEnabled) {
+        // License authentication gate
+        if (!authguard::session_looks_active() || !authguard::menu_access_ok(auth::api_instance)) {
+            BOOL isEN = IsEnglish();
+            [self appendConsoleLog:@"AUTH" message:(isEN ? @"Access denied: License key required to open HUD." : @"Từ chối: Cần kích hoạt bản quyền để mở HUD.") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+            [self showAuthGateOverlayWithAnimation:YES];
+            return;
+        }
+
         // Check if PUBG Mobile is running
         if (!IsPUBGProcessRunning()) {
             BOOL isEN = IsEnglish();
