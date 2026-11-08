@@ -207,11 +207,16 @@ static BOOL CheckPUBGViaSpringBoard(void) {
     if (bksClass) {
         @try {
             id monitor = [[bksClass alloc] init];
-            if ([monitor respondsToSelector:@selector(applicationStateForApplication:)]) {
-                for (NSString *bundleID in bundleIDs) {
-                    unsigned int state = (unsigned int)[monitor applicationStateForApplication:bundleID];
-                    if (state & (2 | 4 | 8)) {
-                        return YES;
+            SEL sel = NSSelectorFromString(@"applicationStateForApplication:");
+            if ([monitor respondsToSelector:sel]) {
+                typedef unsigned int (*StateFunc)(id, SEL, NSString *);
+                StateFunc func = (StateFunc)[monitor methodForSelector:sel];
+                if (func) {
+                    for (NSString *bundleID in bundleIDs) {
+                        unsigned int state = func(monitor, sel, bundleID);
+                        if (state & (2 | 4 | 8)) {
+                            return YES;
+                        }
                     }
                 }
             }
