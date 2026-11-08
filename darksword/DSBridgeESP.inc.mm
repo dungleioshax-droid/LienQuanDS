@@ -3422,10 +3422,6 @@ static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGArrowLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGArrowTextLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGItemLabels[kDSPUBGMaxItems] = {};
-static CALayer *g_hostedPUBGItemHpBgLayers[kDSPUBGMaxItems] = {};
-static CALayer *g_hostedPUBGItemHpBarLayers[kDSPUBGMaxItems] = {};
-static CALayer *g_hostedPUBGItemFuelBgLayers[kDSPUBGMaxItems] = {};
-static CALayer *g_hostedPUBGItemFuelBarLayers[kDSPUBGMaxItems] = {};
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -3444,10 +3440,6 @@ static void ds_hosted_pubg_hide_all(void) {
     }
     for (int i = 0; i < kDSPUBGMaxItems; i++) {
         if (g_hostedPUBGItemLabels[i] && !g_hostedPUBGItemLabels[i].hidden) g_hostedPUBGItemLabels[i].hidden = YES;
-        if (g_hostedPUBGItemHpBgLayers[i] && !g_hostedPUBGItemHpBgLayers[i].hidden) g_hostedPUBGItemHpBgLayers[i].hidden = YES;
-        if (g_hostedPUBGItemHpBarLayers[i] && !g_hostedPUBGItemHpBarLayers[i].hidden) g_hostedPUBGItemHpBarLayers[i].hidden = YES;
-        if (g_hostedPUBGItemFuelBgLayers[i] && !g_hostedPUBGItemFuelBgLayers[i].hidden) g_hostedPUBGItemFuelBgLayers[i].hidden = YES;
-        if (g_hostedPUBGItemFuelBarLayers[i] && !g_hostedPUBGItemFuelBarLayers[i].hidden) g_hostedPUBGItemFuelBarLayers[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -3969,18 +3961,10 @@ static void ds_hosted_apply_pubg(void) {
 
     for (int i = 0; i < kDSPUBGMaxItems; i++) {
         CATextLayer *lbl = g_hostedPUBGItemLabels[i];
-        CALayer *hpBg = g_hostedPUBGItemHpBgLayers[i];
-        CALayer *hpBar = g_hostedPUBGItemHpBarLayers[i];
-        CALayer *fuelBg = g_hostedPUBGItemFuelBgLayers[i];
-        CALayer *fuelBar = g_hostedPUBGItemFuelBarLayers[i];
         if (!lbl) continue;
 
         if (i >= itemCount) {
             if (!lbl.hidden) lbl.hidden = YES;
-            if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
-            if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
-            if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
-            if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
             continue;
         }
 
@@ -4000,24 +3984,7 @@ static void ds_hosted_apply_pubg(void) {
                         ((it.category == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
         if (!show || !it.isVisible || it.distanceMeters > maxDist) {
             if (!lbl.hidden) lbl.hidden = YES;
-            if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
-            if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
-            if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
-            if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
             continue;
-        }
-
-        UIColor *color = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95]; // Gold default
-        if (it.category == DSPUBGItemCategoryVehicle) {
-            color = [UIColor whiteColor]; // White text for vehicle
-        } else if (it.category == DSPUBGItemCategoryScope) {
-            color = [UIColor colorWithRed:190/255.0 green:110/255.0 blue:255/255.0 alpha:0.95]; // Purple
-        } else if (it.category == DSPUBGItemCategoryArmor) {
-            color = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.95]; // Cyan
-        } else if (it.category == DSPUBGItemCategoryBag) {
-            color = [UIColor colorWithRed:38/255.0 green:222/255.0 blue:129/255.0 alpha:0.95]; // Mint
-        } else if (it.category == DSPUBGItemCategoryCrate) {
-            color = [UIColor colorWithRed:255/255.0 green:75/255.0 blue:75/255.0 alpha:0.95]; // Red
         }
 
         NSString *nameStr = [NSString stringWithUTF8String:it.name];
@@ -4031,79 +3998,99 @@ static void ds_hosted_apply_pubg(void) {
             nameStr = @"Vật Phẩm";
         }
 
-        NSString *str = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
-        CGFloat strW = 140.0f;
-        CGFloat strH = 16.0f;
-        lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
-        lbl.fontSize = 10.0f;
-        lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
-        lbl.foregroundColor = color.CGColor;
         if (it.category == DSPUBGItemCategoryVehicle) {
             lbl.backgroundColor = UIColor.clearColor.CGColor;
             lbl.shadowColor = UIColor.blackColor.CGColor;
             lbl.shadowRadius = 2.0;
             lbl.shadowOpacity = 0.95;
             lbl.shadowOffset = CGSizeMake(0, 1);
+            lbl.wrapped = YES;
+
+            NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
+            UIFont *titleFont = [UIFont systemFontOfSize:10.5 weight:UIFontWeightBold];
+            UIFont *subFont = [UIFont systemFontOfSize:9.5 weight:UIFontWeightBold];
+
+            NSString *titleStr = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
+            [attr appendAttributedString:[[NSAttributedString alloc] initWithString:titleStr
+                attributes:@{
+                    NSForegroundColorAttributeName: [UIColor whiteColor],
+                    NSFontAttributeName: titleFont
+                }]];
+
+            NSMutableArray<NSAttributedString *> *parts = [NSMutableArray array];
+            if (g_pubgEspVehicleHp && it.hpMax > 0.0f) {
+                float hpPct = (it.hp / it.hpMax) * 100.0f;
+                if (hpPct < 0.0f) hpPct = 0.0f;
+                if (hpPct > 100.0f) hpPct = 100.0f;
+                NSString *hpStr = [NSString stringWithFormat:@"Máu: %.0f%%", hpPct];
+                [parts addObject:[[NSAttributedString alloc] initWithString:hpStr
+                    attributes:@{
+                        NSForegroundColorAttributeName: [UIColor colorWithRed:50/255.0 green:220/255.0 blue:50/255.0 alpha:1.0],
+                        NSFontAttributeName: subFont
+                    }]];
+            }
+
+            if (g_pubgEspVehicleFuel && it.fuelMax > 0.0f) {
+                float fuelPct = (it.fuel / it.fuelMax) * 100.0f;
+                if (fuelPct < 0.0f) fuelPct = 0.0f;
+                if (fuelPct > 100.0f) fuelPct = 100.0f;
+                NSString *fuelStr = [NSString stringWithFormat:@"Xăng: %.0f%%", fuelPct];
+                [parts addObject:[[NSAttributedString alloc] initWithString:fuelStr
+                    attributes:@{
+                        NSForegroundColorAttributeName: [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0],
+                        NSFontAttributeName: subFont
+                    }]];
+            }
+
+            if (parts.count > 0) {
+                [attr appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n"
+                    attributes:@{NSFontAttributeName: titleFont}]];
+                for (NSUInteger pi = 0; pi < parts.count; pi++) {
+                    if (pi > 0) {
+                        [attr appendAttributedString:[[NSAttributedString alloc] initWithString:@"  "
+                            attributes:@{NSFontAttributeName: subFont}]];
+                    }
+                    [attr appendAttributedString:parts[pi]];
+                }
+            }
+
+            NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+            style.alignment = NSTextAlignmentCenter;
+            [attr addAttribute:NSParagraphStyleAttributeName value:style range:NSMakeRange(0, attr.length)];
+
+            CGFloat strW = (parts.count > 0) ? 160.0f : 140.0f;
+            CGFloat strH = (parts.count > 0) ? 28.0f : 16.0f;
+            lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
+            lbl.string = attr;
+            lbl.hidden = NO;
         } else {
+            UIColor *color = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95]; // Gold default
+            if (it.category == DSPUBGItemCategoryScope) {
+                color = [UIColor colorWithRed:190/255.0 green:110/255.0 blue:255/255.0 alpha:0.95]; // Purple
+            } else if (it.category == DSPUBGItemCategoryArmor) {
+                color = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.95]; // Cyan
+            } else if (it.category == DSPUBGItemCategoryBag) {
+                color = [UIColor colorWithRed:38/255.0 green:222/255.0 blue:129/255.0 alpha:0.95]; // Mint
+            } else if (it.category == DSPUBGItemCategoryCrate) {
+                color = [UIColor colorWithRed:255/255.0 green:75/255.0 blue:75/255.0 alpha:0.95]; // Red
+            }
+
+            NSString *str = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
+            CGFloat strW = 130.0f;
+            CGFloat strH = 18.0f;
+            lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
+            lbl.fontSize = 10.0f;
+            lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
+            lbl.foregroundColor = color.CGColor;
             lbl.backgroundColor = [UIColor colorWithRed:10/255.0 green:14/255.0 blue:20/255.0 alpha:0.65].CGColor;
             lbl.shadowColor = UIColor.blackColor.CGColor;
             lbl.shadowRadius = 1.0;
             lbl.shadowOpacity = 0.75;
             lbl.shadowOffset = CGSizeMake(0, 1);
-        }
-        lbl.cornerRadius = 3.0f;
-        lbl.string = str;
-        lbl.hidden = NO;
-
-        if (it.category == DSPUBGItemCategoryVehicle) {
-            CGFloat vBarW = 56.0f;
-            CGFloat vBarH = 3.5f;
-            CGFloat vBarX = it.screenX - vBarW * 0.5f;
-            CGFloat curY = it.screenY + strH * 0.5f + 1.0f;
-
-            if (g_pubgEspVehicleHp && it.hpMax > 0.0f && hpBar) {
-                float hpRatio = it.hp / it.hpMax;
-                if (hpRatio < 0.0f) hpRatio = 0.0f;
-                if (hpRatio > 1.0f) hpRatio = 1.0f;
-                CGFloat fillW = vBarW * hpRatio;
-                if (fillW < 1.0f && it.hp > 0.0f) fillW = 1.0f;
-
-                if (hpBg) {
-                    hpBg.frame = CGRectMake(vBarX - 0.5f, curY - 0.5f, vBarW + 1.0f, vBarH + 1.0f);
-                    hpBg.hidden = NO;
-                }
-                hpBar.frame = CGRectMake(vBarX, curY, fillW, vBarH);
-                hpBar.backgroundColor = [UIColor colorWithRed:50/255.0 green:220/255.0 blue:50/255.0 alpha:0.95].CGColor;
-                hpBar.hidden = NO;
-                curY += vBarH + 2.5f;
-            } else {
-                if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
-                if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
-            }
-
-            if (g_pubgEspVehicleFuel && it.fuelMax > 0.0f && fuelBar) {
-                float fuelRatio = it.fuel / it.fuelMax;
-                if (fuelRatio < 0.0f) fuelRatio = 0.0f;
-                if (fuelRatio > 1.0f) fuelRatio = 1.0f;
-                CGFloat fillW = vBarW * fuelRatio;
-                if (fillW < 1.0f && it.fuel > 0.0f) fillW = 1.0f;
-
-                if (fuelBg) {
-                    fuelBg.frame = CGRectMake(vBarX - 0.5f, curY - 0.5f, vBarW + 1.0f, vBarH + 1.0f);
-                    fuelBg.hidden = NO;
-                }
-                fuelBar.frame = CGRectMake(vBarX, curY, fillW, vBarH);
-                fuelBar.backgroundColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95].CGColor;
-                fuelBar.hidden = NO;
-            } else {
-                if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
-                if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
-            }
-        } else {
-            if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
-            if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
-            if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
-            if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
+            lbl.cornerRadius = 3.0f;
+            lbl.wrapped = NO;
+            lbl.string = str;
+            lbl.hidden = NO;
         }
     }
 }
@@ -4536,42 +4523,6 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 itemLbl.hidden = YES;
                 [g_hostedLayer addSublayer:itemLbl];
                 g_hostedPUBGItemLabels[i] = itemLbl;
-
-                CALayer *hpBg = [CALayer layer];
-                hpBg.actions = noAnim;
-                hpBg.contentsScale = scale;
-                hpBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.60].CGColor;
-                hpBg.cornerRadius = 1.5;
-                hpBg.hidden = YES;
-                [g_hostedLayer addSublayer:hpBg];
-                g_hostedPUBGItemHpBgLayers[i] = hpBg;
-
-                CALayer *hpBar = [CALayer layer];
-                hpBar.actions = noAnim;
-                hpBar.contentsScale = scale;
-                hpBar.backgroundColor = [UIColor colorWithRed:50/255.0 green:220/255.0 blue:50/255.0 alpha:0.95].CGColor;
-                hpBar.cornerRadius = 1.5;
-                hpBar.hidden = YES;
-                [g_hostedLayer addSublayer:hpBar];
-                g_hostedPUBGItemHpBarLayers[i] = hpBar;
-
-                CALayer *fuelBg = [CALayer layer];
-                fuelBg.actions = noAnim;
-                fuelBg.contentsScale = scale;
-                fuelBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.60].CGColor;
-                fuelBg.cornerRadius = 1.5;
-                fuelBg.hidden = YES;
-                [g_hostedLayer addSublayer:fuelBg];
-                g_hostedPUBGItemFuelBgLayers[i] = fuelBg;
-
-                CALayer *fuelBar = [CALayer layer];
-                fuelBar.actions = noAnim;
-                fuelBar.contentsScale = scale;
-                fuelBar.backgroundColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95].CGColor;
-                fuelBar.cornerRadius = 1.5;
-                fuelBar.hidden = YES;
-                [g_hostedLayer addSublayer:fuelBar];
-                g_hostedPUBGItemFuelBarLayers[i] = fuelBar;
             }
 
             CAShapeLayer *topBg = [CAShapeLayer layer];

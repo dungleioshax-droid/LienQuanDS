@@ -490,13 +490,15 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
     outDisplay[0] = '\0';
 
     // 0. Fast reject non-item actors (bullets, effects, cameras, players)
-    if (strstr(name, "Bullet") || strstr(name, "Proj") || strstr(name, "Shell") ||
-        strstr(name, "Cartridge") || strstr(name, "Trace") || strstr(name, "Particle") ||
-        strstr(name, "Emitter") || strstr(name, "Effect") || strstr(name, "Decal") ||
-        strstr(name, "Camera") || strstr(name, "Controller") || strstr(name, "Player") ||
-        strstr(name, "Character") || strstr(name, "Volume") || strstr(name, "Trigger") ||
-        strstr(name, "Light") || strstr(name, "Audio") || strstr(name, "Sound") ||
-        strstr(name, "Landscape") || strstr(name, "WorldSettings") || strstr(name, "GameMode")) {
+    if (strcasestr(name, "Bullet") || strcasestr(name, "Proj") || strcasestr(name, "Shell") ||
+        strcasestr(name, "Cartridge") || strcasestr(name, "Trace") || strcasestr(name, "Particle") ||
+        strcasestr(name, "Emitter") || strcasestr(name, "Effect") || strcasestr(name, "Decal") ||
+        strcasestr(name, "Camera") || strcasestr(name, "Controller") || strcasestr(name, "Player") ||
+        strcasestr(name, "Character") || strcasestr(name, "Volume") || strcasestr(name, "Trigger") ||
+        strcasestr(name, "Light") || strcasestr(name, "Audio") || strcasestr(name, "Sound") ||
+        strcasestr(name, "Landscape") || strcasestr(name, "WorldSettings") || strcasestr(name, "GameMode") ||
+        strcasestr(name, "Grenade") || strcasestr(name, "Smoke") || strcasestr(name, "Flash") ||
+        strcasestr(name, "Explo") || strcasestr(name, "Fire") || strcasestr(name, "Flame")) {
         return DSPUBGItemCategoryNone;
     }
 
@@ -1068,18 +1070,30 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     uint8_t aHidden = ds_pubg_read_u8(actor + 0xE8ULL);
     if (aHidden & 0x1) return DSPUBGItemCategoryNone;
 
+    // Fast reject local player pawn or anything owned/instigated by local player
+    if (localPawn) {
+        uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
+        uint64_t own = ds_pubg_read_ptr(actor + 0x140ULL);
+        if (inst == localPawn || own == localPawn) {
+            return DSPUBGItemCategoryNone;
+        }
+    }
+
     // Optional: Get actor name via GNames if available
     char actorName[64] = {0};
     bool hasName = ds_pubg_get_actor_name(actor, actorName, sizeof(actorName));
 
     if (hasName) {
-        if (strstr(actorName, "Bullet") || strstr(actorName, "Proj") || strstr(actorName, "Shell") ||
-            strstr(actorName, "Cartridge") || strstr(actorName, "Trace") || strstr(actorName, "Particle") ||
-            strstr(actorName, "Emitter") || strstr(actorName, "Effect") || strstr(actorName, "Decal") ||
-            strstr(actorName, "Camera") || strstr(actorName, "Controller") || strstr(actorName, "Player") ||
-            strstr(actorName, "Character") || strstr(actorName, "Volume") || strstr(actorName, "Trigger") ||
-            strstr(actorName, "Light") || strstr(actorName, "Audio") || strstr(actorName, "Sound") ||
-            strstr(actorName, "Landscape") || strstr(actorName, "WorldSettings") || strstr(actorName, "GameMode")) {
+        if (strcasestr(actorName, "Bullet") || strcasestr(actorName, "Proj") || strcasestr(actorName, "Shell") ||
+            strcasestr(actorName, "Cartridge") || strcasestr(actorName, "Trace") || strcasestr(actorName, "Particle") ||
+            strcasestr(actorName, "Emitter") || strcasestr(actorName, "Effect") || strcasestr(actorName, "Decal") ||
+            strcasestr(actorName, "Camera") || strcasestr(actorName, "Controller") || strcasestr(actorName, "Player") ||
+            strcasestr(actorName, "Character") || strcasestr(actorName, "Pawn") || strcasestr(actorName, "Volume") ||
+            strcasestr(actorName, "Trigger") || strcasestr(actorName, "Light") || strcasestr(actorName, "Audio") ||
+            strcasestr(actorName, "Sound") || strcasestr(actorName, "Landscape") || strcasestr(actorName, "WorldSettings") ||
+            strcasestr(actorName, "GameMode") || strcasestr(actorName, "Grenade") || strcasestr(actorName, "Smoke") ||
+            strcasestr(actorName, "Flash") || strcasestr(actorName, "Explo") || strcasestr(actorName, "Fire") ||
+            strcasestr(actorName, "Flame")) {
             return DSPUBGItemCategoryNone;
         }
     }
@@ -1208,26 +1222,29 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     }
 
     // Direct Memory Verification for ASTExtraVehicleBase:
-    // Verified offsets from SDK: VehicleCommon=0xC08, VehicleDamage=0xC00, VehicleSeats=0xBF0, Mesh=0xBE8
-    // VehicleMovement=0x518, VehicleShapeType=0x70D, VehicleType=0x70C
+    // Verified offsets from SDK: VehicleCommon=0xC08 (HPMax=0x350), VehicleDamage=0xC00, VehicleSeats=0xBF0
+    // VehicleShapeType=0x70D, VehicleType=0x70C
     {
-        uint64_t vCommon   = ds_pubg_read_ptr(actor + 0xC08ULL);
-        uint64_t vDamage   = ds_pubg_read_ptr(actor + 0xC00ULL);
-        uint64_t vSeats    = ds_pubg_read_ptr(actor + 0xBF0ULL);
-        uint64_t vMesh     = ds_pubg_read_ptr(actor + 0xBE8ULL);
-        uint64_t vMove     = ds_pubg_read_ptr(actor + 0x518ULL);
-        if (!vCommon) vCommon = ds_pubg_read_ptr(actor + 0x6F8ULL); // legacy fallback
+        uint64_t vCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
+        if (!vCommon || !ds_pubg_valid(vCommon)) {
+            vCommon = ds_pubg_read_ptr(actor + 0x6F8ULL); // legacy fallback
+        }
+        bool hasValidHp = false;
+        if (vCommon && ds_pubg_valid(vCommon)) {
+            float testHp = ds_pubg_read_f32(vCommon + 0x350ULL);
+            if (!isnan(testHp) && !isinf(testHp) && testHp >= 200.0f && testHp <= 50000.0f) {
+                hasValidHp = true;
+            }
+        }
 
-        bool hasVehicleComp = (vCommon && ds_pubg_valid(vCommon)) ||
-                              (vDamage && ds_pubg_valid(vDamage)) ||
-                              (vSeats && ds_pubg_valid(vSeats)) ||
-                              (vMesh && ds_pubg_valid(vMesh)) ||
-                              (vMove && ds_pubg_valid(vMove));
+        uint64_t vSeats  = ds_pubg_read_ptr(actor + 0xBF0ULL);
+        uint64_t vDamage = ds_pubg_read_ptr(actor + 0xC00ULL);
+        bool hasSeatDamage = (vSeats && ds_pubg_valid(vSeats) && vDamage && ds_pubg_valid(vDamage));
 
         uint8_t shape = ds_pubg_read_u8(actor + 0x70DULL);
         uint8_t vtype = ds_pubg_read_u8(actor + 0x70CULL);
 
-        if (hasVehicleComp || (shape > 0 && shape <= 125) || (vtype > 0 && vtype <= 30)) {
+        if (hasValidHp || hasSeatDamage) {
             if (shape > 0 && shape <= 125) {
                 DSPUBGItemCategory cat = ds_pubg_classify_vehicle_shape(shape, outDisplay, outCap);
                 if (cat != DSPUBGItemCategoryNone) return cat;
@@ -1236,7 +1253,18 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
                 DSPUBGItemCategory cat = ds_pubg_classify_vehicle_type(vtype, outDisplay, outCap);
                 if (cat != DSPUBGItemCategoryNone) return cat;
             }
-            if (hasVehicleComp) {
+            snprintf(outDisplay, outCap, "Xe Ô Tô");
+            return DSPUBGItemCategoryVehicle;
+        } else if ((shape > 0 && shape <= 125) || (vtype > 0 && vtype <= 30)) {
+            if ((vCommon && ds_pubg_valid(vCommon)) || (vSeats && ds_pubg_valid(vSeats))) {
+                if (shape > 0 && shape <= 125) {
+                    DSPUBGItemCategory cat = ds_pubg_classify_vehicle_shape(shape, outDisplay, outCap);
+                    if (cat != DSPUBGItemCategoryNone) return cat;
+                }
+                if (vtype > 0 && vtype <= 30) {
+                    DSPUBGItemCategory cat = ds_pubg_classify_vehicle_type(vtype, outDisplay, outCap);
+                    if (cat != DSPUBGItemCategoryNone) return cat;
+                }
                 snprintf(outDisplay, outCap, "Xe Ô Tô");
                 return DSPUBGItemCategoryVehicle;
             }
@@ -2946,6 +2974,14 @@ static void ds_pubg_tick(void) {
         if (!g_pubgEspVehicle && !g_pubgEspWeapon && !g_pubgEspArmor &&
             !g_pubgEspBag && !g_pubgEspScope && !g_pubgEspCrate) {
             return;
+        }
+
+        if (localPawn) {
+            uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
+            uint64_t own = ds_pubg_read_ptr(actor + 0x140ULL);
+            if (inst == localPawn || own == localPawn) {
+                return;
+            }
         }
 
         char displayName[36] = {0};
