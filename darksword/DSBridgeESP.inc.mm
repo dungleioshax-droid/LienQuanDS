@@ -3474,14 +3474,15 @@ static void ds_hosted_apply_pubg(void) {
     static NSMutableParagraphStyle *s_centerStyle = nil;
     static dispatch_once_t s_pubgFontOnce;
     dispatch_once(&s_pubgFontOnce, ^{
-        s_infoFont = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
-        s_wFont = [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
-        s_itemTitleFont = [UIFont systemFontOfSize:9.0 weight:UIFontWeightBold];
-        s_itemSubFont = [UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
-        s_itemFont = [UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
+        s_infoFont = [UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
+        s_wFont = [UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
+        s_itemTitleFont = [UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
+        s_itemSubFont = [UIFont systemFontOfSize:7.5 weight:UIFontWeightBold];
+        s_itemFont = [UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
         s_centerStyle = [[NSMutableParagraphStyle alloc] init];
         s_centerStyle.alignment = NSTextAlignmentCenter;
         s_centerStyle.lineBreakMode = NSLineBreakByClipping;
+        s_centerStyle.lineSpacing = -1.5;
     });
 
     int totalEnemies = 0;
@@ -3755,8 +3756,8 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             if (weaponText) {
-                CGFloat wLblW = 130.0f;
-                CGFloat wLblH = 13.0f;
+                CGFloat wLblW = 100.0f;
+                CGFloat wLblH = 11.0f;
                 CGFloat baseTop = showHp ? barY : topY;
                 CGFloat wLblY = baseTop - wLblH - 1.0f;
                 wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
@@ -3764,7 +3765,7 @@ static void ds_hosted_apply_pubg(void) {
                     NSFontAttributeName: s_wFont,
                     NSForegroundColorAttributeName: [UIColor colorWithCGColor:weaponColor],
                     NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSStrokeWidthAttributeName: @(-1.4),
                     NSParagraphStyleAttributeName: s_centerStyle
                 }];
                 wLabel.string = attrW;
@@ -3775,7 +3776,7 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // 6. Text label: below box at bottom center
+        // 6. Text label: below box at bottom center (tightly anchored right below enemy)
         // Tên: Bot = Xanh nước biển, Người = Vàng
         // Khoảng cách (và team): Trắng
         if (g_pubgEspName || g_pubgEspDist) {
@@ -3809,7 +3810,7 @@ static void ds_hosted_apply_pubg(void) {
                     NSFontAttributeName: s_infoFont,
                     NSForegroundColorAttributeName: nameColor,
                     NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSStrokeWidthAttributeName: @(-1.4),
                     NSParagraphStyleAttributeName: s_centerStyle
                 }]];
             }
@@ -3826,7 +3827,7 @@ static void ds_hosted_apply_pubg(void) {
                     NSFontAttributeName: s_infoFont,
                     NSForegroundColorAttributeName: whiteColor,
                     NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSStrokeWidthAttributeName: @(-1.4),
                     NSParagraphStyleAttributeName: s_centerStyle
                 }]];
             }
@@ -3843,20 +3844,33 @@ static void ds_hosted_apply_pubg(void) {
                     NSFontAttributeName: s_infoFont,
                     NSForegroundColorAttributeName: whiteColor,
                     NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSStrokeWidthAttributeName: @(-1.4),
                     NSParagraphStyleAttributeName: s_centerStyle
                 }]];
             }
 
-            CGFloat labelH = 16.0f;
-            if (g_pubgEspName && g_pubgEspDist) {
-                labelH = (teamStr[0] != '\0') ? 44.0f : 30.0f;
-            } else if (g_pubgEspName || g_pubgEspDist) {
-                labelH = (teamStr[0] != '\0') ? 30.0f : 16.0f;
+            CGFloat enemyBottom = bottomY;
+            if (p.hasSkeleton) {
+                CGFloat maxBoneY = -1.0f;
+                for (int k = 0; k < 15; k++) {
+                    if (p.skeleton[k].valid && p.skeleton[k].y > maxBoneY) {
+                        maxBoneY = p.skeleton[k].y;
+                    }
+                }
+                if (maxBoneY > 0.0f) {
+                    enemyBottom = fminf(bottomY, maxBoneY + 1.5f);
+                }
             }
 
-            CGFloat labelW = 160.0f;
-            info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
+            CGFloat labelH = 12.0f;
+            if (g_pubgEspName && g_pubgEspDist) {
+                labelH = (teamStr[0] != '\0') ? 32.0f : 22.0f;
+            } else if (g_pubgEspName || g_pubgEspDist) {
+                labelH = (teamStr[0] != '\0') ? 22.0f : 12.0f;
+            }
+
+            CGFloat labelW = 130.0f;
+            info.frame = CGRectMake(centerX - labelW * 0.5f, enemyBottom + 1.0f, labelW, labelH);
             info.string = attrText;
             info.shadowOpacity = 0.0f;
             info.hidden = NO;
@@ -4470,8 +4484,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 info.contentsScale = scale;
                 info.alignmentMode = kCAAlignmentCenter;
                 info.wrapped = YES;
-                info.fontSize = 11.0;
-                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+                info.fontSize = 8.5;
+                info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
                 info.shadowColor = [UIColor blackColor].CGColor;
                 info.shadowOpacity = 0.0f;
                 info.shadowRadius = 0.0f;
@@ -4501,8 +4515,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 wLabel.actions = noAnim;
                 wLabel.contentsScale = scale;
                 wLabel.alignmentMode = kCAAlignmentCenter;
-                wLabel.fontSize = 10.0;
-                wLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
+                wLabel.fontSize = 8.0;
+                wLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
                 wLabel.shadowColor = [UIColor blackColor].CGColor;
                 wLabel.shadowOpacity = 0.0f;
                 wLabel.shadowRadius = 0.0f;
@@ -4522,8 +4536,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 arrowText.actions = noAnim;
                 arrowText.contentsScale = scale;
                 arrowText.alignmentMode = kCAAlignmentCenter;
-                arrowText.fontSize = 10.5;
-                arrowText.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:10.5 weight:UIFontWeightHeavy];
+                arrowText.fontSize = 8.5;
+                arrowText.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:8.5 weight:UIFontWeightHeavy];
                 arrowText.shadowColor = [UIColor blackColor].CGColor;
                 arrowText.shadowOpacity = 0.0f;
                 arrowText.shadowRadius = 0.0f;

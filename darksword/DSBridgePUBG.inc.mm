@@ -2702,8 +2702,10 @@ static void ds_pubg_tick(void) {
 
         if (camRelZ > 10.0f) {
             float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
-            float actorH = 175.0f;
-            if (extZ >= 30.0f && extZ <= 160.0f) {
+            float actorH = 165.0f;
+            if (isKnocked) {
+                actorH = 45.0f;
+            } else if (extZ >= 30.0f && extZ <= 95.0f) {
                 actorH = extZ * 2.0f;
             }
 
@@ -2992,6 +2994,28 @@ static void ds_pubg_tick(void) {
                                 p.headY = p.skeleton[0].y;
                             }
                             skeletonDone = true;
+
+                            float minBoneY = 99999.0f, maxBoneY = -99999.0f;
+                            for (int bi = 0; bi < 16; bi++) {
+                                if (p.skeleton[bi].valid) {
+                                    if (p.skeleton[bi].y < minBoneY) minBoneY = p.skeleton[bi].y;
+                                    if (p.skeleton[bi].y > maxBoneY) maxBoneY = p.skeleton[bi].y;
+                                }
+                            }
+                            if (okBones >= 6 && maxBoneY > minBoneY + 8.0f) {
+                                float realTop = (p.skeleton[15].valid) ? (p.skeleton[15].y - 3.0f) : (minBoneY - 4.0f);
+                                float realBot = maxBoneY + 1.5f;
+                                topY = realTop;
+                                bottomY = realBot;
+                                boxH = bottomY - topY;
+                                if (boxH < 8.0f) boxH = 8.0f;
+                                boxW = boxH * 0.45f;
+                                boxX = centerX - boxW * 0.5f;
+                                p.screenX = boxX;
+                                p.screenY = topY;
+                                p.boxWidth = boxW;
+                                p.boxHeight = boxH;
+                            }
                         }
                     }
                 }
