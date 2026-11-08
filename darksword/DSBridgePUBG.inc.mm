@@ -817,6 +817,164 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
     return false;
 }
 
+static const char *ds_pubg_weapon_name_by_id(int32_t id) {
+    switch (id) {
+        // Assault Rifles
+        case 101001: return "AKM";
+        case 101002: return "M16A4";
+        case 101003: return "SCAR-L";
+        case 101004: return "M416";
+        case 101005: return "Groza";
+        case 101006: return "AUG";
+        case 101007: return "QBZ";
+        case 101008: return "M762";
+        case 101009: return "Mk47";
+        case 101010: return "G36C";
+        case 101011: return "FAMAS";
+        case 101012: return "ACE32";
+        case 101013: return "HoneyBadger";
+
+        // SMGs
+        case 102001: return "UZI";
+        case 102002: return "UMP45";
+        case 102003: return "Vector";
+        case 102004: return "Tommy";
+        case 102005: return "Bizon";
+        case 102007: return "P90";
+        case 102008: return "MP5K";
+
+        // Sniper & DMR
+        case 103001: return "Kar98k";
+        case 103002: return "M24";
+        case 103003: return "AWM";
+        case 103004: return "SKS";
+        case 103005: return "VSS";
+        case 103006: return "Mini14";
+        case 103007: return "Mk14";
+        case 103008: return "Win94";
+        case 103009: return "SLR";
+        case 103010: return "QBU";
+        case 103011: return "Mosin";
+        case 103012: return "AMR";
+        case 103013: return "Lynx AMR";
+
+        // Shotguns
+        case 104001: return "S686";
+        case 104002: return "S1897";
+        case 104003: return "S12K";
+        case 104004: return "DBS";
+        case 104005: return "M1014";
+
+        // LMGs
+        case 105001: return "M249";
+        case 105002: return "DP-28";
+        case 105003: return "MG3";
+
+        // Pistols
+        case 106001: return "P92";
+        case 106002: return "P1911";
+        case 106003: return "R1895";
+        case 106004: return "P18C";
+        case 106005: return "R45";
+        case 106006: return "SawedOff";
+        case 106008: return "Skorpion";
+        case 106010: return "Deagle";
+
+        // Others / Melee
+        case 107001: return "Crossbow";
+        case 108001: return "Pan";
+        case 108002: return "Crowbar";
+        case 108003: return "Machete";
+        case 108004: return "Sickle";
+        default: return NULL;
+    }
+}
+
+static int32_t ds_pubg_read_equipped_weapon_id(uint64_t pawn) {
+    if (!pawn || !ds_pubg_valid(pawn)) return 0;
+
+    auto isValidWeaponId = [](int32_t wid) -> bool {
+        return (wid >= 101001 && wid <= 108999);
+    };
+
+    std::vector<uint64_t> weaponPtrs;
+
+    // 1. Direct CurrentWeapon pointers on STExtraBaseCharacter
+    static const uint64_t directWeaponOffsets[] = {
+        0x2AF4ULL, 0x2A84ULL, 0x2B00ULL, 0x2A70ULL, 0x2B10ULL, 0x2AA0ULL, 0x28D8ULL, 0x28D0ULL
+    };
+    for (uint64_t off : directWeaponOffsets) {
+        uint64_t w = ds_pubg_read_ptr(pawn + off);
+        if (w && ds_pubg_valid(w)) {
+            weaponPtrs.push_back(w);
+        }
+    }
+
+    // 2. WeaponManagerComponent -> CurrentWeaponReplicated
+    static const uint64_t wmOffsets[] = {
+        0x25B8ULL, 0x2628ULL, 0x25A8ULL, 0x2600ULL, 0x25C8ULL, 0x2618ULL, 0x25E0ULL, 0x2640ULL
+    };
+    for (uint64_t wmOff : wmOffsets) {
+        uint64_t wm = ds_pubg_read_ptr(pawn + wmOff);
+        if (wm && ds_pubg_valid(wm)) {
+            static const uint64_t cwrOffsets[] = {
+                0x5C8ULL, 0x5E8ULL, 0x5D0ULL, 0x5B8ULL, 0x5F0ULL, 0x600ULL, 0x40CULL, 0x4CCULL
+            };
+            for (uint64_t cwrOff : cwrOffsets) {
+                uint64_t w = ds_pubg_read_ptr(wm + cwrOff);
+                if (w && ds_pubg_valid(w)) {
+                    weaponPtrs.push_back(w);
+                }
+            }
+        }
+    }
+
+    // 3. From resolved weapon pointers, find WeaponID
+    static const uint64_t idOffsets[] = {
+        0x1E0ULL, 0x200ULL, 0x220ULL, 0x238ULL, 0x240ULL, 0x280ULL, 0x2A8ULL, 0x2E8ULL, 0x300ULL
+    };
+
+    for (uint64_t w : weaponPtrs) {
+        for (uint64_t idOff : idOffsets) {
+            int32_t wid = ds_pubg_read_i32(w + idOff);
+            if (isValidWeaponId(wid)) return wid;
+        }
+
+        static const uint64_t shootCompOffsets[] = { 0x1360ULL, 0x1358ULL, 0x7E0ULL, 0x7D8ULL };
+        for (uint64_t sOff : shootCompOffsets) {
+            uint64_t sc = ds_pubg_read_ptr(w + sOff);
+            if (sc && ds_pubg_valid(sc)) {
+                for (uint64_t idOff : idOffsets) {
+                    int32_t wid = ds_pubg_read_i32(sc + idOff);
+                    if (isValidWeaponId(wid)) return wid;
+                }
+            }
+        }
+
+        // Fast scan of header area in weapon object
+        uint8_t headerBuf[0x300];
+        if (ds_pubg_read(w + 0x100ULL, headerBuf, sizeof(headerBuf))) {
+            for (size_t k = 0; k + 4 <= sizeof(headerBuf); k += 4) {
+                int32_t wid = 0;
+                memcpy(&wid, headerBuf + k, 4);
+                if (isValidWeaponId(wid)) return wid;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static int g_dspubgTotalEnemies = 0;
+static int g_dspubgTotalBots = 0;
+
+static void ds_pubg_get_total_counts(int *outEnemies, int *outBots) {
+    os_unfair_lock_lock(&g_dspubgSnapshotLock);
+    if (outEnemies) *outEnemies = g_dspubgTotalEnemies;
+    if (outBots) *outBots = g_dspubgTotalBots;
+    os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+}
+
 static bool ds_pubg_has_render_source(void) {
     return g_dspubgTargetActive.load(std::memory_order_acquire);
 }
@@ -835,6 +993,8 @@ static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPl
 static void ds_pubg_overlay_reset(void) {
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     g_dspubgPlayerCount = 0;
+    g_dspubgTotalEnemies = 0;
+    g_dspubgTotalBots = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
     ++g_dspubgEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
@@ -1144,6 +1304,8 @@ static void ds_pubg_tick(void) {
     int publishedCount = 0;
     int enemyCount = 0;
     int botCount = 0;
+    int total360EnemyCount = 0;
+    int total360BotCount = 0;
     std::vector<uint64_t> seenPawns;
 
     auto processPawn = [&](uint64_t pawn, uint64_t psHint, bool knownBot) {
@@ -1175,15 +1337,37 @@ static void ds_pubg_tick(void) {
         uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
         if (!meshComp || !ds_pubg_valid(meshComp)) return;
 
-        // 5. Health check (same heuristic as DarkPubg):
-        // Real PUBG character: HealthMax 50..2000, Health 0..healthMax+50
+        // 5. Health check & Knocked Down (Groggy) check:
         float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
         float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
+        float groggyHealth = ds_pubg_read_f32(pawn + 0xE68ULL);
         if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return;
 
+        bool isKnocked = false;
+        if (health <= 0.0f) {
+            if (!isnan(groggyHealth) && !isinf(groggyHealth) && groggyHealth > 0.0f && groggyHealth <= 100.0f) {
+                health = groggyHealth;
+                healthMax = 100.0f;
+                isKnocked = true;
+            } else {
+                return; // Dead entity - completely filter out!
+            }
+        }
+
         if (!psHint) {
-            if (healthMax < 50.0f || healthMax > 2000.0f) return;
-            if (health < 0.0f || health > healthMax + 50.0f) return;
+            if (healthMax < 80.0f || healthMax > 150.0f) return;
+            if (health < 0.0f || health > healthMax + 10.0f) return;
+
+            // Strict entity validation for PersistentLevel.Actors to eliminate yellow trash:
+            uint64_t psCheck = ds_pubg_read_ptr(pawn + 0x4D0ULL);
+            if (!psCheck || !ds_pubg_valid(psCheck)) {
+                uint64_t testBoneData = 0;
+                uint32_t testBCount = 0;
+                uint32_t testOff = 0;
+                if (!ds_pubg_find_bone_array(meshComp, &testBoneData, &testBCount, &testOff) || testBCount < 20) {
+                    return; // Drop ghost / trash non-character actor!
+                }
+            }
         } else {
             if (healthMax < 20.0f || healthMax > 2000.0f) healthMax = 100.0f;
             if (health < 0.0f) health = 0.0f;
@@ -1223,6 +1407,32 @@ static void ds_pubg_tick(void) {
             ds_pubg_read(pawn + 0x134ULL, &actorRot, sizeof(actorRot));
         }
 
+        // 3D Euclidean distance in meters from camera to actor:
+        float dx = rootLoc.X - basis.lx;
+        float dy = rootLoc.Y - basis.ly;
+        float dz = rootLoc.Z - basis.lz;
+        float dist3D = sqrtf(dx * dx + dy * dy + dz * dz) * 0.01f;
+        if (isnan(dist3D) || isinf(dist3D) || dist3D > g_dspubgMaxDistance) {
+            return;
+        }
+
+        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
+        bool isAI = knownBot;
+        if (!isAI && ps && ds_pubg_valid(ps)) {
+            uint8_t botByte = ds_pubg_read_u8(ps + kDSPUBGPlayerStateIsABotOffset);
+            isAI = (botByte & 0x4) != 0;
+        }
+        if (!isAI) {
+            isAI = (ds_pubg_read_u8(pawn + kDSPUBGCharacterIsAIOffset) != 0); // UAECharacter.bIsAI
+        }
+
+        // 360-Degree Radar Enemy & Bot Counter (independent of camera viewport)
+        if (isAI) {
+            total360BotCount++;
+        } else {
+            total360EnemyCount++;
+        }
+
         float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
         float actorH = 175.0f;
         if (extZ >= 30.0f && extZ <= 160.0f) {
@@ -1239,14 +1449,14 @@ static void ds_pubg_tick(void) {
         bool okB = ds_pubg_cam_basis_project(basis, bot, bx, by, bd);
         bool okT = ds_pubg_cam_basis_project(basis, top, tx, ty, td);
 
-        float sx = 0, sy = 0, dist = 0;
+        float sx = 0, sy = 0, dist = dist3D;
         if (!okB && !okT) {
-            if (!ds_pubg_cam_basis_project(basis, pos, sx, sy, dist)) return;
+            if (!ds_pubg_cam_basis_project(basis, pos, sx, sy, dist)) {
+                return; // Off-screen: already counted in 360 radar, skip on-screen 2D drawing
+            }
         } else {
             dist = okB ? bd : td;
         }
-
-        if (dist > g_dspubgMaxDistance) return;
 
         float topY = 0, bottomY = 0, boxH = 0, centerX = 0;
         if (okB && okT) {
@@ -1272,16 +1482,6 @@ static void ds_pubg_tick(void) {
             return;
         }
 
-        uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
-        bool isAI = knownBot;
-        if (!isAI && ps && ds_pubg_valid(ps)) {
-            uint8_t botByte = ds_pubg_read_u8(ps + kDSPUBGPlayerStateIsABotOffset);
-            isAI = (botByte & 0x4) != 0;
-        }
-        if (!isAI) {
-            isAI = (ds_pubg_read_u8(pawn + kDSPUBGCharacterIsAIOffset) != 0); // UAECharacter.bIsAI
-        }
-
         DSPUBGProjectedPlayer p = {};
         p.screenX = boxX;
         p.screenY = topY;
@@ -1295,10 +1495,19 @@ static void ds_pubg_tick(void) {
         p.teamId = teamId;
         p.isAI = isAI;
         p.isDead = false;
+        p.isKnocked = isKnocked;
         p.isVisible = true;
         p.isVehicle = false;
         p.actorPtr = pawn;
         p.playerKey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
+
+        int32_t wid = ds_pubg_read_equipped_weapon_id(pawn);
+        if (wid > 0) {
+            const char *wName = ds_pubg_weapon_name_by_id(wid);
+            if (wName) {
+                strncpy(p.weaponName, wName, sizeof(p.weaponName) - 1);
+            }
+        }
 
         if (!ds_pubg_read_fstring_nick(pawn + kDSPUBGCharacterPlayerNameOffset, p.name, sizeof(p.name))) {
             if (ps && ds_pubg_valid(ps)) {
@@ -1365,31 +1574,30 @@ static void ds_pubg_tick(void) {
                             }
                         } else {
                             // Player & Bot rig (67 bones - ShadowTrackerExtra)
+                            // Fixed anatomical indices so joints never cross/lag during crawl, knockdown, or crouch!
                             bHead = 6; bNeck = 5; bPelvis = 1;
-                            DSPUBGVector armA = {}, armB = {};
-                            getBoneLocal(13, armA);
-                            getBoneLocal(34, armB);
-                            if (armA.Y >= armB.Y) {
-                                bUprR = 13; bLwrR = 15; bHandR = 16;
-                                bUprL = 34; bLwrL = 36; bHandL = 37;
-                            } else {
-                                bUprR = 34; bLwrR = 36; bHandR = 37;
-                                bUprL = 13; bLwrL = 15; bHandL = 16;
+                            bUprR = 13; bLwrR = 15; bHandR = 16;
+                            bUprL = 34; bLwrL = 36; bHandL = 37;
+
+                            // Dynamic Armed vs Unarmed Leg Selection:
+                            // Unarmed (tay không / gục ngã): Right={55, 56, 57}, Left={59, 60, 61}
+                            // Armed (cầm súng):             Right={57, 58, 59}, Left={53, 54, 55} (bone 61 is ik_hand_root)
+                            bool isArmedPose = (p.weaponName[0] != '\0');
+                            if (!isArmedPose && !p.isKnocked) {
+                                DSPUBGVector pelvisLoc = {}, bone61Loc = {};
+                                if (getBoneLocal(1, pelvisLoc) && getBoneLocal(61, bone61Loc)) {
+                                    if (bone61Loc.Z >= pelvisLoc.Z - 35.0f) {
+                                        isArmedPose = true;
+                                    }
+                                }
                             }
 
-                            // Verified PUBG Mobile humanoid leg chains:
-                            // Right leg: thigh_r (57), calf_r (58), foot_r (59)
-                            // Left leg:  thigh_l (53), calf_l (54), foot_l (55)
-                            // (Note: bone 61 is ik_hand_root, bone 56/60 are ball/toe joints)
-                            DSPUBGVector legA = {}, legB = {};
-                            getBoneLocal(57, legA);
-                            getBoneLocal(53, legB);
-                            if (legA.Y >= legB.Y) {
+                            if (isArmedPose) {
                                 bThighR = 57; bCalfR = 58; bFootR = 59;
                                 bThighL = 53; bCalfL = 54; bFootL = 55;
                             } else {
-                                bThighR = 53; bCalfR = 54; bFootR = 55;
-                                bThighL = 57; bCalfL = 58; bFootL = 59;
+                                bThighR = 55; bCalfR = 56; bFootR = 57;
+                                bThighL = 59; bCalfL = 60; bFootL = 61;
                             }
                         }
 
@@ -1545,6 +1753,8 @@ static void ds_pubg_tick(void) {
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));
     g_dspubgPlayerCount = publishedCount;
+    g_dspubgTotalEnemies = total360EnemyCount;
+    g_dspubgTotalBots = total360BotCount;
     ++g_dspubgEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }

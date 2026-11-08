@@ -996,7 +996,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [_panelView addSubview:_scanCard];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.text = @"⚡ DARKPUBG";
+    _titleLabel.text = @"DARKPUBG";
     _titleLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
     _titleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightHeavy];
     _titleLabel.userInteractionEnabled = YES;
@@ -1203,22 +1203,22 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         return l;
     };
 
-    _pubgBoxLabel = pubgCreateLabel(@"📦 Box 2D");
+    _pubgBoxLabel = pubgCreateLabel(@"Box 2D");
     _pubgBoxSwitch = pubgCreateSwitch(@selector(dsPubgBoxChanged:));
-    _pubgSkeletonLabel = pubgCreateLabel(@"🦴 Xương");
+    _pubgSkeletonLabel = pubgCreateLabel(@"Xương");
     _pubgSkeletonSwitch = pubgCreateSwitch(@selector(dsPubgSkeletonChanged:));
 
-    _pubgLineLabel = pubgCreateLabel(@"📏 Tia Line");
+    _pubgLineLabel = pubgCreateLabel(@"Tia Line");
     _pubgLineSwitch = pubgCreateSwitch(@selector(dsPubgLineChanged:));
 
-    _pubgHealthLabel = pubgCreateLabel(@"❤️ Thanh Máu");
+    _pubgHealthLabel = pubgCreateLabel(@"Thanh Máu");
     _pubgHealthSwitch = pubgCreateSwitch(@selector(dsPubgHealthChanged:));
-    _pubgNameLabel = pubgCreateLabel(@"🏷️ Tên Địch");
+    _pubgNameLabel = pubgCreateLabel(@"Tên Địch");
     _pubgNameSwitch = pubgCreateSwitch(@selector(dsPubgNameChanged:));
 
-    _pubgDistLabel = pubgCreateLabel(@"📍 Khoảng Cách");
+    _pubgDistLabel = pubgCreateLabel(@"Khoảng Cách");
     _pubgDistSwitch = pubgCreateSwitch(@selector(dsPubgDistChanged:));
-    _pubgBotLabel = pubgCreateLabel(@"🤖 Hiện Bot AI");
+    _pubgBotLabel = pubgCreateLabel(@"Hiện Bot AI");
     _pubgBotSwitch = pubgCreateSwitch(@selector(dsPubgBotChanged:));
 
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
@@ -1281,8 +1281,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         }
     }
     if (ds_active_game() == 1) {
-        _titleLabel.text = @"⚡ DARKPUBG";
-        _zoomLabel.text = @"🎯 QUÉT TỐI ĐA";
+        _titleLabel.text = @"DARKPUBG";
+        _zoomLabel.text = @"Khoảng Cách Quét";
         _zoomSlider.minimumValue = 50.0f;
         _zoomSlider.maximumValue = 500.0f;
         _zoomSlider.value = g_dspubgMaxDistance;
@@ -1389,7 +1389,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
                                     26.0, 26.0);
 
     if (ds_active_game() == 1) {
-        _titleLabel.text = @"⚡ DARKPUBG";
+        _titleLabel.text = @"DARKPUBG";
         _enableLabel.hidden = YES;
         _enableSwitch.hidden = YES;
         _autoSmiteLabel.hidden = YES;
@@ -1411,7 +1411,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _masterCard.hidden = NO;
         _masterCard.frame = CGRectMake(12.0, 39.0, panelW - 24.0, 36.0);
         _espLabel.hidden = NO;
-        _espLabel.text = @"⚡ ESP MASTER";
+        _espLabel.text = @"Bật ESP Master";
         _espLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
         _espLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
         _espLabel.frame = CGRectMake(22.0, 47.0, 150.0, 20.0);
@@ -1487,7 +1487,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         CGFloat y4 = 229.0;
         _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 57.0);
         _scanCard.hidden = NO;
-        _zoomLabel.text = @"🎯 QUÉT TỐI ĐA";
+        _zoomLabel.text = @"Khoảng Cách Quét";
         _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
         _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
         _zoomLabel.hidden = NO;
@@ -3010,6 +3010,7 @@ static CAShapeLayer *g_hostedPUBGAIMarkLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGInfoLabels[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBgLayers[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
+static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -3022,6 +3023,7 @@ static void ds_hosted_pubg_hide_all(void) {
         if (g_hostedPUBGInfoLabels[i] && !g_hostedPUBGInfoLabels[i].hidden) g_hostedPUBGInfoLabels[i].hidden = YES;
         if (g_hostedPUBGHealthBgLayers[i] && !g_hostedPUBGHealthBgLayers[i].hidden) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i] && !g_hostedPUBGHealthBarLayers[i].hidden) g_hostedPUBGHealthBarLayers[i].hidden = YES;
+        if (g_hostedPUBGWeaponLabels[i] && !g_hostedPUBGWeaponLabels[i].hidden) g_hostedPUBGWeaponLabels[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -3048,6 +3050,10 @@ static void ds_hosted_apply_pubg(void) {
     const CGFloat width = CGRectGetWidth(g_hostedLayer.bounds);
     const CGFloat height = CGRectGetHeight(g_hostedLayer.bounds);
 
+    int totalEnemies = 0;
+    int totalBots = 0;
+    ds_pubg_get_total_counts(&totalEnemies, &totalBots);
+
     int activeEnemyCount = 0;
     int activeBotCount = 0;
 
@@ -3060,6 +3066,7 @@ static void ds_hosted_apply_pubg(void) {
         CATextLayer *info = g_hostedPUBGInfoLabels[i];
         CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
         CALayer *hpBar = g_hostedPUBGHealthBarLayers[i];
+        CATextLayer *wLabel = g_hostedPUBGWeaponLabels[i];
         if (!box || !line || !info || !hpBar) continue;
 
         if (!p.isVisible || p.screenX < -200 || p.screenX > width + 200 ||
@@ -3071,6 +3078,7 @@ static void ds_hosted_apply_pubg(void) {
             info.hidden = YES;
             if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
+            if (wLabel) wLabel.hidden = YES;
             continue;
         }
 
@@ -3085,6 +3093,7 @@ static void ds_hosted_apply_pubg(void) {
             info.hidden = YES;
             if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
+            if (wLabel) wLabel.hidden = YES;
             continue;
         }
 
@@ -3163,15 +3172,54 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             hpBar.frame = CGRectMake(p.screenX, barY, fillW, barH);
-            hpBar.backgroundColor = (hpRatio >= 0.60f)
-                ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
-                : ((hpRatio >= 0.30f)
-                    ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor
-                    : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
+            if (p.isKnocked) {
+                // Bright safety orange for knocked down (gục ngã / bò)
+                hpBar.backgroundColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
+            } else {
+                hpBar.backgroundColor = (hpRatio >= 0.60f)
+                    ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
+                    : ((hpRatio >= 0.30f)
+                        ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor
+                        : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
+            }
             hpBar.hidden = NO;
+
+            // Weapon ESP: Above health bar
+            if (wLabel) {
+                BOOL showWeapon = NO;
+                NSString *weaponText = nil;
+                CGColorRef weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
+
+                if (p.isKnocked) {
+                    showWeapon = YES;
+                    weaponColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
+                    if (p.weaponName[0] != '\0') {
+                        weaponText = [NSString stringWithFormat:@"⚠️ GỤC | 🔫 %s", p.weaponName];
+                    } else {
+                        weaponText = @"⚠️ ĐANG BÒ";
+                    }
+                } else if (p.weaponName[0] != '\0') {
+                    showWeapon = YES;
+                    weaponText = [NSString stringWithFormat:@"🔫 %s", p.weaponName];
+                    weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
+                }
+
+                if (showWeapon && weaponText) {
+                    CGFloat wLblW = 120.0f;
+                    CGFloat wLblH = 13.0f;
+                    CGFloat wLblY = barY - wLblH - 1.5f;
+                    wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
+                    wLabel.string = weaponText;
+                    wLabel.foregroundColor = weaponColor;
+                    wLabel.hidden = NO;
+                } else {
+                    wLabel.hidden = YES;
+                }
+            }
         } else {
             if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
+            if (wLabel) wLabel.hidden = YES;
         }
 
         // 6. Text label: below box at bottom center
@@ -3262,17 +3310,17 @@ static void ds_hosted_apply_pubg(void) {
                     float cy = p.skeleton[15].valid ? p.skeleton[15].y : p.skeleton[0].y;
                     if (!isnan(cx) && !isinf(cx) && !isnan(cy) && !isinf(cy) &&
                         fabsf(cx) < 10000.0f && fabsf(cy) < 10000.0f) {
-                        float r = 0.0f;
+                        float r = p.boxHeight / 18.0f;
                         if (p.skeleton[15].valid && p.skeleton[0].valid) {
                             float dx = p.skeleton[15].x - p.skeleton[0].x;
                             float dy = p.skeleton[15].y - p.skeleton[0].y;
-                            r = hypotf(dx, dy) * 1.15f;
+                            float d = hypotf(dx, dy) * 1.1f;
+                            if (d >= 0.6f && d <= 30.0f) {
+                                r = d;
+                            }
                         }
-                        if (r < 0.8f || r > 32.0f) {
-                            r = p.boxHeight / 16.0f;
-                        }
-                        if (r < 0.8f) r = 0.8f;
-                        if (r > 28.0f) r = 28.0f;
+                        if (r < 0.6f) r = 0.6f;
+                        if (r > 24.0f) r = 24.0f;
 
                         [skelPath moveToPoint:CGPointMake(cx + r, cy)];
                         [skelPath addArcWithCenter:CGPointMake(cx, cy)
@@ -3308,17 +3356,18 @@ static void ds_hosted_apply_pubg(void) {
         if (g_hostedPUBGInfoLabels[i]) g_hostedPUBGInfoLabels[i].hidden = YES;
         if (g_hostedPUBGHealthBgLayers[i]) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i]) g_hostedPUBGHealthBarLayers[i].hidden = YES;
+        if (g_hostedPUBGWeaponLabels[i]) g_hostedPUBGWeaponLabels[i].hidden = YES;
     }
 
     if (g_hostedPUBGTopCountLabel && g_hostedPUBGTopCountBgLayer) {
-        if (activeEnemyCount > 0 || activeBotCount > 0) {
-            CGFloat bannerW = (activeBotCount > 0) ? 220.0 : 160.0;
+        if (totalEnemies > 0 || totalBots > 0) {
+            CGFloat bannerW = (totalBots > 0) ? 220.0 : 160.0;
             CGFloat bannerH = 28.0;
             CGFloat bannerX = (width - bannerW) * 0.5;
             CGFloat bannerY = 12.0;
             CGRect bannerRect = CGRectMake(bannerX, bannerY, bannerW, bannerH);
 
-            BOOL hasRealEnemies = (activeEnemyCount > 0);
+            BOOL hasRealEnemies = (totalEnemies > 0);
             CGColorRef borderColor = hasRealEnemies
                 ? [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.9].CGColor
                 : [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.9].CGColor;
@@ -3331,11 +3380,11 @@ static void ds_hosted_apply_pubg(void) {
             g_hostedPUBGTopCountBgLayer.hidden = NO;
 
             g_hostedPUBGTopCountLabel.frame = CGRectMake(bannerX, bannerY + 5.0, bannerW, 18.0);
-            if (activeBotCount > 0) {
+            if (totalBots > 0) {
                 g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES   |   🤖 %d BOTS",
-                                                    activeEnemyCount, activeBotCount];
+                                                    totalEnemies, totalBots];
             } else {
-                g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES", activeEnemyCount];
+                g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES", totalEnemies];
             }
             g_hostedPUBGTopCountLabel.foregroundColor = textColor;
             g_hostedPUBGTopCountLabel.hidden = NO;
@@ -3735,6 +3784,16 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 hpBar.hidden = YES;
                 [g_hostedLayer addSublayer:hpBar];
                 g_hostedPUBGHealthBarLayers[i] = hpBar;
+
+                CATextLayer *wLabel = [CATextLayer layer];
+                wLabel.actions = noAnim;
+                wLabel.contentsScale = scale;
+                wLabel.alignmentMode = kCAAlignmentCenter;
+                wLabel.fontSize = 9.5;
+                wLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:9.5 weight:UIFontWeightBold];
+                wLabel.hidden = YES;
+                [g_hostedLayer addSublayer:wLabel];
+                g_hostedPUBGWeaponLabels[i] = wLabel;
             }
 
             CAShapeLayer *topBg = [CAShapeLayer layer];

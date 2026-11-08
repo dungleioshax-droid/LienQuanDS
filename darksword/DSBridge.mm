@@ -957,6 +957,8 @@ typedef struct {
     uint64_t actorPtr;
     uint32_t playerKey;
     char name[32];
+    char weaponName[32];
+    bool isKnocked;
     bool hasSkeleton;
     DSPUBGJoint skeleton[16];
 } DSPUBGProjectedPlayer;
@@ -976,6 +978,7 @@ static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);
 static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPlayers],
                                           uint64_t *epochOut);
+static void ds_pubg_get_total_counts(int *outEnemies, int *outBots);
 static void ds_pubg_overlay_reset(void);
 
 #include "DSBridgeESP.inc.mm"
