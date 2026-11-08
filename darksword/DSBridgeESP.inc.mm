@@ -4008,8 +4008,8 @@ static void ds_hosted_apply_pubg(void) {
             lbl.wrapped = YES;
 
             NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
-            UIFont *titleFont = [UIFont systemFontOfSize:10.5 weight:UIFontWeightBold];
-            UIFont *subFont = [UIFont systemFontOfSize:9.5 weight:UIFontWeightBold];
+            UIFont *titleFont = [UIFont systemFontOfSize:9.0 weight:UIFontWeightBold];
+            UIFont *subFont = [UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
 
             NSString *titleStr = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
             [attr appendAttributedString:[[NSAttributedString alloc] initWithString:titleStr
@@ -4059,8 +4059,8 @@ static void ds_hosted_apply_pubg(void) {
             style.alignment = NSTextAlignmentCenter;
             [attr addAttribute:NSParagraphStyleAttributeName value:style range:NSMakeRange(0, attr.length)];
 
-            CGFloat strW = (parts.count > 0) ? 160.0f : 140.0f;
-            CGFloat strH = (parts.count > 0) ? 28.0f : 16.0f;
+            CGFloat strW = (parts.count > 0) ? 140.0f : 120.0f;
+            CGFloat strH = (parts.count > 0) ? 24.0f : 14.0f;
             lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
             lbl.string = attr;
             lbl.hidden = NO;
@@ -4077,15 +4077,15 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             NSString *str = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
-            CGFloat strW = 130.0f;
-            CGFloat strH = 18.0f;
+            CGFloat strW = 100.0f;
+            CGFloat strH = 14.0f;
             lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
-            lbl.fontSize = 10.0f;
-            lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
+            lbl.fontSize = 8.5f;
+            lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
             lbl.foregroundColor = color.CGColor;
             lbl.backgroundColor = UIColor.clearColor.CGColor;
             lbl.shadowColor = UIColor.blackColor.CGColor;
-            lbl.shadowRadius = 2.0;
+            lbl.shadowRadius = 1.5;
             lbl.shadowOpacity = 0.95;
             lbl.shadowOffset = CGSizeMake(0, 1);
             lbl.cornerRadius = 0.0f;
