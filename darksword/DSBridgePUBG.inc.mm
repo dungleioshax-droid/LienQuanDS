@@ -897,66 +897,15 @@ static int32_t ds_pubg_read_equipped_weapon_id(uint64_t pawn) {
         return (wid >= 101001 && wid <= 108999);
     };
 
-    std::vector<uint64_t> weaponPtrs;
-
-    // 1. Direct CurrentWeapon pointers on STExtraBaseCharacter
     static const uint64_t directWeaponOffsets[] = {
-        0x2AF4ULL, 0x2A84ULL, 0x2B00ULL, 0x2A70ULL, 0x2B10ULL, 0x2AA0ULL, 0x28D8ULL, 0x28D0ULL
+        0x2AF4ULL, 0x2A84ULL, 0x2B00ULL, 0x2A70ULL, 0x2B10ULL, 0x2AA0ULL
     };
     for (uint64_t off : directWeaponOffsets) {
         uint64_t w = ds_pubg_read_ptr(pawn + off);
         if (w && ds_pubg_valid(w)) {
-            weaponPtrs.push_back(w);
-        }
-    }
-
-    // 2. WeaponManagerComponent -> CurrentWeaponReplicated
-    static const uint64_t wmOffsets[] = {
-        0x25B8ULL, 0x2628ULL, 0x25A8ULL, 0x2600ULL, 0x25C8ULL, 0x2618ULL, 0x25E0ULL, 0x2640ULL
-    };
-    for (uint64_t wmOff : wmOffsets) {
-        uint64_t wm = ds_pubg_read_ptr(pawn + wmOff);
-        if (wm && ds_pubg_valid(wm)) {
-            static const uint64_t cwrOffsets[] = {
-                0x5C8ULL, 0x5E8ULL, 0x5D0ULL, 0x5B8ULL, 0x5F0ULL, 0x600ULL, 0x40CULL, 0x4CCULL
-            };
-            for (uint64_t cwrOff : cwrOffsets) {
-                uint64_t w = ds_pubg_read_ptr(wm + cwrOff);
-                if (w && ds_pubg_valid(w)) {
-                    weaponPtrs.push_back(w);
-                }
-            }
-        }
-    }
-
-    // 3. From resolved weapon pointers, find WeaponID
-    static const uint64_t idOffsets[] = {
-        0x1E0ULL, 0x200ULL, 0x220ULL, 0x238ULL, 0x240ULL, 0x280ULL, 0x2A8ULL, 0x2E8ULL, 0x300ULL
-    };
-
-    for (uint64_t w : weaponPtrs) {
-        for (uint64_t idOff : idOffsets) {
-            int32_t wid = ds_pubg_read_i32(w + idOff);
-            if (isValidWeaponId(wid)) return wid;
-        }
-
-        static const uint64_t shootCompOffsets[] = { 0x1360ULL, 0x1358ULL, 0x7E0ULL, 0x7D8ULL };
-        for (uint64_t sOff : shootCompOffsets) {
-            uint64_t sc = ds_pubg_read_ptr(w + sOff);
-            if (sc && ds_pubg_valid(sc)) {
-                for (uint64_t idOff : idOffsets) {
-                    int32_t wid = ds_pubg_read_i32(sc + idOff);
-                    if (isValidWeaponId(wid)) return wid;
-                }
-            }
-        }
-
-        // Fast scan of header area in weapon object
-        uint8_t headerBuf[0x300];
-        if (ds_pubg_read(w + 0x100ULL, headerBuf, sizeof(headerBuf))) {
-            for (size_t k = 0; k + 4 <= sizeof(headerBuf); k += 4) {
-                int32_t wid = 0;
-                memcpy(&wid, headerBuf + k, 4);
+            static const uint64_t idOffsets[] = { 0x1E0ULL, 0x200ULL, 0x220ULL, 0x238ULL, 0x280ULL };
+            for (uint64_t idOff : idOffsets) {
+                int32_t wid = ds_pubg_read_i32(w + idOff);
                 if (isValidWeaponId(wid)) return wid;
             }
         }
@@ -1337,41 +1286,25 @@ static void ds_pubg_tick(void) {
         uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
         if (!meshComp || !ds_pubg_valid(meshComp)) return;
 
-        // 5. Health check & Knocked Down (Groggy) check:
+        // 5. Health check (same robust heuristic as DarkPubg):
         float health = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthOffset);
         float healthMax = ds_pubg_read_f32(pawn + kDSPUBGCharacterHealthMaxOffset);
-        float groggyHealth = ds_pubg_read_f32(pawn + 0xE68ULL);
         if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return;
 
-        bool isKnocked = false;
-        if (health <= 0.0f) {
-            if (!isnan(groggyHealth) && !isinf(groggyHealth) && groggyHealth > 0.0f && groggyHealth <= 100.0f) {
-                health = groggyHealth;
-                healthMax = 100.0f;
-                isKnocked = true;
-            } else {
-                return; // Dead entity - completely filter out!
-            }
-        }
-
         if (!psHint) {
-            if (healthMax < 80.0f || healthMax > 150.0f) return;
-            if (health < 0.0f || health > healthMax + 10.0f) return;
-
-            // Strict entity validation for PersistentLevel.Actors to eliminate yellow trash:
-            uint64_t psCheck = ds_pubg_read_ptr(pawn + 0x4D0ULL);
-            if (!psCheck || !ds_pubg_valid(psCheck)) {
-                uint64_t testBoneData = 0;
-                uint32_t testBCount = 0;
-                uint32_t testOff = 0;
-                if (!ds_pubg_find_bone_array(meshComp, &testBoneData, &testBCount, &testOff) || testBCount < 20) {
-                    return; // Drop ghost / trash non-character actor!
-                }
-            }
+            if (healthMax < 50.0f || healthMax > 2000.0f) return;
+            if (health < 0.0f || health > healthMax + 50.0f) return;
         } else {
             if (healthMax < 20.0f || healthMax > 2000.0f) healthMax = 100.0f;
             if (health < 0.0f) health = 0.0f;
             if (health > healthMax) health = healthMax;
+        }
+
+        bool isKnocked = false;
+        float groggyHealth = ds_pubg_read_f32(pawn + 0xE68ULL);
+        if (!isnan(groggyHealth) && !isinf(groggyHealth) && groggyHealth > 0.0f && groggyHealth <= 100.0f && health <= 0.0f) {
+            health = groggyHealth;
+            isKnocked = true;
         }
 
         // 6. Team filter:

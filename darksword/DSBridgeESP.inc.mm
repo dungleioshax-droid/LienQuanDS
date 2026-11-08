@@ -3359,52 +3359,26 @@ static void ds_hosted_apply_pubg(void) {
         if (g_hostedPUBGWeaponLabels[i]) g_hostedPUBGWeaponLabels[i].hidden = YES;
     }
 
-    if (g_hostedPUBGTopCountLabel && g_hostedPUBGTopCountBgLayer) {
-        if (totalEnemies > 0 || totalBots > 0) {
-            CGFloat bannerW = (totalBots > 0) ? 220.0 : 160.0;
-            CGFloat bannerH = 28.0;
-            CGFloat bannerX = (width - bannerW) * 0.5;
-            CGFloat bannerY = 12.0;
-            CGRect bannerRect = CGRectMake(bannerX, bannerY, bannerW, bannerH);
+    if (g_hostedPUBGTopCountLabel) {
+        if (g_hostedPUBGTopCountBgLayer) {
+            g_hostedPUBGTopCountBgLayer.hidden = YES;
+        }
 
-            BOOL hasRealEnemies = (totalEnemies > 0);
-            CGColorRef borderColor = hasRealEnemies
-                ? [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.9].CGColor
-                : [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.9].CGColor;
-            CGColorRef textColor = hasRealEnemies
-                ? [UIColor colorWithRed:255.0/255.0 green:80.0/255.0 blue:70.0/255.0 alpha:1.0].CGColor
-                : [UIColor colorWithRed:255.0/255.0 green:215.0/255.0 blue:80.0/255.0 alpha:1.0].CGColor;
+        if (ds_pubg_has_render_source()) {
+            int total = totalEnemies + totalBots;
+            CGFloat lblW = 120.0f;
+            CGFloat lblH = 30.0f;
+            CGFloat lblX = (width - lblW) * 0.5f;
+            CGFloat lblY = 12.0f;
 
-            g_hostedPUBGTopCountBgLayer.path = [UIBezierPath bezierPathWithRoundedRect:bannerRect cornerRadius:14.0].CGPath;
-            g_hostedPUBGTopCountBgLayer.strokeColor = borderColor;
-            g_hostedPUBGTopCountBgLayer.hidden = NO;
-
-            g_hostedPUBGTopCountLabel.frame = CGRectMake(bannerX, bannerY + 5.0, bannerW, 18.0);
-            if (totalBots > 0) {
-                g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES   |   🤖 %d BOTS",
-                                                    totalEnemies, totalBots];
-            } else {
-                g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES", totalEnemies];
-            }
-            g_hostedPUBGTopCountLabel.foregroundColor = textColor;
-            g_hostedPUBGTopCountLabel.hidden = NO;
-        } else if (ds_pubg_has_render_source()) {
-            CGFloat bannerW = 210.0;
-            CGFloat bannerH = 28.0;
-            CGFloat bannerX = (width - bannerW) * 0.5;
-            CGFloat bannerY = 12.0;
-            CGRect bannerRect = CGRectMake(bannerX, bannerY, bannerW, bannerH);
-
-            g_hostedPUBGTopCountBgLayer.path = [UIBezierPath bezierPathWithRoundedRect:bannerRect cornerRadius:14.0].CGPath;
-            g_hostedPUBGTopCountBgLayer.strokeColor = [UIColor colorWithRed:48.0/255.0 green:209.0/255.0 blue:88.0/255.0 alpha:0.75].CGColor;
-            g_hostedPUBGTopCountBgLayer.hidden = NO;
-
-            g_hostedPUBGTopCountLabel.frame = CGRectMake(bannerX, bannerY + 5.0, bannerW, 18.0);
-            g_hostedPUBGTopCountLabel.string = @"🛡️ 0 ENEMIES   •   SAFE";
-            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor;
+            g_hostedPUBGTopCountLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
+            g_hostedPUBGTopCountLabel.fontSize = 22.0f;
+            g_hostedPUBGTopCountLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:22.0 weight:UIFontWeightHeavy];
+            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:239.0/255.0 green:68.0/255.0 blue:68.0/255.0 alpha:1.0].CGColor;
+            g_hostedPUBGTopCountLabel.backgroundColor = UIColor.clearColor.CGColor;
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"%d", total];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
-            g_hostedPUBGTopCountBgLayer.hidden = YES;
             g_hostedPUBGTopCountLabel.hidden = YES;
         }
     }
@@ -3809,10 +3783,14 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.actions = noAnim;
             topLabel.contentsScale = scale;
             topLabel.alignmentMode = kCAAlignmentCenter;
-            topLabel.fontSize = 12.0;
-            topLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:12.0 weight:UIFontWeightHeavy];
-            topLabel.foregroundColor = UIColor.whiteColor.CGColor;
+            topLabel.fontSize = 22.0;
+            topLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:22.0 weight:UIFontWeightHeavy];
+            topLabel.foregroundColor = [UIColor colorWithRed:239.0/255.0 green:68.0/255.0 blue:68.0/255.0 alpha:1.0].CGColor;
             topLabel.backgroundColor = UIColor.clearColor.CGColor;
+            topLabel.shadowColor = UIColor.blackColor.CGColor;
+            topLabel.shadowRadius = 2.0;
+            topLabel.shadowOpacity = 0.85;
+            topLabel.shadowOffset = CGSizeMake(0, 1);
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
             g_hostedPUBGTopCountLabel = topLabel;
