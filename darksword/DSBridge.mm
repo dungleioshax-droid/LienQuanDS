@@ -981,13 +981,6 @@ static BOOL g_pubgEspName = YES;
 static BOOL g_pubgEspDist = YES;
 static BOOL g_pubgEspBot = YES;
 static BOOL g_pubgEspVehicle = YES;
-static BOOL g_pubgAimAssist = YES;
-static BOOL g_pubgAimFovCircle = YES;
-static float g_pubgAimFovRadius = 120.0f;
-static int g_pubgAimTargetBone = 0; // 0 = Đầu (Head), 1 = Ngực (Chest)
-static BOOL g_pubgAimIgnoreKnocked = YES;
-static BOOL g_pubgAimIgnoreBot = NO;
-static BOOL g_pubgAimSnapline = YES;
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);

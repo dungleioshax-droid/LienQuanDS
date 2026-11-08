@@ -941,34 +941,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UISwitch *_pubgBotSwitch;
     UILabel *_pubgVehicleLabel;
     UISwitch *_pubgVehicleSwitch;
-    // PUBG Tab & Aim Assist controls
-    UIView *_pubgTabBar;
-    UIButton *_pubgTabButtonESP;
-    UIButton *_pubgTabButtonAim;
-    UIButton *_pubgGoToAimBtn;
-    UIButton *_pubgGoToEspBtn;
-    UILabel *_pubgAimInfoLabel;
-    UISegmentedControl *_pubgTabControl;
-    int _pubgSelectedTab;
-    UIView *_pubgAimMasterCard;
-    UILabel *_pubgAimMasterLabel;
-    UISwitch *_pubgAimMasterSwitch;
-    UIView *_pubgAimBoneCard;
-    UILabel *_pubgAimBoneLabel;
-    UISegmentedControl *_pubgAimBoneSegment;
-    UIView *_pubgAimCards[4];
-    UILabel *_pubgAimFovCircleLabel;
-    UISwitch *_pubgAimFovCircleSwitch;
-    UILabel *_pubgAimSnaplineLabel;
-    UISwitch *_pubgAimSnaplineSwitch;
-    UILabel *_pubgAimIgnoreKnockedLabel;
-    UISwitch *_pubgAimIgnoreKnockedSwitch;
-    UILabel *_pubgAimIgnoreBotLabel;
-    UISwitch *_pubgAimIgnoreBotSwitch;
-    UIView *_pubgAimFovCard;
-    UILabel *_pubgAimFovLabel;
-    UISlider *_pubgAimFovSlider;
-    UILabel *_pubgAimFovValueLabel;
     CGPoint _buttonAnchorUnit;
     CGPoint _panelAnchorUnit;
     CGPoint _dragStartAnchor;
@@ -1257,182 +1229,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
 
-    // PUBG Dedicated Tab Bar (High-Contrast Buttons)
-    _pubgTabBar = [[UIView alloc] initWithFrame:CGRectZero];
-    _pubgTabBar.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.06];
-    _pubgTabBar.layer.cornerRadius = 8.0;
-    _pubgTabBar.layer.borderWidth = 0.8;
-    _pubgTabBar.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
-    _pubgTabBar.layer.masksToBounds = YES;
-    _pubgTabBar.hidden = YES;
-    [_panelView addSubview:_pubgTabBar];
-
-    _pubgTabButtonESP = [UIButton buttonWithType:UIButtonTypeCustom];
-    [_pubgTabButtonESP setTitle:@"👁️ ESP HIỂN THỊ" forState:UIControlStateNormal];
-    _pubgTabButtonESP.layer.cornerRadius = 6.0;
-    _pubgTabButtonESP.layer.masksToBounds = YES;
-    [_pubgTabButtonESP addTarget:self action:@selector(dsPubgSelectTab:) forControlEvents:UIControlEventTouchUpInside];
-    [_pubgTabBar addSubview:_pubgTabButtonESP];
-
-    _pubgTabButtonAim = [UIButton buttonWithType:UIButtonTypeCustom];
-    [_pubgTabButtonAim setTitle:@"🎯 HỖ TRỢ NGẮM" forState:UIControlStateNormal];
-    _pubgTabButtonAim.layer.cornerRadius = 6.0;
-    _pubgTabButtonAim.layer.masksToBounds = YES;
-    [_pubgTabButtonAim addTarget:self action:@selector(dsPubgSelectTab:) forControlEvents:UIControlEventTouchUpInside];
-    [_pubgTabBar addSubview:_pubgTabButtonAim];
-
-    // PUBG Tab Control (internal sync)
-    _pubgTabControl = [[UISegmentedControl alloc] initWithItems:@[@"ESP Hiển Thị", @"Hỗ Trợ Ngắm"]];
-    _pubgTabControl.selectedSegmentIndex = 0;
-    _pubgTabControl.hidden = YES;
-
-    // Quick Jump Buttons between Tabs
-    _pubgGoToAimBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    [_pubgGoToAimBtn setTitle:@"➔ Mở Cài Đặt Hỗ Trợ Ngắm (Aim Assist)" forState:UIControlStateNormal];
-    [_pubgGoToAimBtn setTitleColor:[UIColor colorWithRed:255/255.0 green:110/255.0 blue:100/255.0 alpha:1.0] forState:UIControlStateNormal];
-    _pubgGoToAimBtn.backgroundColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:0.12];
-    _pubgGoToAimBtn.layer.cornerRadius = 7.0;
-    _pubgGoToAimBtn.layer.borderWidth = 0.8;
-    _pubgGoToAimBtn.layer.borderColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:0.40].CGColor;
-    _pubgGoToAimBtn.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
-    [_pubgGoToAimBtn addTarget:self action:@selector(dsPubgSwitchToAimTab) forControlEvents:UIControlEventTouchUpInside];
-    _pubgGoToAimBtn.hidden = YES;
-    [_panelView addSubview:_pubgGoToAimBtn];
-
-    _pubgGoToEspBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    [_pubgGoToEspBtn setTitle:@"⬅ Quay Lại Tab ESP Hiển Thị" forState:UIControlStateNormal];
-    [_pubgGoToEspBtn setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
-    _pubgGoToEspBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.12];
-    _pubgGoToEspBtn.layer.cornerRadius = 7.0;
-    _pubgGoToEspBtn.layer.borderWidth = 0.8;
-    _pubgGoToEspBtn.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.40].CGColor;
-    _pubgGoToEspBtn.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
-    [_pubgGoToEspBtn addTarget:self action:@selector(dsPubgSwitchToEspTab) forControlEvents:UIControlEventTouchUpInside];
-    _pubgGoToEspBtn.hidden = YES;
-    [_panelView addSubview:_pubgGoToEspBtn];
-
-    _pubgAimInfoLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _pubgAimInfoLabel.text = @"Khóa mục tiêu gần tâm nhất, vẽ vòng FOV & tia ngắm";
-    _pubgAimInfoLabel.textColor = [UIColor colorWithWhite:0.6 alpha:1.0];
-    _pubgAimInfoLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightRegular];
-    _pubgAimInfoLabel.textAlignment = NSTextAlignmentCenter;
-    _pubgAimInfoLabel.hidden = YES;
-    [_panelView addSubview:_pubgAimInfoLabel];
-
-    // Master Aim Assist Card
-    _pubgAimMasterCard = [[UIView alloc] initWithFrame:CGRectZero];
-    _pubgAimMasterCard.backgroundColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.08];
-    _pubgAimMasterCard.layer.cornerRadius = 9.0;
-    _pubgAimMasterCard.layer.borderWidth = 0.9;
-    _pubgAimMasterCard.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.25].CGColor;
-    _pubgAimMasterCard.hidden = YES;
-    [_panelView addSubview:_pubgAimMasterCard];
-
-    _pubgAimMasterLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _pubgAimMasterLabel.text = @"Bật Hỗ Trợ Ngắm";
-    _pubgAimMasterLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-    _pubgAimMasterLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
-    _pubgAimMasterLabel.hidden = YES;
-    [_panelView addSubview:_pubgAimMasterLabel];
-
-    _pubgAimMasterSwitch = pubgCreateSwitch(@selector(dsPubgAimMasterChanged:));
-    _pubgAimMasterSwitch.hidden = YES;
-
-    // Bone Selection Card
-    _pubgAimBoneCard = [[UIView alloc] initWithFrame:CGRectZero];
-    _pubgAimBoneCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
-    _pubgAimBoneCard.layer.cornerRadius = 8.0;
-    _pubgAimBoneCard.layer.borderWidth = 0.8;
-    _pubgAimBoneCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
-    _pubgAimBoneCard.hidden = YES;
-    [_panelView addSubview:_pubgAimBoneCard];
-
-    _pubgAimBoneLabel = pubgCreateLabel(@"Điểm Ngắm");
-    _pubgAimBoneLabel.hidden = YES;
-
-    _pubgAimBoneSegment = [[UISegmentedControl alloc] initWithItems:@[@"Đầu", @"Ngực"]];
-    _pubgAimBoneSegment.selectedSegmentIndex = g_pubgAimTargetBone;
-    _pubgAimBoneSegment.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.08];
-    _pubgAimBoneSegment.selectedSegmentTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.35];
-    NSDictionary *tabNormalAttr = @{
-        NSForegroundColorAttributeName: [UIColor colorWithWhite:0.8 alpha:1.0],
-        NSFontAttributeName: [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium]
-    };
-    NSDictionary *tabSelectedAttr = @{
-        NSForegroundColorAttributeName: [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0],
-        NSFontAttributeName: [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold]
-    };
-    [_pubgAimBoneSegment setTitleTextAttributes:tabNormalAttr forState:UIControlStateNormal];
-    [_pubgAimBoneSegment setTitleTextAttributes:tabSelectedAttr forState:UIControlStateSelected];
-    [_pubgAimBoneSegment addTarget:self action:@selector(dsPubgAimBoneChanged:) forControlEvents:UIControlEventValueChanged];
-    _pubgAimBoneSegment.hidden = YES;
-    [_panelView addSubview:_pubgAimBoneSegment];
-
-    // Aim Assist Sub Cards
-    for (int i = 0; i < 4; i++) {
-        UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
-        card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
-        card.layer.cornerRadius = 8.0;
-        card.layer.borderWidth = 0.8;
-        card.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
-        card.hidden = YES;
-        [_panelView addSubview:card];
-        _pubgAimCards[i] = card;
-    }
-
-    _pubgAimFovCircleLabel = pubgCreateLabel(@"Vòng FOV");
-    _pubgAimFovCircleLabel.hidden = YES;
-    _pubgAimFovCircleSwitch = pubgCreateSwitch(@selector(dsPubgAimFovCircleChanged:));
-    _pubgAimFovCircleSwitch.hidden = YES;
-
-    _pubgAimSnaplineLabel = pubgCreateLabel(@"Tia Khóa Tâm");
-    _pubgAimSnaplineLabel.hidden = YES;
-    _pubgAimSnaplineSwitch = pubgCreateSwitch(@selector(dsPubgAimSnaplineChanged:));
-    _pubgAimSnaplineSwitch.hidden = YES;
-
-    _pubgAimIgnoreKnockedLabel = pubgCreateLabel(@"Bỏ Qua Gục");
-    _pubgAimIgnoreKnockedLabel.hidden = YES;
-    _pubgAimIgnoreKnockedSwitch = pubgCreateSwitch(@selector(dsPubgAimIgnoreKnockedChanged:));
-    _pubgAimIgnoreKnockedSwitch.hidden = YES;
-
-    _pubgAimIgnoreBotLabel = pubgCreateLabel(@"Bỏ Qua Bot");
-    _pubgAimIgnoreBotLabel.hidden = YES;
-    _pubgAimIgnoreBotSwitch = pubgCreateSwitch(@selector(dsPubgAimIgnoreBotChanged:));
-    _pubgAimIgnoreBotSwitch.hidden = YES;
-
-    // FOV Slider Card
-    _pubgAimFovCard = [[UIView alloc] initWithFrame:CGRectZero];
-    _pubgAimFovCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
-    _pubgAimFovCard.layer.cornerRadius = 9.0;
-    _pubgAimFovCard.layer.borderWidth = 0.8;
-    _pubgAimFovCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
-    _pubgAimFovCard.hidden = YES;
-    [_panelView addSubview:_pubgAimFovCard];
-
-    _pubgAimFovLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _pubgAimFovLabel.text = @"Bán kính vòng FOV";
-    _pubgAimFovLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-    _pubgAimFovLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightSemibold];
-    _pubgAimFovLabel.hidden = YES;
-    [_panelView addSubview:_pubgAimFovLabel];
-
-    _pubgAimFovValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _pubgAimFovValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-    _pubgAimFovValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightBold];
-    _pubgAimFovValueLabel.textAlignment = NSTextAlignmentRight;
-    _pubgAimFovValueLabel.hidden = YES;
-    [_panelView addSubview:_pubgAimFovValueLabel];
-
-    _pubgAimFovSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    _pubgAimFovSlider.minimumValue = 40.0f;
-    _pubgAimFovSlider.maximumValue = 300.0f;
-    _pubgAimFovSlider.continuous = YES;
-    _pubgAimFovSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-    _pubgAimFovSlider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
-    [_pubgAimFovSlider addTarget:self action:@selector(dsPubgAimFovSliderChanged:) forControlEvents:UIControlEventValueChanged];
-    _pubgAimFovSlider.hidden = YES;
-    [_panelView addSubview:_pubgAimFovSlider];
-
     _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _toggleButton.backgroundColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.92];
     _toggleButton.tintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
@@ -1511,55 +1307,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgBotSwitch.on = g_pubgEspBot;
         if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
         _pubgVehicleSwitch.on = g_pubgEspVehicle;
-        if ([defaults objectForKey:@"pubg_aim_enable"] != nil) {
-            g_pubgAimAssist = [defaults boolForKey:@"pubg_aim_enable"];
-        } else {
-            g_pubgAimAssist = YES;
-        }
-        _pubgAimMasterSwitch.on = g_pubgAimAssist;
-
-        if ([defaults objectForKey:@"pubg_aim_bone"] != nil) {
-            g_pubgAimTargetBone = (int)[defaults integerForKey:@"pubg_aim_bone"];
-        } else {
-            g_pubgAimTargetBone = 0;
-        }
-        _pubgAimBoneSegment.selectedSegmentIndex = g_pubgAimTargetBone;
-
-        if ([defaults objectForKey:@"pubg_aim_fov_circle"] != nil) {
-            g_pubgAimFovCircle = [defaults boolForKey:@"pubg_aim_fov_circle"];
-        } else {
-            g_pubgAimFovCircle = YES;
-        }
-        _pubgAimFovCircleSwitch.on = g_pubgAimFovCircle;
-
-        if ([defaults objectForKey:@"pubg_aim_snapline"] != nil) {
-            g_pubgAimSnapline = [defaults boolForKey:@"pubg_aim_snapline"];
-        } else {
-            g_pubgAimSnapline = YES;
-        }
-        _pubgAimSnaplineSwitch.on = g_pubgAimSnapline;
-
-        if ([defaults objectForKey:@"pubg_aim_ignore_knocked"] != nil) {
-            g_pubgAimIgnoreKnocked = [defaults boolForKey:@"pubg_aim_ignore_knocked"];
-        } else {
-            g_pubgAimIgnoreKnocked = YES;
-        }
-        _pubgAimIgnoreKnockedSwitch.on = g_pubgAimIgnoreKnocked;
-
-        if ([defaults objectForKey:@"pubg_aim_ignore_bot"] != nil) {
-            g_pubgAimIgnoreBot = [defaults boolForKey:@"pubg_aim_ignore_bot"];
-        } else {
-            g_pubgAimIgnoreBot = NO;
-        }
-        _pubgAimIgnoreBotSwitch.on = g_pubgAimIgnoreBot;
-
-        if ([defaults objectForKey:@"pubg_aim_fov_radius"] != nil) {
-            g_pubgAimFovRadius = [defaults floatForKey:@"pubg_aim_fov_radius"];
-        } else {
-            g_pubgAimFovRadius = 120.0f;
-        }
-        _pubgAimFovSlider.value = g_pubgAimFovRadius;
-        _pubgAimFovValueLabel.text = [NSString stringWithFormat:@"%.0f px", g_pubgAimFovRadius];
     } else {
         _titleLabel.text = @"LQ Tools";
         _zoomLabel.text = @"Zoom";
@@ -1604,7 +1351,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = (ds_active_game() == 1) ? 300.0 : MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 336.0 : 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 294.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1647,6 +1394,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
                                     26.0, 26.0);
 
     if (ds_active_game() == 1) {
+        _titleLabel.text = @"DARKPUBG";
+        _titleLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
         _enableLabel.hidden = YES;
         _enableSwitch.hidden = YES;
         _autoSmiteLabel.hidden = YES;
@@ -1663,19 +1412,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _minimapYSlider.hidden = YES;
         _minimapYPlusButton.hidden = YES;
         _minimapYValueLabel.hidden = YES;
-        _resetButton.hidden = YES;
-
-        // Dedicated Tab Bar at top
-        _pubgTabBar.hidden = NO;
-        CGFloat tabW = panelW - 24.0;
-        CGFloat tabH = 32.0;
-        _pubgTabBar.frame = CGRectMake(12.0, 36.0, tabW, tabH);
-        CGFloat btnW = (tabW - 6.0) * 0.5;
-        _pubgTabButtonESP.frame = CGRectMake(2.0, 2.0, btnW, tabH - 4.0);
-        _pubgTabButtonAim.frame = CGRectMake(2.0 + btnW + 2.0, 2.0, btnW, tabH - 4.0);
-        [self dsUpdatePubgTabStyles];
-        [_panelView bringSubviewToFront:_pubgTabBar];
-
         CGFloat cardW = (panelW - 32.0) * 0.5;
         CGFloat cardH = 30.0;
         CGFloat col1X = 12.0;
@@ -1687,242 +1423,100 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             s.center = CGPointMake(cardRightX - switchRightPadding, cardCenterY);
         };
 
-        if (_pubgSelectedTab == 0) {
-            // Tab 0: ESP
-            _pubgAimMasterCard.hidden = YES;
-            _pubgAimMasterLabel.hidden = YES;
-            _pubgAimMasterSwitch.hidden = YES;
-            _pubgAimBoneCard.hidden = YES;
-            _pubgAimBoneLabel.hidden = YES;
-            _pubgAimBoneSegment.hidden = YES;
-            for (int i = 0; i < 4; i++) _pubgAimCards[i].hidden = YES;
-            _pubgAimFovCircleLabel.hidden = YES;
-            _pubgAimFovCircleSwitch.hidden = YES;
-            _pubgAimSnaplineLabel.hidden = YES;
-            _pubgAimSnaplineSwitch.hidden = YES;
-            _pubgAimIgnoreKnockedLabel.hidden = YES;
-            _pubgAimIgnoreKnockedSwitch.hidden = YES;
-            _pubgAimIgnoreBotLabel.hidden = YES;
-            _pubgAimIgnoreBotSwitch.hidden = YES;
-            _pubgAimFovCard.hidden = YES;
-            _pubgAimFovLabel.hidden = YES;
-            _pubgAimFovValueLabel.hidden = YES;
-            _pubgAimFovSlider.hidden = YES;
-            _pubgAimInfoLabel.hidden = YES;
-            _pubgGoToEspBtn.hidden = YES;
+        // Master ESP Card
+        _masterCard.hidden = NO;
+        _masterCard.frame = CGRectMake(12.0, 36.0, panelW - 24.0, 32.0);
+        _espLabel.hidden = NO;
+        _espLabel.text = @"Bật ESP Master";
+        _espLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        _espLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
+        _espLabel.frame = CGRectMake(22.0, 42.0, 150.0, 20.0);
+        _espSwitch.hidden = NO;
+        _espSwitch.transform = CGAffineTransformMakeScale(0.70, 0.70);
+        layoutCardSwitch(_espSwitch, panelW - 12.0, 36.0 + 16.0);
 
-            _masterCard.hidden = NO;
-            _masterCard.frame = CGRectMake(12.0, 74.0, panelW - 24.0, 32.0);
-            _espLabel.hidden = NO;
-            _espLabel.text = @"Bật ESP Master";
-            _espLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-            _espLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
-            _espLabel.frame = CGRectMake(22.0, 80.0, 150.0, 20.0);
-            _espSwitch.hidden = NO;
-            _espSwitch.transform = CGAffineTransformMakeScale(0.70, 0.70);
-            layoutCardSwitch(_espSwitch, panelW - 12.0, 74.0 + 16.0);
+        _pubgBoxLabel.hidden = NO;
+        _pubgBoxSwitch.hidden = NO;
+        _pubgSkeletonLabel.hidden = NO;
+        _pubgSkeletonSwitch.hidden = NO;
+        _pubgLineLabel.hidden = NO;
+        _pubgLineSwitch.hidden = NO;
+        _pubgHealthLabel.hidden = NO;
+        _pubgHealthSwitch.hidden = NO;
+        _pubgNameLabel.hidden = NO;
+        _pubgNameSwitch.hidden = NO;
+        _pubgDistLabel.hidden = NO;
+        _pubgDistSwitch.hidden = NO;
+        _pubgBotLabel.hidden = NO;
+        _pubgBotSwitch.hidden = NO;
+        _pubgVehicleLabel.hidden = YES;
+        _pubgVehicleSwitch.hidden = YES;
 
-            _pubgBoxLabel.hidden = NO;
-            _pubgBoxSwitch.hidden = NO;
-            _pubgSkeletonLabel.hidden = NO;
-            _pubgSkeletonSwitch.hidden = NO;
-            _pubgLineLabel.hidden = NO;
-            _pubgLineSwitch.hidden = NO;
-            _pubgHealthLabel.hidden = NO;
-            _pubgHealthSwitch.hidden = NO;
-            _pubgNameLabel.hidden = NO;
-            _pubgNameSwitch.hidden = NO;
-            _pubgDistLabel.hidden = NO;
-            _pubgDistSwitch.hidden = NO;
-            _pubgBotLabel.hidden = NO;
-            _pubgBotSwitch.hidden = NO;
-            _pubgVehicleLabel.hidden = YES;
-            _pubgVehicleSwitch.hidden = YES;
+        // Row 1: Box 2D & Xương
+        CGFloat y0 = 72.0;
+        _pubgCards[0].frame = CGRectMake(col1X, y0, cardW, cardH);
+        _pubgCards[0].hidden = NO;
+        _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgBoxSwitch, col1X + cardW, y0 + cardH * 0.5);
 
-            // Row 1: Box 2D & Xương
-            CGFloat y0 = 110.0;
-            _pubgCards[0].frame = CGRectMake(col1X, y0, cardW, cardH);
-            _pubgCards[0].hidden = NO;
-            _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 5.0, cardW - 48.0, 20.0);
-            layoutCardSwitch(_pubgBoxSwitch, col1X + cardW, y0 + cardH * 0.5);
+        _pubgCards[1].frame = CGRectMake(col2X, y0, cardW, cardH);
+        _pubgCards[1].hidden = NO;
+        _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgSkeletonSwitch, col2X + cardW, y0 + cardH * 0.5);
 
-            _pubgCards[1].frame = CGRectMake(col2X, y0, cardW, cardH);
-            _pubgCards[1].hidden = NO;
-            _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 5.0, cardW - 48.0, 20.0);
-            layoutCardSwitch(_pubgSkeletonSwitch, col2X + cardW, y0 + cardH * 0.5);
+        // Row 2: Tia Line & Thanh Máu
+        CGFloat y1 = 106.0;
+        _pubgCards[2].frame = CGRectMake(col1X, y1, cardW, cardH);
+        _pubgCards[2].hidden = NO;
+        _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgLineSwitch, col1X + cardW, y1 + cardH * 0.5);
 
-            // Row 2: Tia Line & Thanh Máu
-            CGFloat y1 = 144.0;
-            _pubgCards[2].frame = CGRectMake(col1X, y1, cardW, cardH);
-            _pubgCards[2].hidden = NO;
-            _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
-            layoutCardSwitch(_pubgLineSwitch, col1X + cardW, y1 + cardH * 0.5);
+        _pubgCards[3].frame = CGRectMake(col2X, y1, cardW, cardH);
+        _pubgCards[3].hidden = NO;
+        _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgHealthSwitch, col2X + cardW, y1 + cardH * 0.5);
 
-            _pubgCards[3].frame = CGRectMake(col2X, y1, cardW, cardH);
-            _pubgCards[3].hidden = NO;
-            _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
-            layoutCardSwitch(_pubgHealthSwitch, col2X + cardW, y1 + cardH * 0.5);
+        // Row 3: Tên Địch & Khoảng Cách
+        CGFloat y2 = 140.0;
+        _pubgCards[4].frame = CGRectMake(col1X, y2, cardW, cardH);
+        _pubgCards[4].hidden = NO;
+        _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgNameSwitch, col1X + cardW, y2 + cardH * 0.5);
 
-            // Row 3: Tên Địch & Khoảng Cách
-            CGFloat y2 = 178.0;
-            _pubgCards[4].frame = CGRectMake(col1X, y2, cardW, cardH);
-            _pubgCards[4].hidden = NO;
-            _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
-            layoutCardSwitch(_pubgNameSwitch, col1X + cardW, y2 + cardH * 0.5);
+        _pubgCards[5].frame = CGRectMake(col2X, y2, cardW, cardH);
+        _pubgCards[5].hidden = NO;
+        _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgDistSwitch, col2X + cardW, y2 + cardH * 0.5);
 
-            _pubgCards[5].frame = CGRectMake(col2X, y2, cardW, cardH);
-            _pubgCards[5].hidden = NO;
-            _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
-            layoutCardSwitch(_pubgDistSwitch, col2X + cardW, y2 + cardH * 0.5);
+        // Row 4: Hiện Bot AI
+        CGFloat y3 = 174.0;
+        _pubgCards[6].frame = CGRectMake(col1X, y3, panelW - 24.0, cardH);
+        _pubgCards[6].hidden = NO;
+        _pubgBotLabel.frame = CGRectMake(col1X + 10.0, y3 + 5.0, panelW - 80.0, 20.0);
+        layoutCardSwitch(_pubgBotSwitch, panelW - 12.0, y3 + cardH * 0.5);
 
-            // Row 4: Hiện Bot AI (Full width card)
-            CGFloat y3 = 212.0;
-            _pubgCards[6].frame = CGRectMake(col1X, y3, panelW - 24.0, cardH);
-            _pubgCards[6].hidden = NO;
-            _pubgBotLabel.frame = CGRectMake(col1X + 10.0, y3 + 5.0, panelW - 80.0, 20.0);
-            layoutCardSwitch(_pubgBotSwitch, panelW - 12.0, y3 + cardH * 0.5);
+        // Row 5: Scan Distance Card (Khoảng cách hiện địch)
+        CGFloat y4 = 208.0;
+        _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
+        _scanCard.hidden = NO;
+        _zoomLabel.text = @"Khoảng cách hiện địch";
+        _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+        _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
+        _zoomLabel.hidden = NO;
+        _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
+        _zoomValueLabel.hidden = NO;
+        _zoomSlider.hidden = NO;
+        _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
+        _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
+        _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
 
-            // Row 5: Scan Distance Card (Khoảng cách hiện địch)
-            CGFloat y4 = 246.0;
-            _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
-            _scanCard.hidden = NO;
-            _zoomLabel.text = @"Khoảng cách hiện địch";
-            _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
-            _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
-            _zoomLabel.hidden = NO;
-            _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-            _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
-            _zoomValueLabel.hidden = NO;
-            _zoomSlider.hidden = NO;
-            _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-            _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
-            _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
-            _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
-
-            // Bottom Jump Button to Aim
-            _pubgGoToAimBtn.hidden = NO;
-            _pubgGoToAimBtn.frame = CGRectMake(12.0, 298.0, panelW - 24.0, 28.0);
-            [_panelView bringSubviewToFront:_pubgGoToAimBtn];
-        } else {
-            // Tab 1: Hỗ Trợ Ngắm (Aim Assist)
-            _masterCard.hidden = YES;
-            _espLabel.hidden = YES;
-            _espSwitch.hidden = YES;
-            for (int ci = 0; ci < 7; ci++) _pubgCards[ci].hidden = YES;
-            _pubgBoxLabel.hidden = YES;
-            _pubgBoxSwitch.hidden = YES;
-            _pubgSkeletonLabel.hidden = YES;
-            _pubgSkeletonSwitch.hidden = YES;
-            _pubgLineLabel.hidden = YES;
-            _pubgLineSwitch.hidden = YES;
-            _pubgHealthLabel.hidden = YES;
-            _pubgHealthSwitch.hidden = YES;
-            _pubgNameLabel.hidden = YES;
-            _pubgNameSwitch.hidden = YES;
-            _pubgDistLabel.hidden = YES;
-            _pubgDistSwitch.hidden = YES;
-            _pubgBotLabel.hidden = YES;
-            _pubgBotSwitch.hidden = YES;
-            _scanCard.hidden = YES;
-            _zoomLabel.hidden = YES;
-            _zoomValueLabel.hidden = YES;
-            _zoomSlider.hidden = YES;
-            _pubgGoToAimBtn.hidden = YES;
-
-            // Master Aim Card
-            _pubgAimMasterCard.hidden = NO;
-            _pubgAimMasterCard.frame = CGRectMake(12.0, 74.0, panelW - 24.0, 32.0);
-            _pubgAimMasterLabel.hidden = NO;
-            _pubgAimMasterLabel.frame = CGRectMake(22.0, 80.0, 160.0, 20.0);
-            _pubgAimMasterSwitch.hidden = NO;
-            layoutCardSwitch(_pubgAimMasterSwitch, panelW - 12.0, 74.0 + 16.0);
-
-            // Bone Selection (Full width card)
-            CGFloat y0 = 110.0;
-            _pubgAimBoneCard.hidden = NO;
-            _pubgAimBoneCard.frame = CGRectMake(col1X, y0, panelW - 24.0, cardH);
-            _pubgAimBoneLabel.hidden = NO;
-            _pubgAimBoneLabel.frame = CGRectMake(col1X + 10.0, y0 + 5.0, 120.0, 20.0);
-            _pubgAimBoneSegment.hidden = NO;
-            _pubgAimBoneSegment.frame = CGRectMake(panelW - 12.0 - 110.0, y0 + 3.0, 106.0, 24.0);
-
-            // Row 2: Vòng FOV & Tia Khóa Tâm
-            CGFloat y1 = 144.0;
-            _pubgAimCards[0].frame = CGRectMake(col1X, y1, cardW, cardH);
-            _pubgAimCards[0].hidden = NO;
-            _pubgAimFovCircleLabel.hidden = NO;
-            _pubgAimFovCircleLabel.frame = CGRectMake(col1X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
-            _pubgAimFovCircleSwitch.hidden = NO;
-            layoutCardSwitch(_pubgAimFovCircleSwitch, col1X + cardW, y1 + cardH * 0.5);
-
-            _pubgAimCards[1].frame = CGRectMake(col2X, y1, cardW, cardH);
-            _pubgAimCards[1].hidden = NO;
-            _pubgAimSnaplineLabel.hidden = NO;
-            _pubgAimSnaplineLabel.frame = CGRectMake(col2X + 8.0, y1 + 5.0, cardW - 48.0, 20.0);
-            _pubgAimSnaplineSwitch.hidden = NO;
-            layoutCardSwitch(_pubgAimSnaplineSwitch, col2X + cardW, y1 + cardH * 0.5);
-
-            // Row 3: Bỏ Qua Gục & Bỏ Qua Bot
-            CGFloat y2 = 178.0;
-            _pubgAimCards[2].frame = CGRectMake(col1X, y2, cardW, cardH);
-            _pubgAimCards[2].hidden = NO;
-            _pubgAimIgnoreKnockedLabel.hidden = NO;
-            _pubgAimIgnoreKnockedLabel.frame = CGRectMake(col1X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
-            _pubgAimIgnoreKnockedSwitch.hidden = NO;
-            layoutCardSwitch(_pubgAimIgnoreKnockedSwitch, col1X + cardW, y2 + cardH * 0.5);
-
-            _pubgAimCards[3].frame = CGRectMake(col2X, y2, cardW, cardH);
-            _pubgAimCards[3].hidden = NO;
-            _pubgAimIgnoreBotLabel.hidden = NO;
-            _pubgAimIgnoreBotLabel.frame = CGRectMake(col2X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
-            _pubgAimIgnoreBotSwitch.hidden = NO;
-            layoutCardSwitch(_pubgAimIgnoreBotSwitch, col2X + cardW, y2 + cardH * 0.5);
-
-            // Row 4: FOV Radius Slider Card
-            CGFloat y3 = 212.0;
-            _pubgAimFovCard.frame = CGRectMake(col1X, y3, panelW - 24.0, 48.0);
-            _pubgAimFovCard.hidden = NO;
-            _pubgAimFovLabel.hidden = NO;
-            _pubgAimFovLabel.frame = CGRectMake(col1X + 10.0, y3 + 3.0, 160.0, 18.0);
-            _pubgAimFovValueLabel.hidden = NO;
-            _pubgAimFovValueLabel.frame = CGRectMake(panelW - 90.0, y3 + 3.0, 78.0, 18.0);
-            _pubgAimFovSlider.hidden = NO;
-            _pubgAimFovSlider.frame = CGRectMake(col1X + 8.0, y3 + 21.0, panelW - 40.0, 22.0);
-
-            // Row 5: Info label
-            _pubgAimInfoLabel.hidden = NO;
-            _pubgAimInfoLabel.frame = CGRectMake(12.0, 265.0, panelW - 24.0, 24.0);
-
-            // Bottom Jump Button to ESP
-            _pubgGoToEspBtn.hidden = NO;
-            _pubgGoToEspBtn.frame = CGRectMake(12.0, 298.0, panelW - 24.0, 28.0);
-            [_panelView bringSubviewToFront:_pubgGoToEspBtn];
-        }
+        // Row 6: Reset button
+        _resetButton.hidden = NO;
+        _resetButton.frame = CGRectMake(12.0, 260.0, panelW - 24.0, 26.0);
+        [_panelView bringSubviewToFront:_resetButton];
     } else {
-        _pubgTabBar.hidden = YES;
-        _pubgGoToAimBtn.hidden = YES;
-        _pubgGoToEspBtn.hidden = YES;
-        _pubgAimInfoLabel.hidden = YES;
-        _pubgTabControl.hidden = YES;
-        _pubgAimMasterCard.hidden = YES;
-        _pubgAimMasterLabel.hidden = YES;
-        _pubgAimMasterSwitch.hidden = YES;
-        _pubgAimBoneCard.hidden = YES;
-        _pubgAimBoneLabel.hidden = YES;
-        _pubgAimBoneSegment.hidden = YES;
-        for (int i = 0; i < 4; i++) _pubgAimCards[i].hidden = YES;
-        _pubgAimFovCircleLabel.hidden = YES;
-        _pubgAimFovCircleSwitch.hidden = YES;
-        _pubgAimSnaplineLabel.hidden = YES;
-        _pubgAimSnaplineSwitch.hidden = YES;
-        _pubgAimIgnoreKnockedLabel.hidden = YES;
-        _pubgAimIgnoreKnockedSwitch.hidden = YES;
-        _pubgAimIgnoreBotLabel.hidden = YES;
-        _pubgAimIgnoreBotSwitch.hidden = YES;
-        _pubgAimFovCard.hidden = YES;
-        _pubgAimFovLabel.hidden = YES;
-        _pubgAimFovValueLabel.hidden = YES;
-        _pubgAimFovSlider.hidden = YES;
         _masterCard.hidden = YES;
         for (int ci = 0; ci < 7; ci++) _pubgCards[ci].hidden = YES;
         _scanCard.hidden = YES;
@@ -2156,112 +1750,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
 }
 
-- (void)dsUpdatePubgTabStyles {
-    if (_pubgSelectedTab == 0) {
-        _pubgTabButtonESP.backgroundColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.28];
-        _pubgTabButtonESP.layer.borderWidth = 1.2;
-        _pubgTabButtonESP.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.95].CGColor;
-        [_pubgTabButtonESP setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
-        _pubgTabButtonESP.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
-
-        _pubgTabButtonAim.backgroundColor = UIColor.clearColor;
-        _pubgTabButtonAim.layer.borderWidth = 0.0;
-        _pubgTabButtonAim.layer.borderColor = UIColor.clearColor.CGColor;
-        [_pubgTabButtonAim setTitleColor:[UIColor colorWithWhite:0.65 alpha:1.0] forState:UIControlStateNormal];
-        _pubgTabButtonAim.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium];
-        _titleLabel.text = @"DARKPUBG  [ESP]";
-    } else {
-        _pubgTabButtonAim.backgroundColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:0.28];
-        _pubgTabButtonAim.layer.borderWidth = 1.2;
-        _pubgTabButtonAim.layer.borderColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:0.95].CGColor;
-        [_pubgTabButtonAim setTitleColor:[UIColor colorWithRed:255/255.0 green:90/255.0 blue:80/255.0 alpha:1.0] forState:UIControlStateNormal];
-        _pubgTabButtonAim.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
-
-        _pubgTabButtonESP.backgroundColor = UIColor.clearColor;
-        _pubgTabButtonESP.layer.borderWidth = 0.0;
-        _pubgTabButtonESP.layer.borderColor = UIColor.clearColor.CGColor;
-        [_pubgTabButtonESP setTitleColor:[UIColor colorWithWhite:0.65 alpha:1.0] forState:UIControlStateNormal];
-        _pubgTabButtonESP.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium];
-        _titleLabel.text = @"DARKPUBG  [HỖ TRỢ NGẮM]";
-    }
-}
-
-- (void)dsPubgSelectTab:(UIButton *)sender {
-    if (sender == _pubgTabButtonAim) {
-        _pubgSelectedTab = 1;
-    } else {
-        _pubgSelectedTab = 0;
-    }
-    _pubgTabControl.selectedSegmentIndex = _pubgSelectedTab;
-    [self dsUpdatePubgTabStyles];
-    [self dsLayoutMenu];
-}
-
-- (void)dsPubgSwitchToAimTab {
-    _pubgSelectedTab = 1;
-    _pubgTabControl.selectedSegmentIndex = 1;
-    [self dsUpdatePubgTabStyles];
-    [self dsLayoutMenu];
-}
-
-- (void)dsPubgSwitchToEspTab {
-    _pubgSelectedTab = 0;
-    _pubgTabControl.selectedSegmentIndex = 0;
-    [self dsUpdatePubgTabStyles];
-    [self dsLayoutMenu];
-}
-
-- (void)dsTitleTapped:(UITapGestureRecognizer *)gesture {
-    if (gesture.state == UIGestureRecognizerStateEnded) {
-        _pubgSelectedTab = (_pubgSelectedTab == 0) ? 1 : 0;
-        _pubgTabControl.selectedSegmentIndex = _pubgSelectedTab;
-        [self dsUpdatePubgTabStyles];
-        [self dsLayoutMenu];
-    }
-}
-
-- (void)dsPubgTabChanged:(UISegmentedControl *)sender {
-    _pubgSelectedTab = (int)sender.selectedSegmentIndex;
-    [self dsUpdatePubgTabStyles];
-    [self dsLayoutMenu];
-}
-
-- (void)dsPubgAimMasterChanged:(UISwitch *)sender {
-    g_pubgAimAssist = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:g_pubgAimAssist forKey:@"pubg_aim_enable"];
-}
-
-- (void)dsPubgAimBoneChanged:(UISegmentedControl *)sender {
-    g_pubgAimTargetBone = (int)sender.selectedSegmentIndex;
-    [NSUserDefaults.standardUserDefaults setInteger:g_pubgAimTargetBone forKey:@"pubg_aim_bone"];
-}
-
-- (void)dsPubgAimFovCircleChanged:(UISwitch *)sender {
-    g_pubgAimFovCircle = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:g_pubgAimFovCircle forKey:@"pubg_aim_fov_circle"];
-}
-
-- (void)dsPubgAimSnaplineChanged:(UISwitch *)sender {
-    g_pubgAimSnapline = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:g_pubgAimSnapline forKey:@"pubg_aim_snapline"];
-}
-
-- (void)dsPubgAimIgnoreKnockedChanged:(UISwitch *)sender {
-    g_pubgAimIgnoreKnocked = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:g_pubgAimIgnoreKnocked forKey:@"pubg_aim_ignore_knocked"];
-}
-
-- (void)dsPubgAimIgnoreBotChanged:(UISwitch *)sender {
-    g_pubgAimIgnoreBot = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:g_pubgAimIgnoreBot forKey:@"pubg_aim_ignore_bot"];
-}
-
-- (void)dsPubgAimFovSliderChanged:(UISlider *)sender {
-    g_pubgAimFovRadius = sender.value;
-    _pubgAimFovValueLabel.text = [NSString stringWithFormat:@"%.0f px", g_pubgAimFovRadius];
-    [NSUserDefaults.standardUserDefaults setFloat:g_pubgAimFovRadius forKey:@"pubg_aim_fov_radius"];
-}
-
 - (void)dsZoomSliderChanged:(UISlider *)sender {
     if (ds_active_game() == 1) {
         g_dspubgMaxDistance = sender.value;
@@ -2335,21 +1823,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         g_pubgEspBot = YES;
         g_dspubgMaxDistance = 400.0f;
 
-        [_pubgAimMasterSwitch setOn:YES animated:YES];
-        _pubgAimBoneSegment.selectedSegmentIndex = 0;
-        [_pubgAimFovCircleSwitch setOn:YES animated:YES];
-        [_pubgAimSnaplineSwitch setOn:YES animated:YES];
-        [_pubgAimIgnoreKnockedSwitch setOn:YES animated:YES];
-        [_pubgAimIgnoreBotSwitch setOn:NO animated:YES];
-        [_pubgAimFovSlider setValue:120.0f animated:YES];
-        g_pubgAimAssist = YES;
-        g_pubgAimTargetBone = 0;
-        g_pubgAimFovCircle = YES;
-        g_pubgAimSnapline = YES;
-        g_pubgAimIgnoreKnocked = YES;
-        g_pubgAimIgnoreBot = NO;
-        g_pubgAimFovRadius = 120.0f;
-
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
         [defaults setBool:YES forKey:@"pubg_box"];
         [defaults setBool:YES forKey:@"pubg_skeleton"];
@@ -2358,13 +1831,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [defaults setBool:YES forKey:@"pubg_name"];
         [defaults setBool:YES forKey:@"pubg_dist"];
         [defaults setBool:YES forKey:@"pubg_bot"];
-        [defaults setBool:YES forKey:@"pubg_aim_enable"];
-        [defaults setInteger:0 forKey:@"pubg_aim_bone"];
-        [defaults setBool:YES forKey:@"pubg_aim_fov_circle"];
-        [defaults setBool:YES forKey:@"pubg_aim_snapline"];
-        [defaults setBool:YES forKey:@"pubg_aim_ignore_knocked"];
-        [defaults setBool:NO forKey:@"pubg_aim_ignore_bot"];
-        [defaults setFloat:120.0f forKey:@"pubg_aim_fov_radius"];
 
         [self dsUpdateValueLabel];
         return;
@@ -2387,9 +1853,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsUpdateValueLabel {
     if (ds_active_game() == 1) {
         _zoomValueLabel.text = [NSString stringWithFormat:@"%.0fm", _zoomSlider.value];
-        if (_pubgAimFovValueLabel && _pubgAimFovSlider) {
-            _pubgAimFovValueLabel.text = [NSString stringWithFormat:@"%.0f px", _pubgAimFovSlider.value];
-        }
         return;
     }
     _zoomValueLabel.text = [NSString stringWithFormat:@"%.2f", _zoomSlider.value];
@@ -3602,9 +3065,6 @@ static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
-static CAShapeLayer *g_hostedPUBGAimFovLayer = nil;
-static CAShapeLayer *g_hostedPUBGAimLineLayer = nil;
-static CAShapeLayer *g_hostedPUBGAimTargetMarkerLayer = nil;
 
 static void ds_hosted_pubg_hide_all(void) {
     for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
@@ -3619,9 +3079,6 @@ static void ds_hosted_pubg_hide_all(void) {
     }
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
-    if (g_hostedPUBGAimFovLayer && !g_hostedPUBGAimFovLayer.hidden) g_hostedPUBGAimFovLayer.hidden = YES;
-    if (g_hostedPUBGAimLineLayer && !g_hostedPUBGAimLineLayer.hidden) g_hostedPUBGAimLineLayer.hidden = YES;
-    if (g_hostedPUBGAimTargetMarkerLayer && !g_hostedPUBGAimTargetMarkerLayer.hidden) g_hostedPUBGAimTargetMarkerLayer.hidden = YES;
 }
 
 static void ds_hosted_apply_pubg(void) {
@@ -3651,51 +3108,6 @@ static void ds_hosted_apply_pubg(void) {
 
     int activeEnemyCount = 0;
     int activeBotCount = 0;
-
-    const CGFloat screenMidX = width * 0.5f;
-    const CGFloat screenMidY = height * 0.5f;
-
-    int bestAimTargetIndex = -1;
-    float bestAimDist2D = g_pubgAimFovRadius;
-    CGPoint bestAimTargetPoint = CGPointZero;
-
-    if (g_pubgAimAssist) {
-        for (int i = 0; i < count; i++) {
-            const DSPUBGProjectedPlayer &p = players[i];
-            if (!p.isVisible || p.isDead) continue;
-            if (p.isAI && g_pubgAimIgnoreBot) continue;
-            if (p.isKnocked && g_pubgAimIgnoreKnocked) continue;
-            if (p.screenX < -100 || p.screenX > width + 100 ||
-                p.screenY < -100 || p.screenY > height + 100) continue;
-
-            CGPoint tPoint = CGPointZero;
-            if (g_pubgAimTargetBone == 0) {
-                // Head (Đầu)
-                if (p.hasSkeleton && p.skeleton[0].valid) {
-                    tPoint = CGPointMake(p.skeleton[0].x, p.skeleton[0].y);
-                } else {
-                    tPoint = CGPointMake(p.headX, p.headY);
-                }
-            } else {
-                // Chest / Neck (Ngực)
-                if (p.hasSkeleton && p.skeleton[1].valid) {
-                    tPoint = CGPointMake(p.skeleton[1].x, p.skeleton[1].y);
-                } else {
-                    tPoint = CGPointMake(p.screenX + p.boxWidth * 0.5f, p.screenY + p.boxHeight * 0.22f);
-                }
-            }
-
-            float dX = tPoint.x - screenMidX;
-            float dY = tPoint.y - screenMidY;
-            float dist2D = sqrtf(dX * dX + dY * dY);
-
-            if (dist2D < bestAimDist2D) {
-                bestAimDist2D = dist2D;
-                bestAimTargetIndex = i;
-                bestAimTargetPoint = tPoint;
-            }
-        }
-    }
 
     for (int i = 0; i < count; i++) {
         const DSPUBGProjectedPlayer &p = players[i];
@@ -3744,19 +3156,12 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        BOOL isAimTarget = (i == bestAimTargetIndex);
-
-        // 1. Bounding Box: Màu trắng (Màu đỏ khi khóa mục tiêu ngắm)
+        // 1. Bounding Box: Màu trắng
         if (g_pubgEspBox) {
             CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
             box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
-            if (isAimTarget) {
-                box.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
-                box.lineWidth = 2.2;
-            } else {
-                box.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-                box.lineWidth = 1.5;
-            }
+            box.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+            box.lineWidth = 1.5;
             box.hidden = NO;
         } else {
             box.hidden = YES;
@@ -3888,12 +3293,10 @@ static void ds_hosted_apply_pubg(void) {
             style.alignment = NSTextAlignmentCenter;
             style.lineBreakMode = NSLineBreakByClipping;
 
-            // Màu Tên: Khóa mục tiêu = Đỏ rực, Bot = Xanh nước biển, Người = Vàng
-            UIColor *nameColor = isAimTarget
-                ? [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0]
-                : (ai
-                    ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:1.0]
-                    : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0]);
+            // Màu Tên: Bot = Xanh nước biển, Người = Vàng
+            UIColor *nameColor = ai
+                ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:1.0]
+                : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0];
 
             // Màu Khoảng cách và team = Trắng
             UIColor *whiteColor = [UIColor colorWithWhite:1.0 alpha:1.0];
@@ -3901,9 +3304,7 @@ static void ds_hosted_apply_pubg(void) {
             NSMutableAttributedString *attrText = [[NSMutableAttributedString alloc] init];
 
             if (g_pubgEspName) {
-                NSString *nameStr = isAimTarget
-                    ? [NSString stringWithFormat:@"🎯 %s", displayName]
-                    : [NSString stringWithUTF8String:displayName];
+                NSString *nameStr = [NSString stringWithUTF8String:displayName];
                 [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
                     NSFontAttributeName: font,
                     NSForegroundColorAttributeName: nameColor,
@@ -4022,13 +3423,8 @@ static void ds_hosted_apply_pubg(void) {
 
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
-                    if (isAimTarget) {
-                        skel.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
-                        skel.lineWidth = 1.6;
-                    } else {
-                        skel.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-                        skel.lineWidth = 1.2;
-                    }
+                    skel.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+                    skel.lineWidth = 1.2;
                     skel.hidden = NO;
                 } else {
                     skel.hidden = YES;
@@ -4074,73 +3470,6 @@ static void ds_hosted_apply_pubg(void) {
         } else {
             g_hostedPUBGTopCountLabel.hidden = YES;
         }
-    }
-
-    // 7. Aim Assist Visuals (Vòng ngắm FOV, Tia khóa tâm, Dấu tâm mục tiêu)
-    if (g_pubgAimAssist) {
-        if (g_pubgAimFovCircle && g_hostedPUBGAimFovLayer) {
-            UIBezierPath *fovPath = [UIBezierPath bezierPathWithArcCenter:CGPointMake(screenMidX, screenMidY)
-                                                                   radius:g_pubgAimFovRadius
-                                                               startAngle:0
-                                                                 endAngle:(CGFloat)(2.0 * M_PI)
-                                                                clockwise:YES];
-            g_hostedPUBGAimFovLayer.path = fovPath.CGPath;
-            if (bestAimTargetIndex >= 0) {
-                // Khóa mục tiêu thành công: Đổi vòng sang màu đỏ neon nổi bật
-                g_hostedPUBGAimFovLayer.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.85].CGColor;
-                g_hostedPUBGAimFovLayer.lineWidth = 1.6;
-            } else {
-                // Vòng tìm kiếm bình thường: Xanh lơ dịu mắt
-                g_hostedPUBGAimFovLayer.strokeColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.40].CGColor;
-                g_hostedPUBGAimFovLayer.lineWidth = 1.0;
-            }
-            g_hostedPUBGAimFovLayer.hidden = NO;
-        } else if (g_hostedPUBGAimFovLayer) {
-            g_hostedPUBGAimFovLayer.hidden = YES;
-        }
-
-        if (bestAimTargetIndex >= 0) {
-            if (g_pubgAimSnapline && g_hostedPUBGAimLineLayer) {
-                UIBezierPath *aimLinePath = [UIBezierPath bezierPath];
-                [aimLinePath moveToPoint:CGPointMake(screenMidX, screenMidY)];
-                [aimLinePath addLineToPoint:bestAimTargetPoint];
-                g_hostedPUBGAimLineLayer.path = aimLinePath.CGPath;
-                g_hostedPUBGAimLineLayer.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95].CGColor;
-                g_hostedPUBGAimLineLayer.lineWidth = 1.8;
-                g_hostedPUBGAimLineLayer.hidden = NO;
-            } else if (g_hostedPUBGAimLineLayer) {
-                g_hostedPUBGAimLineLayer.hidden = YES;
-            }
-
-            if (g_hostedPUBGAimTargetMarkerLayer) {
-                UIBezierPath *markerPath = [UIBezierPath bezierPath];
-                CGFloat r = 6.0;
-                [markerPath appendPath:[UIBezierPath bezierPathWithArcCenter:bestAimTargetPoint
-                                                                      radius:r
-                                                                  startAngle:0
-                                                                    endAngle:(CGFloat)(2.0 * M_PI)
-                                                                   clockwise:YES]];
-                // 4 vạch chữ thập tâm ngắm
-                [markerPath moveToPoint:CGPointMake(bestAimTargetPoint.x - 12.0, bestAimTargetPoint.y)];
-                [markerPath addLineToPoint:CGPointMake(bestAimTargetPoint.x - 4.5, bestAimTargetPoint.y)];
-                [markerPath moveToPoint:CGPointMake(bestAimTargetPoint.x + 4.5, bestAimTargetPoint.y)];
-                [markerPath addLineToPoint:CGPointMake(bestAimTargetPoint.x + 12.0, bestAimTargetPoint.y)];
-                [markerPath moveToPoint:CGPointMake(bestAimTargetPoint.x, bestAimTargetPoint.y - 12.0)];
-                [markerPath addLineToPoint:CGPointMake(bestAimTargetPoint.x, bestAimTargetPoint.y - 4.5)];
-                [markerPath moveToPoint:CGPointMake(bestAimTargetPoint.x, bestAimTargetPoint.y + 4.5)];
-                [markerPath addLineToPoint:CGPointMake(bestAimTargetPoint.x, bestAimTargetPoint.y + 12.0)];
-
-                g_hostedPUBGAimTargetMarkerLayer.path = markerPath.CGPath;
-                g_hostedPUBGAimTargetMarkerLayer.hidden = NO;
-            }
-        } else {
-            if (g_hostedPUBGAimLineLayer) g_hostedPUBGAimLineLayer.hidden = YES;
-            if (g_hostedPUBGAimTargetMarkerLayer) g_hostedPUBGAimTargetMarkerLayer.hidden = YES;
-        }
-    } else {
-        if (g_hostedPUBGAimFovLayer) g_hostedPUBGAimFovLayer.hidden = YES;
-        if (g_hostedPUBGAimLineLayer) g_hostedPUBGAimLineLayer.hidden = YES;
-        if (g_hostedPUBGAimTargetMarkerLayer) g_hostedPUBGAimTargetMarkerLayer.hidden = YES;
     }
 }
 
@@ -4562,36 +3891,6 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
             g_hostedPUBGTopCountLabel = topLabel;
-
-            CAShapeLayer *aimFov = [CAShapeLayer layer];
-            aimFov.actions = noAnim;
-            aimFov.contentsScale = scale;
-            aimFov.fillColor = UIColor.clearColor.CGColor;
-            aimFov.strokeColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.40].CGColor;
-            aimFov.lineWidth = 1.0;
-            aimFov.hidden = YES;
-            [g_hostedLayer addSublayer:aimFov];
-            g_hostedPUBGAimFovLayer = aimFov;
-
-            CAShapeLayer *aimLine = [CAShapeLayer layer];
-            aimLine.actions = noAnim;
-            aimLine.contentsScale = scale;
-            aimLine.fillColor = UIColor.clearColor.CGColor;
-            aimLine.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95].CGColor;
-            aimLine.lineWidth = 1.6;
-            aimLine.hidden = YES;
-            [g_hostedLayer addSublayer:aimLine];
-            g_hostedPUBGAimLineLayer = aimLine;
-
-            CAShapeLayer *aimMarker = [CAShapeLayer layer];
-            aimMarker.actions = noAnim;
-            aimMarker.contentsScale = scale;
-            aimMarker.fillColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.35].CGColor;
-            aimMarker.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
-            aimMarker.lineWidth = 1.5;
-            aimMarker.hidden = YES;
-            [g_hostedLayer addSublayer:aimMarker];
-            g_hostedPUBGAimTargetMarkerLayer = aimMarker;
         }
     }
 
