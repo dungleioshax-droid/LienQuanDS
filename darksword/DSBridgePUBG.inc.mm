@@ -625,8 +625,8 @@ static const int kESPBoneMapG[15] = {
     6, 5, 1,          // Head, Neck, Pelvis
     13, 15, 16,       // UprR, LwrR, HandR
     34, 36, 37,       // UprL, LwrL, HandL
-    57, 58, 59,       // ThighR, CalfR, FootR (verified: 57=thigh_r, 58=calf_r, 59=foot_r)
-    53, 54, 55        // ThighL, CalfL, FootL (verified: 53=thigh_l, 54=calf_l, 55=foot_l)
+    58, 59, 60,       // ThighR, CalfR, FootR (verified: 58=thigh_r, 59=calf_r, 60=foot_r)
+    55, 56, 57        // ThighL, CalfL, FootL (verified: 55=thigh_l, 56=calf_l, 57=foot_l)
 };
 
 static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
@@ -1378,18 +1378,38 @@ static void ds_pubg_tick(void) {
                             }
 
                             // Verified PUBG Mobile 67-bone leg chains:
-                            // Right leg: thigh_r (57), calf_r (58), foot_r (59)
-                            // Left leg:  thigh_l (53), calf_l (54), foot_l (55)
-                            // (Note: bone 61 is ik_hand_root, bone 56/60 are ball/toe joints)
+                            // Left leg:  thigh_l (55), calf_l (56), foot_l (57)
+                            // Right leg: thigh_r (58), calf_r (59), foot_r (60)
+                            // (Note: bone 61 is ik_hand_root snapping to weapon; bones 53-54 are hand fingers)
+                            auto validateLeg = [&](int thigh, int calf, int foot) -> bool {
+                                DSPUBGVector t = {}, c = {}, f = {};
+                                if (!getBoneLocal(thigh, t) || !getBoneLocal(calf, c) || !getBoneLocal(foot, f)) return false;
+                                if (t.Z <= c.Z || c.Z <= f.Z) return false;
+                                if (f.Z > 45.0f) return false; // Feet must be near ground, never at weapon/waist
+                                float dx1 = t.X - c.X, dy1 = t.Y - c.Y, dz1 = t.Z - c.Z;
+                                float dx2 = c.X - f.X, dy2 = c.Y - f.Y, dz2 = c.Z - f.Z;
+                                float l1 = sqrtf(dx1 * dx1 + dy1 * dy1 + dz1 * dz1);
+                                float l2 = sqrtf(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
+                                return (l1 >= 15.0f && l1 <= 75.0f && l2 >= 15.0f && l2 <= 75.0f);
+                            };
+
+                            int legR_chain[3] = { 58, 59, 60 };
+                            int legL_chain[3] = { 55, 56, 57 };
+
+                            // If default 58-59-60 fails validation on variant mesh, test 57-58-59 fallback
+                            if (!validateLeg(legR_chain[0], legR_chain[1], legR_chain[2]) && validateLeg(57, 58, 59)) {
+                                legR_chain[0] = 57; legR_chain[1] = 58; legR_chain[2] = 59;
+                            }
+
                             DSPUBGVector legA = {}, legB = {};
-                            getBoneLocal(57, legA);
-                            getBoneLocal(53, legB);
+                            getBoneLocal(legR_chain[0], legA);
+                            getBoneLocal(legL_chain[0], legB);
                             if (legA.Y >= legB.Y) {
-                                bThighR = 57; bCalfR = 58; bFootR = 59;
-                                bThighL = 53; bCalfL = 54; bFootL = 55;
+                                bThighR = legR_chain[0]; bCalfR = legR_chain[1]; bFootR = legR_chain[2];
+                                bThighL = legL_chain[0]; bCalfL = legL_chain[1]; bFootL = legL_chain[2];
                             } else {
-                                bThighR = 53; bCalfR = 54; bFootR = 55;
-                                bThighL = 57; bCalfL = 58; bFootL = 59;
+                                bThighR = legL_chain[0]; bCalfR = legL_chain[1]; bFootR = legL_chain[2];
+                                bThighL = legR_chain[0]; bCalfL = legR_chain[1]; bFootL = legR_chain[2];
                             }
                         }
 
