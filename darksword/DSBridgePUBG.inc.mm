@@ -96,6 +96,7 @@ static uint64_t g_dspubgEpoch = 1;
 static DSPUBGProjectedItem g_dspubgItems[kDSPUBGMaxItems] = {};
 static int g_dspubgItemCount = 0;
 static uint64_t g_dspubgItemEpoch = 1;
+static uint64_t g_dspubgLocalPawn = 0;
 
 static uint64_t g_dspubgGNames = 0;
 static uint32_t g_dspubgFNameEntryOffset = 0x0C;
@@ -1071,10 +1072,10 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     if (aHidden & 0x1) return DSPUBGItemCategoryNone;
 
     // Fast reject local player pawn or anything owned/instigated by local player
-    if (localPawn) {
+    if (g_dspubgLocalPawn) {
         uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
         uint64_t own = ds_pubg_read_ptr(actor + 0x140ULL);
-        if (inst == localPawn || own == localPawn) {
+        if (inst == g_dspubgLocalPawn || own == g_dspubgLocalPawn) {
             return DSPUBGItemCategoryNone;
         }
     }
@@ -1453,6 +1454,7 @@ static void ds_pubg_reset_state(void) {
     g_dspubgLastBotCount = 0;
     g_dspubgLastBoneOff = 0;
     g_dspubgNextScan = 0;
+    g_dspubgLocalPawn = 0;
     g_dspubgTargetActive.store(false, std::memory_order_release);
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     g_dspubgPlayerCount = 0;
@@ -2341,6 +2343,7 @@ static void ds_pubg_tick(void) {
     }
 
     uint64_t localPawn = playerController ? ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerPawnOffset) : 0;
+    g_dspubgLocalPawn = localPawn;
     uint64_t cameraManager = playerController ? ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerCameraMgrOffset) : 0;
 
     DSPUBGVector camLoc = {};
