@@ -102,6 +102,22 @@ static uint64_t g_dspubgGNames = 0;
 static uint32_t g_dspubgFNameEntryOffset = 0x0C;
 static bool g_dspubgGNamesIsChunkArray = true;
 
+// Fast Actor Classification Cache: Caches scenery, pawn, and item classification
+// to eliminate repetitive GNames lookups and memory reads for thousands of level actors.
+struct DSPUBGActorCacheEntry {
+    uint64_t actor;
+    bool isScenery;
+    bool isPawn;
+    DSPUBGItemCategory itemCat;
+    char itemName[36];
+};
+static const size_t kDSPUBGActorCacheSize = 4096;
+static DSPUBGActorCacheEntry g_dspubgActorCache[kDSPUBGActorCacheSize] = {};
+
+static inline uint32_t ds_pubg_actor_cache_hash(uint64_t actor) {
+    return (uint32_t)((actor >> 4) ^ (actor >> 13)) & (uint32_t)(kDSPUBGActorCacheSize - 1);
+}
+
 // Vector and Rotator types for projection
 struct DSPUBGVector {
     float X, Y, Z;
@@ -1527,6 +1543,7 @@ static void ds_pubg_reset_state(void) {
     g_dspubgItemCount = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
     memset(g_dspubgItems, 0, sizeof(g_dspubgItems));
+    memset(g_dspubgActorCache, 0, sizeof(g_dspubgActorCache));
     ++g_dspubgEpoch;
     ++g_dspubgItemEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
@@ -1920,6 +1937,9 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
         return true;
     };
 
+    // 0. Test last resolved offset first for instant 1-read cache hit
+    if (g_dspubgLastBoneOff && testOffset(g_dspubgLastBoneOff)) return true;
+
     // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
     // Check CurrentRead index (0xA74 / 0xA78) per-mesh to ensure live pose (crouching/aiming) is never stale
     int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
@@ -2174,6 +2194,7 @@ static void ds_pubg_overlay_reset(void) {
     g_dspubgTotalBots = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
     memset(g_dspubgItems, 0, sizeof(g_dspubgItems));
+    memset(g_dspubgActorCache, 0, sizeof(g_dspubgActorCache));
     ++g_dspubgEpoch;
     ++g_dspubgItemEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
@@ -2494,10 +2515,33 @@ static void ds_pubg_tick(void) {
             if (seen == pawn) return false;
         }
 
+        uint32_t cSlot = ds_pubg_actor_cache_hash(pawn);
+        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+        if (cEntry.actor == pawn) {
+            if (cEntry.isScenery || cEntry.itemCat != DSPUBGItemCategoryNone) {
+                return false;
+            }
+        }
+
         // 0. Fast reject non-character actors by name
         char pawnName[64] = {0};
         bool hasPawnName = ds_pubg_get_actor_name(pawn, pawnName, sizeof(pawnName));
         if (hasPawnName) {
+            bool isScenery = (strstr(pawnName, "StaticMesh") || strstr(pawnName, "Foliage") ||
+                strstr(pawnName, "Landscape") || strstr(pawnName, "Building") ||
+                strstr(pawnName, "House") || strstr(pawnName, "Tree") ||
+                strstr(pawnName, "Rock") || strstr(pawnName, "Wall") ||
+                strstr(pawnName, "Fence") || strstr(pawnName, "Door") ||
+                strstr(pawnName, "Window") || strstr(pawnName, "Floor") ||
+                strstr(pawnName, "Roof") || strstr(pawnName, "Brush"));
+            if (isScenery) {
+                cEntry.actor = pawn;
+                cEntry.isScenery = true;
+                cEntry.isPawn = false;
+                cEntry.itemCat = DSPUBGItemCategoryNone;
+                return false;
+            }
+
             if (strstr(pawnName, "Bullet") || strstr(pawnName, "Proj") || strstr(pawnName, "Weapon") ||
                 strstr(pawnName, "PickUp") || strstr(pawnName, "Vehicle") || strstr(pawnName, "VH_") ||
                 strstr(pawnName, "Drop") || strstr(pawnName, "Tomb") || strstr(pawnName, "Box") ||
@@ -2507,12 +2551,7 @@ static void ds_pubg_tick(void) {
                 strstr(pawnName, "Controller") || strstr(pawnName, "Light") || strstr(pawnName, "Audio") ||
                 strstr(pawnName, "Sound") || strstr(pawnName, "Zone") || strstr(pawnName, "Fog") ||
                 strstr(pawnName, "Shell") || strstr(pawnName, "Cartridge") || strstr(pawnName, "Trace") ||
-                strstr(pawnName, "Grenade") || strstr(pawnName, "Smoke") || strstr(pawnName, "Explosion") ||
-                strstr(pawnName, "StaticMesh") || strstr(pawnName, "Foliage") || strstr(pawnName, "Landscape") ||
-                strstr(pawnName, "Building") || strstr(pawnName, "House") || strstr(pawnName, "Tree") ||
-                strstr(pawnName, "Rock") || strstr(pawnName, "Wall") || strstr(pawnName, "Fence") ||
-                strstr(pawnName, "Door") || strstr(pawnName, "Window") || strstr(pawnName, "Floor") ||
-                strstr(pawnName, "Roof") || strstr(pawnName, "Brush")) {
+                strstr(pawnName, "Grenade") || strstr(pawnName, "Smoke") || strstr(pawnName, "Explosion")) {
                 return false;
             }
         }
@@ -2748,7 +2787,7 @@ static void ds_pubg_tick(void) {
 
             // Real Skeletal Bones (16 joints, 15 bone links)
             p.hasSkeleton = false;
-        if (g_pubgEspSkeleton) {
+        if (g_pubgEspSkeleton && dist3D <= 160.0f) {
             bool skeletonDone = false;
             uint64_t boneData = 0;
             if (meshComp && ds_pubg_valid(meshComp)) {
@@ -2757,8 +2796,8 @@ static void ds_pubg_tick(void) {
                 if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
                     g_dspubgLastBoneOff = resolvedOff;
 
-                    uint8_t boneBuf[256 * 48];
-                    uint32_t needReadCount = (bCount > 256) ? 256 : bCount;
+                    uint8_t boneBuf[64 * 48];
+                    uint32_t needReadCount = (bCount > 64) ? 64 : bCount;
                     size_t readSize = (size_t)needReadCount * 48;
                     if (ds_pubg_read(boneData, boneBuf, readSize)) {
                         auto getBoneLocal = [&](int idx, DSPUBGVector &outV) -> bool {
@@ -3000,6 +3039,12 @@ static void ds_pubg_tick(void) {
             return;
         }
 
+        uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
+        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+        if (cEntry.actor == actor && cEntry.isScenery) {
+            return;
+        }
+
         if (localPawn) {
             uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
             uint64_t own = ds_pubg_read_ptr(actor + 0x140ULL);
@@ -3055,11 +3100,35 @@ static void ds_pubg_tick(void) {
             return;
         }
 
-        // 4. Now identify item / vehicle (runs only for on-screen visible actors)
+        // 4. Fast Cache-Accelerated Item / Vehicle Identification
         char displayName[36] = {0};
-        DSPUBGItemCategory cat = ds_pubg_identify_item(actor, displayName, sizeof(displayName));
-        if (cat == DSPUBGItemCategoryNone) {
-            return;
+        DSPUBGItemCategory cat = DSPUBGItemCategoryNone;
+        if (cEntry.actor == actor && cEntry.itemCat != DSPUBGItemCategoryNone) {
+            cat = cEntry.itemCat;
+            strncpy(displayName, cEntry.itemName, sizeof(displayName) - 1);
+            if (cat != DSPUBGItemCategoryVehicle) {
+                uint8_t pickedUp = ds_pubg_read_u8(actor + 0x615ULL) & 1;
+                if (pickedUp) {
+                    cEntry.isScenery = true;
+                    cEntry.itemCat = DSPUBGItemCategoryNone;
+                    return;
+                }
+            }
+        } else {
+            cat = ds_pubg_identify_item(actor, displayName, sizeof(displayName));
+            if (cat == DSPUBGItemCategoryNone) {
+                cEntry.actor = actor;
+                cEntry.isScenery = true;
+                cEntry.isPawn = false;
+                cEntry.itemCat = DSPUBGItemCategoryNone;
+                return;
+            }
+            cEntry.actor = actor;
+            cEntry.isScenery = false;
+            cEntry.isPawn = false;
+            cEntry.itemCat = cat;
+            strncpy(cEntry.itemName, displayName, sizeof(cEntry.itemName) - 1);
+            cEntry.itemName[sizeof(cEntry.itemName) - 1] = '\0';
         }
 
         if (cat == DSPUBGItemCategoryVehicle && !g_pubgEspVehicle) return;
@@ -3174,6 +3243,12 @@ static void ds_pubg_tick(void) {
                 for (uint32_t i = 0; i < actorsCount; i++) {
                     uint64_t actor = s_levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
+
+                    uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
+                    if (g_dspubgActorCache[cSlot].actor == actor && g_dspubgActorCache[cSlot].isScenery) {
+                        continue;
+                    }
+
                     if (!processPawn(actor, 0, false)) {
                         processItemOrVehicle(actor);
                     }
@@ -3201,7 +3276,7 @@ static void ds_pubg_tick(void) {
         });
     }
 
-    int copyItemCount = itemStagingCount > kDSPUBGMaxItems ? kDSPUBGMaxItems : itemStagingCount;
+    int copyItemCount = itemStagingCount > 36 ? 36 : itemStagingCount;
 
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));

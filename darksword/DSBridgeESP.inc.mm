@@ -3466,6 +3466,24 @@ static void ds_hosted_apply_pubg(void) {
     const CGFloat width = CGRectGetWidth(g_hostedLayer.bounds);
     const CGFloat height = CGRectGetHeight(g_hostedLayer.bounds);
 
+    static UIFont *s_infoFont = nil;
+    static UIFont *s_wFont = nil;
+    static UIFont *s_itemTitleFont = nil;
+    static UIFont *s_itemSubFont = nil;
+    static UIFont *s_itemFont = nil;
+    static NSMutableParagraphStyle *s_centerStyle = nil;
+    static dispatch_once_t s_pubgFontOnce;
+    dispatch_once(&s_pubgFontOnce, ^{
+        s_infoFont = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+        s_wFont = [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
+        s_itemTitleFont = [UIFont systemFontOfSize:9.0 weight:UIFontWeightBold];
+        s_itemSubFont = [UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
+        s_itemFont = [UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
+        s_centerStyle = [[NSMutableParagraphStyle alloc] init];
+        s_centerStyle.alignment = NSTextAlignmentCenter;
+        s_centerStyle.lineBreakMode = NSLineBreakByClipping;
+    });
+
     int totalEnemies = 0;
     int totalBots = 0;
     ds_pubg_get_total_counts(&totalEnemies, &totalBots);
@@ -3742,8 +3760,15 @@ static void ds_hosted_apply_pubg(void) {
                 CGFloat baseTop = showHp ? barY : topY;
                 CGFloat wLblY = baseTop - wLblH - 1.0f;
                 wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
-                wLabel.string = weaponText;
-                wLabel.foregroundColor = weaponColor;
+                NSAttributedString *attrW = [[NSAttributedString alloc] initWithString:weaponText attributes:@{
+                    NSFontAttributeName: s_wFont,
+                    NSForegroundColorAttributeName: [UIColor colorWithCGColor:weaponColor],
+                    NSStrokeColorAttributeName: [UIColor blackColor],
+                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSParagraphStyleAttributeName: s_centerStyle
+                }];
+                wLabel.string = attrW;
+                wLabel.shadowOpacity = 0.0f;
                 wLabel.hidden = NO;
             } else {
                 wLabel.hidden = YES;
@@ -3768,11 +3793,6 @@ static void ds_hosted_apply_pubg(void) {
             BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
             const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
 
-            UIFont *font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
-            NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-            style.alignment = NSTextAlignmentCenter;
-            style.lineBreakMode = NSLineBreakByClipping;
-
             // Màu Tên: Bot = Xanh nước biển, Người = Vàng
             UIColor *nameColor = ai
                 ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:1.0]
@@ -3786,39 +3806,45 @@ static void ds_hosted_apply_pubg(void) {
             if (g_pubgEspName) {
                 NSString *nameStr = [NSString stringWithUTF8String:displayName];
                 [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
-                    NSFontAttributeName: font,
+                    NSFontAttributeName: s_infoFont,
                     NSForegroundColorAttributeName: nameColor,
-                    NSParagraphStyleAttributeName: style
+                    NSStrokeColorAttributeName: [UIColor blackColor],
+                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSParagraphStyleAttributeName: s_centerStyle
                 }]];
             }
 
             if (teamStr[0] != '\0') {
                 if (attrText.length > 0) {
                     [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:@{
-                        NSFontAttributeName: font,
-                        NSParagraphStyleAttributeName: style
+                        NSFontAttributeName: s_infoFont,
+                        NSParagraphStyleAttributeName: s_centerStyle
                     }]];
                 }
                 NSString *tStr = [NSString stringWithUTF8String:teamStr];
                 [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:tStr attributes:@{
-                    NSFontAttributeName: font,
+                    NSFontAttributeName: s_infoFont,
                     NSForegroundColorAttributeName: whiteColor,
-                    NSParagraphStyleAttributeName: style
+                    NSStrokeColorAttributeName: [UIColor blackColor],
+                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSParagraphStyleAttributeName: s_centerStyle
                 }]];
             }
 
             if (g_pubgEspDist) {
                 if (attrText.length > 0) {
                     [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:@{
-                        NSFontAttributeName: font,
-                        NSParagraphStyleAttributeName: style
+                        NSFontAttributeName: s_infoFont,
+                        NSParagraphStyleAttributeName: s_centerStyle
                     }]];
                 }
                 NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
                 [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
-                    NSFontAttributeName: font,
+                    NSFontAttributeName: s_infoFont,
                     NSForegroundColorAttributeName: whiteColor,
-                    NSParagraphStyleAttributeName: style
+                    NSStrokeColorAttributeName: [UIColor blackColor],
+                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSParagraphStyleAttributeName: s_centerStyle
                 }]];
             }
 
@@ -3832,6 +3858,7 @@ static void ds_hosted_apply_pubg(void) {
             CGFloat labelW = 160.0f;
             info.frame = CGRectMake(centerX - labelW * 0.5f, bottomY + 3.0f, labelW, labelH);
             info.string = attrText;
+            info.shadowOpacity = 0.0f;
             info.hidden = NO;
         } else {
             info.hidden = YES;
@@ -4000,22 +4027,20 @@ static void ds_hosted_apply_pubg(void) {
 
         if (it.category == DSPUBGItemCategoryVehicle) {
             lbl.backgroundColor = UIColor.clearColor.CGColor;
-            lbl.shadowColor = UIColor.blackColor.CGColor;
-            lbl.shadowRadius = 2.0;
-            lbl.shadowOpacity = 0.95;
-            lbl.shadowOffset = CGSizeMake(0, 1);
+            lbl.shadowOpacity = 0.0f;
             lbl.cornerRadius = 0.0f;
             lbl.wrapped = YES;
 
             NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
-            UIFont *titleFont = [UIFont systemFontOfSize:9.0 weight:UIFontWeightBold];
-            UIFont *subFont = [UIFont systemFontOfSize:8.0 weight:UIFontWeightBold];
 
             NSString *titleStr = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
             [attr appendAttributedString:[[NSAttributedString alloc] initWithString:titleStr
                 attributes:@{
                     NSForegroundColorAttributeName: [UIColor whiteColor],
-                    NSFontAttributeName: titleFont
+                    NSFontAttributeName: s_itemTitleFont,
+                    NSStrokeColorAttributeName: [UIColor blackColor],
+                    NSStrokeWidthAttributeName: @(-2.0),
+                    NSParagraphStyleAttributeName: s_centerStyle
                 }]];
 
             NSMutableArray<NSAttributedString *> *parts = [NSMutableArray array];
@@ -4027,7 +4052,9 @@ static void ds_hosted_apply_pubg(void) {
                 [parts addObject:[[NSAttributedString alloc] initWithString:hpStr
                     attributes:@{
                         NSForegroundColorAttributeName: [UIColor colorWithRed:50/255.0 green:220/255.0 blue:50/255.0 alpha:1.0],
-                        NSFontAttributeName: subFont
+                        NSFontAttributeName: s_itemSubFont,
+                        NSStrokeColorAttributeName: [UIColor blackColor],
+                        NSStrokeWidthAttributeName: @(-2.0)
                     }]];
             }
 
@@ -4039,25 +4066,23 @@ static void ds_hosted_apply_pubg(void) {
                 [parts addObject:[[NSAttributedString alloc] initWithString:fuelStr
                     attributes:@{
                         NSForegroundColorAttributeName: [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0],
-                        NSFontAttributeName: subFont
+                        NSFontAttributeName: s_itemSubFont,
+                        NSStrokeColorAttributeName: [UIColor blackColor],
+                        NSStrokeWidthAttributeName: @(-2.0)
                     }]];
             }
 
             if (parts.count > 0) {
                 [attr appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n"
-                    attributes:@{NSFontAttributeName: titleFont}]];
+                    attributes:@{NSFontAttributeName: s_itemTitleFont, NSParagraphStyleAttributeName: s_centerStyle}]];
                 for (NSUInteger pi = 0; pi < parts.count; pi++) {
                     if (pi > 0) {
                         [attr appendAttributedString:[[NSAttributedString alloc] initWithString:@"  "
-                            attributes:@{NSFontAttributeName: subFont}]];
+                            attributes:@{NSFontAttributeName: s_itemSubFont}]];
                     }
                     [attr appendAttributedString:parts[pi]];
                 }
             }
-
-            NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-            style.alignment = NSTextAlignmentCenter;
-            [attr addAttribute:NSParagraphStyleAttributeName value:style range:NSMakeRange(0, attr.length)];
 
             CGFloat strW = (parts.count > 0) ? 140.0f : 120.0f;
             CGFloat strH = (parts.count > 0) ? 24.0f : 14.0f;
@@ -4081,13 +4106,10 @@ static void ds_hosted_apply_pubg(void) {
             CGFloat strH = 14.0f;
             lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
             lbl.fontSize = 8.5f;
-            lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
+            lbl.font = (__bridge CFTypeRef)s_itemFont;
             lbl.foregroundColor = color.CGColor;
             lbl.backgroundColor = UIColor.clearColor.CGColor;
-            lbl.shadowColor = UIColor.blackColor.CGColor;
-            lbl.shadowRadius = 1.5;
-            lbl.shadowOpacity = 0.95;
-            lbl.shadowOffset = CGSizeMake(0, 1);
+            lbl.shadowOpacity = 0.0f;
             lbl.cornerRadius = 0.0f;
             lbl.wrapped = NO;
             lbl.string = str;
@@ -4451,9 +4473,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 info.fontSize = 11.0;
                 info.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
                 info.shadowColor = [UIColor blackColor].CGColor;
-                info.shadowOpacity = 0.85f;
-                info.shadowRadius = 1.0f;
-                info.shadowOffset = CGSizeMake(0, 0);
+                info.shadowOpacity = 0.0f;
+                info.shadowRadius = 0.0f;
+                info.shadowOffset = CGSizeZero;
                 info.hidden = YES;
                 [g_hostedLayer addSublayer:info];
                 g_hostedPUBGInfoLabels[i] = info;
@@ -4482,9 +4504,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 wLabel.fontSize = 10.0;
                 wLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
                 wLabel.shadowColor = [UIColor blackColor].CGColor;
-                wLabel.shadowOpacity = 0.85f;
-                wLabel.shadowRadius = 1.0f;
-                wLabel.shadowOffset = CGSizeMake(0, 0);
+                wLabel.shadowOpacity = 0.0f;
+                wLabel.shadowRadius = 0.0f;
+                wLabel.shadowOffset = CGSizeZero;
                 wLabel.hidden = YES;
                 [g_hostedLayer addSublayer:wLabel];
                 g_hostedPUBGWeaponLabels[i] = wLabel;
@@ -4503,9 +4525,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 arrowText.fontSize = 10.5;
                 arrowText.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:10.5 weight:UIFontWeightHeavy];
                 arrowText.shadowColor = [UIColor blackColor].CGColor;
-                arrowText.shadowOpacity = 0.9f;
-                arrowText.shadowRadius = 1.5f;
-                arrowText.shadowOffset = CGSizeMake(0, 0);
+                arrowText.shadowOpacity = 0.0f;
+                arrowText.shadowRadius = 0.0f;
+                arrowText.shadowOffset = CGSizeZero;
                 arrowText.hidden = YES;
                 [g_hostedLayer addSublayer:arrowText];
                 g_hostedPUBGArrowTextLayers[i] = arrowText;
@@ -4518,9 +4540,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 itemLbl.alignmentMode = kCAAlignmentCenter;
                 itemLbl.wrapped = NO;
                 itemLbl.shadowColor = UIColor.blackColor.CGColor;
-                itemLbl.shadowRadius = 2.0;
-                itemLbl.shadowOpacity = 0.85;
-                itemLbl.shadowOffset = CGSizeMake(0, 1);
+                itemLbl.shadowRadius = 0.0;
+                itemLbl.shadowOpacity = 0.0;
+                itemLbl.shadowOffset = CGSizeZero;
                 itemLbl.hidden = YES;
                 [g_hostedLayer addSublayer:itemLbl];
                 g_hostedPUBGItemLabels[i] = itemLbl;
@@ -4544,9 +4566,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.foregroundColor = [UIColor colorWithRed:239.0/255.0 green:68.0/255.0 blue:68.0/255.0 alpha:1.0].CGColor;
             topLabel.backgroundColor = UIColor.clearColor.CGColor;
             topLabel.shadowColor = UIColor.blackColor.CGColor;
-            topLabel.shadowRadius = 2.0;
-            topLabel.shadowOpacity = 0.85;
-            topLabel.shadowOffset = CGSizeMake(0, 1);
+            topLabel.shadowRadius = 0.0;
+            topLabel.shadowOpacity = 0.0;
+            topLabel.shadowOffset = CGSizeZero;
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
             g_hostedPUBGTopCountLabel = topLabel;
