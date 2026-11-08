@@ -969,6 +969,9 @@ typedef struct {
     bool isKnocked;
     bool hasSkeleton;
     DSPUBGJoint skeleton[16];
+    float camRelX;
+    float camRelY;
+    float camRelZ;
 } DSPUBGProjectedPlayer;
 
 static const int kDSPUBGMaxPlayers = 96;
@@ -976,6 +979,7 @@ static float g_dspubgMaxDistance = 400.0f;
 static BOOL g_pubgEspBox = YES;
 static BOOL g_pubgEspSkeleton = YES;
 static BOOL g_pubgEspLine = YES;
+static BOOL g_pubgEspArrow = YES;
 static BOOL g_pubgEspHealth = YES;
 static BOOL g_pubgEspName = YES;
 static BOOL g_pubgEspDist = YES;

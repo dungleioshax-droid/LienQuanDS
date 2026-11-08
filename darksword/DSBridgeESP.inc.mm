@@ -922,7 +922,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UIButton *_resetButton;
     // Modern UI Containers
     UIView *_masterCard;
-    UIView *_pubgCards[7];
+    UIView *_pubgCards[8];
     UIView *_scanCard;
     // PUBG ESP controls
     UILabel *_pubgBoxLabel;
@@ -931,6 +931,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UISwitch *_pubgSkeletonSwitch;
     UILabel *_pubgLineLabel;
     UISwitch *_pubgLineSwitch;
+    UILabel *_pubgArrowLabel;
+    UISwitch *_pubgArrowSwitch;
     UILabel *_pubgHealthLabel;
     UISwitch *_pubgHealthSwitch;
     UILabel *_pubgNameLabel;
@@ -983,7 +985,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _masterCard.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.25].CGColor;
     [_panelView addSubview:_masterCard];
 
-    for (int ci = 0; ci < 7; ci++) {
+    for (int ci = 0; ci < 8; ci++) {
         UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
         card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
         card.layer.cornerRadius = 8.0;
@@ -1225,6 +1227,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _pubgDistSwitch = pubgCreateSwitch(@selector(dsPubgDistChanged:));
     _pubgBotLabel = pubgCreateLabel(@"Hiện Bot AI");
     _pubgBotSwitch = pubgCreateSwitch(@selector(dsPubgBotChanged:));
+    _pubgArrowLabel = pubgCreateLabel(@"Mũi Tên");
+    _pubgArrowSwitch = pubgCreateSwitch(@selector(dsPubgArrowChanged:));
 
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
@@ -1305,6 +1309,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgDistSwitch.on = g_pubgEspDist;
         if ([defaults objectForKey:@"pubg_bot"] != nil) g_pubgEspBot = [defaults boolForKey:@"pubg_bot"];
         _pubgBotSwitch.on = g_pubgEspBot;
+        if ([defaults objectForKey:@"pubg_arrow"] != nil) g_pubgEspArrow = [defaults boolForKey:@"pubg_arrow"];
+        _pubgArrowSwitch.on = g_pubgEspArrow;
         if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
         _pubgVehicleSwitch.on = g_pubgEspVehicle;
     } else {
@@ -1449,6 +1455,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgDistSwitch.hidden = NO;
         _pubgBotLabel.hidden = NO;
         _pubgBotSwitch.hidden = NO;
+        _pubgArrowLabel.hidden = NO;
+        _pubgArrowSwitch.hidden = NO;
         _pubgVehicleLabel.hidden = YES;
         _pubgVehicleSwitch.hidden = YES;
 
@@ -1488,12 +1496,17 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 5.0, cardW - 48.0, 20.0);
         layoutCardSwitch(_pubgDistSwitch, col2X + cardW, y2 + cardH * 0.5);
 
-        // Row 4: Hiện Bot AI
+        // Row 4: Hiện Bot AI & Mũi Tên
         CGFloat y3 = 174.0;
-        _pubgCards[6].frame = CGRectMake(col1X, y3, panelW - 24.0, cardH);
+        _pubgCards[6].frame = CGRectMake(col1X, y3, cardW, cardH);
         _pubgCards[6].hidden = NO;
-        _pubgBotLabel.frame = CGRectMake(col1X + 10.0, y3 + 5.0, panelW - 80.0, 20.0);
-        layoutCardSwitch(_pubgBotSwitch, panelW - 12.0, y3 + cardH * 0.5);
+        _pubgBotLabel.frame = CGRectMake(col1X + 8.0, y3 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgBotSwitch, col1X + cardW, y3 + cardH * 0.5);
+
+        _pubgCards[7].frame = CGRectMake(col2X, y3, cardW, cardH);
+        _pubgCards[7].hidden = NO;
+        _pubgArrowLabel.frame = CGRectMake(col2X + 8.0, y3 + 5.0, cardW - 48.0, 20.0);
+        layoutCardSwitch(_pubgArrowSwitch, col2X + cardW, y3 + cardH * 0.5);
 
         // Row 5: Scan Distance Card (Khoảng cách hiện địch)
         CGFloat y4 = 208.0;
@@ -1518,7 +1531,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [_panelView bringSubviewToFront:_resetButton];
     } else {
         _masterCard.hidden = YES;
-        for (int ci = 0; ci < 7; ci++) _pubgCards[ci].hidden = YES;
+        for (int ci = 0; ci < 8; ci++) _pubgCards[ci].hidden = YES;
         _scanCard.hidden = YES;
         _espLabel.text = @"ESP";
         _espLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
@@ -1540,6 +1553,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgDistSwitch.hidden = YES;
         _pubgBotLabel.hidden = YES;
         _pubgBotSwitch.hidden = YES;
+        _pubgArrowLabel.hidden = YES;
+        _pubgArrowSwitch.hidden = YES;
         _pubgVehicleLabel.hidden = YES;
         _pubgVehicleSwitch.hidden = YES;
 
@@ -1745,6 +1760,11 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bot"];
 }
 
+- (void)dsPubgArrowChanged:(UISwitch *)sender {
+    g_pubgEspArrow = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_arrow"];
+}
+
 - (void)dsPubgVehicleChanged:(UISwitch *)sender {
     g_pubgEspVehicle = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
@@ -1813,6 +1833,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [_pubgNameSwitch setOn:YES animated:YES];
         [_pubgDistSwitch setOn:YES animated:YES];
         [_pubgBotSwitch setOn:YES animated:YES];
+        [_pubgArrowSwitch setOn:YES animated:YES];
         [_zoomSlider setValue:400.0f animated:YES];
         g_pubgEspBox = YES;
         g_pubgEspSkeleton = YES;
@@ -1821,6 +1842,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         g_pubgEspName = YES;
         g_pubgEspDist = YES;
         g_pubgEspBot = YES;
+        g_pubgEspArrow = YES;
         g_dspubgMaxDistance = 400.0f;
 
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -1831,6 +1853,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [defaults setBool:YES forKey:@"pubg_name"];
         [defaults setBool:YES forKey:@"pubg_dist"];
         [defaults setBool:YES forKey:@"pubg_bot"];
+        [defaults setBool:YES forKey:@"pubg_arrow"];
 
         [self dsUpdateValueLabel];
         return;
@@ -3063,6 +3086,8 @@ static CATextLayer *g_hostedPUBGInfoLabels[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBgLayers[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
+static CAShapeLayer *g_hostedPUBGArrowLayers[kDSPUBGMaxPlayers] = {};
+static CATextLayer *g_hostedPUBGArrowTextLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -3076,6 +3101,8 @@ static void ds_hosted_pubg_hide_all(void) {
         if (g_hostedPUBGHealthBgLayers[i] && !g_hostedPUBGHealthBgLayers[i].hidden) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i] && !g_hostedPUBGHealthBarLayers[i].hidden) g_hostedPUBGHealthBarLayers[i].hidden = YES;
         if (g_hostedPUBGWeaponLabels[i] && !g_hostedPUBGWeaponLabels[i].hidden) g_hostedPUBGWeaponLabels[i].hidden = YES;
+        if (g_hostedPUBGArrowLayers[i] && !g_hostedPUBGArrowLayers[i].hidden) g_hostedPUBGArrowLayers[i].hidden = YES;
+        if (g_hostedPUBGArrowTextLayers[i] && !g_hostedPUBGArrowTextLayers[i].hidden) g_hostedPUBGArrowTextLayers[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -3119,10 +3146,14 @@ static void ds_hosted_apply_pubg(void) {
         CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
         CALayer *hpBar = g_hostedPUBGHealthBarLayers[i];
         CATextLayer *wLabel = g_hostedPUBGWeaponLabels[i];
+        CAShapeLayer *arrow = g_hostedPUBGArrowLayers[i];
+        CATextLayer *arrowText = g_hostedPUBGArrowTextLayers[i];
         if (!box || !line || !info || !hpBar) continue;
 
-        if (!p.isVisible || p.screenX < -200 || p.screenX > width + 200 ||
-            p.screenY < -200 || p.screenY > height + 200) {
+        BOOL ai = p.isAI;
+
+        if (!p.isVisible || p.screenX < -150 || p.screenX > width + 150 ||
+            p.screenY < -150 || p.screenY > height + 150) {
             box.hidden = YES;
             if (skel) skel.hidden = YES;
             line.hidden = YES;
@@ -3131,10 +3162,122 @@ static void ds_hosted_apply_pubg(void) {
             if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
             if (wLabel) wLabel.hidden = YES;
+
+            if (!g_pubgEspArrow || !arrow || !arrowText) {
+                if (arrow) arrow.hidden = YES;
+                if (arrowText) arrowText.hidden = YES;
+                continue;
+            }
+
+            if (ai && !g_pubgEspBot) {
+                arrow.hidden = YES;
+                arrowText.hidden = YES;
+                continue;
+            }
+
+            if (ai) activeBotCount++;
+            else activeEnemyCount++;
+
+            // 3D Direction Arrow around screen boundary
+            float tx = p.camRelX;
+            float ty = p.camRelY;
+            float tz = p.camRelZ;
+
+            float dirX = 0.0f;
+            float dirY = 0.0f;
+            if (tz > 0.1f) {
+                dirX = tx;
+                dirY = -ty; // Negative Y is UP in screen coords
+            } else {
+                float h = hypotf(tx, tz);
+                if (h < 0.001f) h = 0.001f;
+                dirX = tx / h;
+                dirY = -tz / h; // When tz < 0, -tz > 0 (points DOWN/behind)
+            }
+
+            float dirLen = hypotf(dirX, dirY);
+            if (dirLen < 0.001f) {
+                dirX = 0.0f;
+                dirY = 1.0f;
+            } else {
+                dirX /= dirLen;
+                dirY /= dirLen;
+            }
+
+            // Screen boundary clamping with safe device margins
+            const CGFloat padX = 38.0f;
+            const CGFloat padY = 32.0f;
+            CGFloat minX = padX;
+            CGFloat maxX = width - padX;
+            CGFloat minY = padY;
+            CGFloat maxY = height - padY;
+            CGFloat cx = width * 0.5f;
+            CGFloat cy = height * 0.5f;
+
+            CGFloat tx_bound = (dirX > 0.0001f) ? (maxX - cx) / dirX : ((dirX < -0.0001f) ? (minX - cx) / dirX : 1e9f);
+            CGFloat ty_bound = (dirY > 0.0001f) ? (maxY - cy) / dirY : ((dirY < -0.0001f) ? (minY - cy) / dirY : 1e9f);
+            CGFloat t = fminf(tx_bound, ty_bound);
+
+            CGFloat arrowTipX = cx + t * dirX;
+            CGFloat arrowTipY = cy + t * dirY;
+            CGFloat angle = atan2f(dirY, dirX);
+
+            CGFloat arrowLen = 14.0f;
+            CGFloat arrowHalfW = 6.0f;
+            CGFloat cosA = cosf(angle);
+            CGFloat sinA = sinf(angle);
+
+            CGFloat baseCX = arrowTipX - cosA * arrowLen;
+            CGFloat baseCY = arrowTipY - sinA * arrowLen;
+            CGFloat normX = -sinA;
+            CGFloat normY = cosA;
+
+            CGFloat p1X = baseCX + normX * arrowHalfW;
+            CGFloat p1Y = baseCY + normY * arrowHalfW;
+            CGFloat p2X = baseCX - normX * arrowHalfW;
+            CGFloat p2Y = baseCY - normY * arrowHalfW;
+
+            UIBezierPath *arrowPath = [UIBezierPath bezierPath];
+            [arrowPath moveToPoint:CGPointMake(arrowTipX, arrowTipY)];
+            [arrowPath addLineToPoint:CGPointMake(p1X, p1Y)];
+            [arrowPath addLineToPoint:CGPointMake(p2X, p2Y)];
+            [arrowPath closePath];
+
+            arrow.path = arrowPath.CGPath;
+
+            UIColor *arrowColor;
+            if (ai) {
+                arrowColor = [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.95];
+            } else if (p.isKnocked) {
+                arrowColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:0.95];
+            } else if (p.distanceMeters < 50.0f) {
+                arrowColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95];
+            } else {
+                arrowColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:0.95];
+            }
+
+            arrow.fillColor = arrowColor.CGColor;
+            arrow.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+            arrow.lineWidth = 1.0;
+            arrow.hidden = NO;
+
+            // Distance text label placed inside the arrow (towards screen center)
+            CGFloat textOffset = arrowLen + 11.0f;
+            CGFloat textCX = arrowTipX - cosA * textOffset;
+            CGFloat textCY = arrowTipY - sinA * textOffset;
+
+            CGFloat lblW = 46.0f;
+            CGFloat lblH = 14.0f;
+            arrowText.frame = CGRectMake(textCX - lblW * 0.5f, textCY - lblH * 0.5f, lblW, lblH);
+            arrowText.string = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
+            arrowText.foregroundColor = arrowColor.CGColor;
+            arrowText.hidden = NO;
             continue;
         }
 
-        BOOL ai = p.isAI;
+        // On-screen player: hide arrow
+        if (arrow) arrow.hidden = YES;
+        if (arrowText) arrowText.hidden = YES;
 
         // Honor user filters
         if (ai && !g_pubgEspBot) {
@@ -3446,6 +3589,8 @@ static void ds_hosted_apply_pubg(void) {
         if (g_hostedPUBGHealthBgLayers[i]) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i]) g_hostedPUBGHealthBarLayers[i].hidden = YES;
         if (g_hostedPUBGWeaponLabels[i]) g_hostedPUBGWeaponLabels[i].hidden = YES;
+        if (g_hostedPUBGArrowLayers[i]) g_hostedPUBGArrowLayers[i].hidden = YES;
+        if (g_hostedPUBGArrowTextLayers[i]) g_hostedPUBGArrowTextLayers[i].hidden = YES;
     }
 
     if (g_hostedPUBGTopCountLabel) {
@@ -3865,6 +4010,27 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 wLabel.hidden = YES;
                 [g_hostedLayer addSublayer:wLabel];
                 g_hostedPUBGWeaponLabels[i] = wLabel;
+
+                CAShapeLayer *arrow = [CAShapeLayer layer];
+                arrow.actions = noAnim;
+                arrow.contentsScale = scale;
+                arrow.hidden = YES;
+                [g_hostedLayer addSublayer:arrow];
+                g_hostedPUBGArrowLayers[i] = arrow;
+
+                CATextLayer *arrowText = [CATextLayer layer];
+                arrowText.actions = noAnim;
+                arrowText.contentsScale = scale;
+                arrowText.alignmentMode = kCAAlignmentCenter;
+                arrowText.fontSize = 10.5;
+                arrowText.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:10.5 weight:UIFontWeightHeavy];
+                arrowText.shadowColor = [UIColor blackColor].CGColor;
+                arrowText.shadowOpacity = 0.9f;
+                arrowText.shadowRadius = 1.5f;
+                arrowText.shadowOffset = CGSizeMake(0, 0);
+                arrowText.hidden = YES;
+                [g_hostedLayer addSublayer:arrowText];
+                g_hostedPUBGArrowTextLayers[i] = arrowText;
             }
 
             CAShapeLayer *topBg = [CAShapeLayer layer];

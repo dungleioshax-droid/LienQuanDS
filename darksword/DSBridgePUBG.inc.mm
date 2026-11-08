@@ -1454,95 +1454,117 @@ static void ds_pubg_tick(void) {
             total360EnemyCount++;
         }
 
-        float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
-        float actorH = 175.0f;
-        if (extZ >= 30.0f && extZ <= 160.0f) {
-            actorH = extZ * 2.0f;
-        }
-
-        DSPUBGVector pos = rootLoc;
-        float halfH = actorH * 0.5f;
-        DSPUBGVector bot = pos; bot.Z -= halfH;
-        DSPUBGVector top = pos; top.Z += halfH;
-
-        float bx = 0, by = 0, bd = 0;
-        float tx = 0, ty = 0, td = 0;
-        bool okB = ds_pubg_cam_basis_project(basis, bot, bx, by, bd);
-        bool okT = ds_pubg_cam_basis_project(basis, top, tx, ty, td);
-
-        float sx = 0, sy = 0, dist = dist3D;
-        if (!okB && !okT) {
-            if (!ds_pubg_cam_basis_project(basis, pos, sx, sy, dist)) {
-                return; // Off-screen: already counted in 360 radar, skip on-screen 2D drawing
-            }
-        } else {
-            dist = okB ? bd : td;
-        }
-
-        float topY = 0, bottomY = 0, boxH = 0, centerX = 0;
-        if (okB && okT) {
-            topY = fminf(ty, by);
-            bottomY = fmaxf(ty, by);
-            boxH = bottomY - topY;
-            centerX = (tx + bx) * 0.5f;
-        } else {
-            float tz = dist * 100.0f;
-            if (tz < 10.0f) tz = 10.0f;
-            boxH = (actorH / tz) * basis.k;
-            topY = sy - boxH * 0.5f;
-            centerX = sx;
-        }
-
-        if (boxH < 8.0f) boxH = 8.0f;
-        if (boxH > screenH * 2.0f) return;
-        float boxW = boxH * 0.5f;
-        float boxX = centerX - boxW * 0.5f;
-
-        if (centerX + boxW * 0.5f < -60.0f || centerX - boxW * 0.5f > screenW + 60.0f ||
-            topY > screenH + 60.0f || topY + boxH < -60.0f) {
-            return;
-        }
+        // Camera-relative coordinates for 3D arrow indicator & projection:
+        float camRelX = dx * basis.m10 + dy * basis.m11 + dz * basis.m12; // Camera Right
+        float camRelY = dx * basis.m20 + dy * basis.m21 + dz * basis.m22; // Camera Up
+        float camRelZ = dx * basis.m00 + dy * basis.m01 + dz * basis.m02; // Camera Forward
 
         DSPUBGProjectedPlayer p = {};
-        p.screenX = boxX;
-        p.screenY = topY;
-        p.headX = centerX;
-        p.headY = topY + boxH * 0.08f;
-        p.boxWidth = boxW;
-        p.boxHeight = boxH;
-        p.distanceMeters = dist;
+        p.distanceMeters = dist3D;
         p.health = health;
         p.healthMax = (healthMax >= 20.0f) ? healthMax : 100.0f;
         p.teamId = teamId;
         p.isAI = isAI;
         p.isDead = false;
         p.isKnocked = isKnocked;
-        p.isVisible = true;
+        p.isVisible = false;
         p.isVehicle = false;
         p.actorPtr = pawn;
         p.playerKey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
+        p.camRelX = camRelX;
+        p.camRelY = camRelY;
+        p.camRelZ = camRelZ;
 
-        int32_t wid = ds_pubg_read_equipped_weapon_id(pawn);
-        if (wid > 0) {
-            const char *wName = ds_pubg_weapon_name_by_id(wid);
-            if (wName) {
-                strncpy(p.weaponName, wName, sizeof(p.weaponName) - 1);
-            } else {
-                snprintf(p.weaponName, sizeof(p.weaponName), "Gun %d", wid);
+        bool onScreen = false;
+        float boxX = 0, boxY = 0, boxW = 0, boxH = 0, centerX = 0, topY = 0;
+
+        if (camRelZ > 10.0f) {
+            float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
+            float actorH = 175.0f;
+            if (extZ >= 30.0f && extZ <= 160.0f) {
+                actorH = extZ * 2.0f;
+            }
+
+            DSPUBGVector pos = rootLoc;
+            float halfH = actorH * 0.5f;
+            DSPUBGVector bot = pos; bot.Z -= halfH;
+            DSPUBGVector top = pos; top.Z += halfH;
+
+            float bx = 0, by = 0, bd = 0;
+            float tx = 0, ty = 0, td = 0;
+            bool okB = ds_pubg_cam_basis_project(basis, bot, bx, by, bd);
+            bool okT = ds_pubg_cam_basis_project(basis, top, tx, ty, td);
+
+            float sx = 0, sy = 0, dist = dist3D;
+            bool hasProj = false;
+            if (okB || okT) {
+                hasProj = true;
+                dist = okB ? bd : td;
+            } else if (ds_pubg_cam_basis_project(basis, pos, sx, sy, dist)) {
+                hasProj = true;
+            }
+
+            if (hasProj) {
+                float bottomY = 0;
+                if (okB && okT) {
+                    topY = fminf(ty, by);
+                    bottomY = fmaxf(ty, by);
+                    boxH = bottomY - topY;
+                    centerX = (tx + bx) * 0.5f;
+                } else {
+                    float tz = dist * 100.0f;
+                    if (tz < 10.0f) tz = 10.0f;
+                    boxH = (actorH / tz) * basis.k;
+                    topY = sy - boxH * 0.5f;
+                    centerX = sx;
+                    bottomY = topY + boxH;
+                }
+
+                if (boxH < 8.0f) boxH = 8.0f;
+                if (boxH <= screenH * 2.0f) {
+                    boxW = boxH * 0.5f;
+                    boxX = centerX - boxW * 0.5f;
+                    boxY = topY;
+
+                    // Visible if inside screen bounds
+                    if (centerX + boxW * 0.5f >= 0.0f && centerX - boxW * 0.5f <= screenW &&
+                        topY + boxH >= 0.0f && topY <= screenH) {
+                        onScreen = true;
+                        p.screenX = boxX;
+                        p.screenY = topY;
+                        p.headX = centerX;
+                        p.headY = topY + boxH * 0.08f;
+                        p.boxWidth = boxW;
+                        p.boxHeight = boxH;
+                        p.distanceMeters = dist;
+                        p.isVisible = true;
+                    }
+                }
             }
         }
 
-        if (!ds_pubg_read_fstring_nick(pawn + kDSPUBGCharacterPlayerNameOffset, p.name, sizeof(p.name))) {
-            if (ps && ds_pubg_valid(ps)) {
-                ds_pubg_read_fstring_nick(ps + kDSPUBGPlayerStatePlayerNameOffset, p.name, sizeof(p.name));
+        if (onScreen) {
+            int32_t wid = ds_pubg_read_equipped_weapon_id(pawn);
+            if (wid > 0) {
+                const char *wName = ds_pubg_weapon_name_by_id(wid);
+                if (wName) {
+                    strncpy(p.weaponName, wName, sizeof(p.weaponName) - 1);
+                } else {
+                    snprintf(p.weaponName, sizeof(p.weaponName), "Gun %d", wid);
+                }
             }
-        }
-        if (p.name[0] == '\0') {
-            strncpy(p.name, isAI ? "Bot" : "Enemy", sizeof(p.name) - 1);
-        }
 
-        // Real Skeletal Bones (16 joints, 15 bone links)
-        p.hasSkeleton = false;
+            if (!ds_pubg_read_fstring_nick(pawn + kDSPUBGCharacterPlayerNameOffset, p.name, sizeof(p.name))) {
+                if (ps && ds_pubg_valid(ps)) {
+                    ds_pubg_read_fstring_nick(ps + kDSPUBGPlayerStatePlayerNameOffset, p.name, sizeof(p.name));
+                }
+            }
+            if (p.name[0] == '\0') {
+                strncpy(p.name, isAI ? "Bot" : "Enemy", sizeof(p.name) - 1);
+            }
+
+            // Real Skeletal Bones (16 joints, 15 bone links)
+            p.hasSkeleton = false;
         if (g_pubgEspSkeleton) {
             bool skeletonDone = false;
             uint64_t boneData = 0;
@@ -1846,6 +1868,7 @@ static void ds_pubg_tick(void) {
                 p.hasSkeleton = true;
             }
         }
+    }
 
         if (publishedCount < kDSPUBGMaxPlayers) {
             staging[publishedCount++] = p;
@@ -1921,6 +1944,12 @@ static void ds_pubg_tick(void) {
 
     g_dspubgLastEnemyCount = enemyCount;
     g_dspubgLastBotCount = botCount;
+
+    if (publishedCount > 1) {
+        std::sort(staging, staging + publishedCount, [](const DSPUBGProjectedPlayer &a, const DSPUBGProjectedPlayer &b) {
+            return a.distanceMeters < b.distanceMeters;
+        });
+    }
 
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));
