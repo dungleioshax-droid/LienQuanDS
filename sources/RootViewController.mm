@@ -1835,11 +1835,11 @@ static BOOL IsPUBGProcessRunning(void) {
     }
     if (_warningSubLabel) {
         _warningSubLabel.text = isEN ?
-            @"Please open PUBG Mobile before launching HUD." :
-            @"Hãy mở PUBG Mobile trước khi bật HUD để hệ thống có thể kết nối vào game.";
+            @"Tap button below to launch PUBG Mobile and auto-activate HUD!" :
+            @"Bấm nút dưới để mở PUBG Mobile và tự động kích hoạt HUD vào game!";
     }
     if (_warningLaunchGameBtn) {
-        [_warningLaunchGameBtn setTitle:isEN ? @"Launch PUBG Mobile" : @"Vào Game PUBG" forState:UIControlStateNormal];
+        [_warningLaunchGameBtn setTitle:isEN ? @"🚀 Launch Game & Auto Enable HUD" : @"🚀 Vào Game & Tự Động Bật HUD" forState:UIControlStateNormal];
     }
     if (_warningProceedBtn) {
         [_warningProceedBtn setTitle:isEN ? @"Already In-Game (Enable HUD)" : @"Đã Trong Game (Bật HUD)" forState:UIControlStateNormal];
@@ -1851,21 +1851,96 @@ static BOOL IsPUBGProcessRunning(void) {
 
 #pragma mark - Red Warning Popup (Vui lòng vào game trước)
 
-- (void)openPUBGGameApp
+- (BOOL)launchPUBGGameProcess
 {
-    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
-    NSArray *schemes = @[@"pubgmobile://", @"shadowtracker://", @"vngpubg://", @"pubg://"];
+    NSArray<NSString *> *bundleIDs = @[
+        @"com.vng.pubgmobile",
+        @"com.tencent.ig",
+        @"com.pubg.krmobile",
+        @"com.rekoo.pubgm",
+        @"com.pubg.imobile",
+        @"com.tencent.iglite",
+        @"com.epicgames.ShadowTrackerExtra",
+        @"com.tencent.tmgp.pubgm",
+        @"com.tencent.tmgp.pubgmhd"
+    ];
+
+    // Method 1: LSApplicationWorkspace (direct Bundle ID launch)
+    Class wsClass = objc_getClass("LSApplicationWorkspace");
+    if (wsClass) {
+        id workspace = [wsClass performSelector:@selector(defaultWorkspace)];
+        SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
+        if (workspace && [workspace respondsToSelector:openSel]) {
+            typedef BOOL (*OpenFunc)(id, SEL, NSString *);
+            OpenFunc fn = (OpenFunc)[workspace methodForSelector:openSel];
+            if (fn) {
+                for (NSString *bid in bundleIDs) {
+                    if (fn(workspace, openSel, bid)) {
+                        return YES;
+                    }
+                }
+            }
+        }
+    }
+
+    // Method 2: SpringBoardServices private launch API
+    void *sbs = dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
+    if (sbs) {
+        typedef int (*SBSLaunchFunc)(CFStringRef, Boolean);
+        SBSLaunchFunc launchFunc = (SBSLaunchFunc)dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
+        if (launchFunc) {
+            for (NSString *bid in bundleIDs) {
+                if (launchFunc((__bridge CFStringRef)bid, false) == 0) {
+                    return YES;
+                }
+            }
+        }
+    }
+
+    // Method 3: URL Schemes
+    NSArray<NSString *> *schemes = @[
+        @"vngpubg://",
+        @"pubgmobile://",
+        @"shadowtracker://",
+        @"pubg://",
+        @"fb309539426210664://",
+        @"fb177278079603038://"
+    ];
     UIApplication *app = [UIApplication sharedApplication];
     for (NSString *s in schemes) {
         NSURL *url = [NSURL URLWithString:s];
         if ([app canOpenURL:url]) {
             [app openURL:url options:@{} completionHandler:nil];
-            [self dismissWarningPopup];
-            return;
+            return YES;
         }
     }
+
+    // Fallback force-open
+    [app openURL:[NSURL URLWithString:@"vngpubg://"] options:@{} completionHandler:nil];
     [app openURL:[NSURL URLWithString:@"pubgmobile://"] options:@{} completionHandler:nil];
+    return YES;
+}
+
+- (void)openPUBGAndAutoEnableHUD
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
     [self dismissWarningPopup];
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile & auto-activating HUD..." : @"Đang mở PUBG Mobile & tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+
+    // 1. Immediately trigger HUD enable in DarkPubg
+    [self doEnableHUD];
+
+    // 2. Launch PUBG Mobile to bring game to foreground
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self launchPUBGGameProcess];
+    });
+}
+
+- (void)openPUBGGameApp
+{
+    [self openPUBGAndAutoEnableHUD];
 }
 
 - (void)proceedEnableHUDTapped:(UIButton *)sender
@@ -1924,7 +1999,7 @@ static BOOL IsPUBGProcessRunning(void) {
         _warningLaunchGameBtn = [UIButton buttonWithType:UIButtonTypeSystem];
         _warningLaunchGameBtn.translatesAutoresizingMaskIntoConstraints = NO;
         [_warningLaunchGameBtn setTitleColor:[UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0] forState:UIControlStateNormal];
-        _warningLaunchGameBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
+        _warningLaunchGameBtn.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightBold];
         _warningLaunchGameBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
         _warningLaunchGameBtn.layer.cornerRadius = 12.0f;
         [_warningLaunchGameBtn addTarget:self action:@selector(openPUBGGameApp) forControlEvents:UIControlEventTouchUpInside];
@@ -1953,7 +2028,7 @@ static BOOL IsPUBGProcessRunning(void) {
         [NSLayoutConstraint activateConstraints:@[
             [card.centerXAnchor constraintEqualToAnchor:_warningPopupOverlay.centerXAnchor],
             [card.centerYAnchor constraintEqualToAnchor:_warningPopupOverlay.centerYAnchor],
-            [card.widthAnchor constraintEqualToConstant:310.0f],
+            [card.widthAnchor constraintEqualToConstant:324.0f],
 
             [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:20.0f],
             [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
@@ -1969,13 +2044,13 @@ static BOOL IsPUBGProcessRunning(void) {
             [_warningSubLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
 
             [_warningLaunchGameBtn.topAnchor constraintEqualToAnchor:_warningSubLabel.bottomAnchor constant:18.0f],
-            [_warningLaunchGameBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0f],
-            [_warningLaunchGameBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0f],
-            [_warningLaunchGameBtn.heightAnchor constraintEqualToConstant:40.0f],
+            [_warningLaunchGameBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
+            [_warningLaunchGameBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
+            [_warningLaunchGameBtn.heightAnchor constraintEqualToConstant:42.0f],
 
             [_warningProceedBtn.topAnchor constraintEqualToAnchor:_warningLaunchGameBtn.bottomAnchor constant:10.0f],
-            [_warningProceedBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0f],
-            [_warningProceedBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0f],
+            [_warningProceedBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
+            [_warningProceedBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
             [_warningProceedBtn.heightAnchor constraintEqualToConstant:38.0f],
 
             [_warningDismissBtn.topAnchor constraintEqualToAnchor:_warningProceedBtn.bottomAnchor constant:6.0f],

@@ -37,6 +37,17 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>vngpubg</string>
+		<string>pubgmobile</string>
+		<string>shadowtracker</string>
+		<string>pubg</string>
+		<string>tencent1106467070</string>
+		<string>wx488e0e5889c0d59d</string>
+		<string>fb177278079603038</string>
+		<string>fb309539426210664</string>
+	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>NSHumanReadableCopyright</key>
