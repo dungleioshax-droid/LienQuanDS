@@ -3109,11 +3109,11 @@ static void ds_hosted_apply_pubg(void) {
         else activeEnemyCount++;
 
         // Render colors:
-        // Player: White 0xFFFFFFFF, width 1.5
-        // AI / Bot: Warm Yellow 0xFFFFD040, width 2.0
+        // Bot (AI): Xanh biển (Ocean Blue) [0, 170, 255]
+        // Player (Người): Vàng (Bright Yellow) [255, 214, 10]
         CGColorRef mainColor = ai
-            ? [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.95].CGColor
-            : [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+            ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.95].CGColor
+            : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:0.95].CGColor;
 
         CGFloat centerX = p.screenX + p.boxWidth * 0.5f;
         CGFloat topY = p.screenY;
@@ -3137,15 +3137,15 @@ static void ds_hosted_apply_pubg(void) {
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
             line.path = linePath.CGPath;
             line.strokeColor = ai
-                ? [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.85].CGColor
-                : [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+                ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.85].CGColor
+                : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:0.85].CGColor;
             line.lineWidth = 1.2;
             line.hidden = NO;
         } else {
             line.hidden = YES;
         }
 
-        // 4. AI Mark: inverted yellow triangle on top of box for AI only
+        // 4. AI Mark: inverted blue triangle on top of box for AI only
         if (ai && aiMark) {
             CGFloat tx = centerX;
             CGFloat ty = topY - 5.0f;
@@ -3155,7 +3155,7 @@ static void ds_hosted_apply_pubg(void) {
             [triPath addLineToPoint:CGPointMake(tx + 7.0f, ty)];
             [triPath closePath];
             aiMark.path = triPath.CGPath;
-            aiMark.fillColor = [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.85].CGColor;
+            aiMark.fillColor = [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.85].CGColor;
             aiMark.strokeColor = mainColor;
             aiMark.lineWidth = 1.0;
             aiMark.hidden = NO;
@@ -3203,21 +3203,22 @@ static void ds_hosted_apply_pubg(void) {
         // Weapon ESP: Above health bar (or above head if health bar hidden)
         if (wLabel) {
             NSString *weaponText = nil;
-            CGColorRef weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
+            CGColorRef weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
 
             if (p.isKnocked) {
-                weaponColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
                 if (p.weaponName[0] != '\0') {
                     weaponText = [NSString stringWithFormat:@"⚠️ GỤC | %s", p.weaponName];
+                    weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
                 } else {
-                    weaponText = @"⚠️ ĐANG BÒ";
+                    weaponText = @"⚠️ GỤC | Tay";
+                    weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
                 }
             } else if (p.weaponName[0] != '\0') {
                 weaponText = [NSString stringWithUTF8String:p.weaponName];
-                weaponColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0].CGColor;
+                weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
             } else {
-                weaponText = @"Tay Không";
-                weaponColor = [UIColor colorWithWhite:0.88 alpha:0.95].CGColor;
+                weaponText = @"Tay";
+                weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
             }
 
             if (weaponText) {
