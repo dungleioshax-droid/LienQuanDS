@@ -22,13 +22,13 @@ namespace auth {
             if (!new_name.empty()) {
                 if (new_name.length() > 20) {
                     local_system_message sys_msg;
-                    sys_msg.message = setting::Lang(ENCRYPT("Error: name too long (max 20 chars)"), ENCRYPT(u8"Lỗi: Tên quá dài (tối đa 20 ký tự)"));
+                    sys_msg.message = setting::Lang(ENCRYPT("Error: name too long (max 20 chars)"), ENCRYPT("Lỗi: Tên quá dài (tối đa 20 ký tự)"));
                     sys_msg.created = std::chrono::steady_clock::now();
                     sys_msg.lifetime = 10;
                     local_system_messages.push_back(sys_msg);
                 } else if (has_renamed) {
                     local_system_message sys_msg;
-                    sys_msg.message = setting::Lang(ENCRYPT("Error: You can only rename once per key!"), ENCRYPT(u8"Lỗi: Bạn chỉ được đổi tên 1 lần duy nhất!"));
+                    sys_msg.message = setting::Lang(ENCRYPT("Error: You can only rename once per key!"), ENCRYPT("Lỗi: Bạn chỉ được đổi tên 1 lần duy nhất!"));
                     sys_msg.created = std::chrono::steady_clock::now();
                     sys_msg.lifetime = 10;
                     local_system_messages.push_back(sys_msg);
@@ -36,7 +36,7 @@ namespace auth {
                     chat_username = new_name;
                     has_renamed = true;
                     local_system_message sys_msg;
-                    sys_msg.message = setting::Lang(ENCRYPT("name changed to: "), ENCRYPT(u8"Đã đổi tên thành: ")) + chat_username;
+                    sys_msg.message = setting::Lang(ENCRYPT("name changed to: "), ENCRYPT("Đã đổi tên thành: ")) + chat_username;
                     sys_msg.created = std::chrono::steady_clock::now();
                     sys_msg.lifetime = 5;
                     local_system_messages.push_back(sys_msg);
@@ -54,7 +54,7 @@ namespace auth {
 
         if (!has_renamed) {
             local_system_message sys_msg;
-            sys_msg.message = setting::Lang(ENCRYPT("You must rename before chatting. Use /rename <name>"), ENCRYPT(u8"Bạn phải đổi tên trước khi chat. Dùng /rename <tên>"));
+            sys_msg.message = setting::Lang(ENCRYPT("You must rename before chatting. Use /rename <name>"), ENCRYPT("Bạn phải đổi tên trước khi chat. Dùng /rename <tên>"));
             sys_msg.created = std::chrono::steady_clock::now();
             sys_msg.lifetime = 10;
             local_system_messages.push_back(sys_msg);

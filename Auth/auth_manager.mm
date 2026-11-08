@@ -169,7 +169,7 @@ namespace auth {
                         for (auto& f : failed_msgs) {
                             local_system_message err;
                             std::string errEn = std::string(ENCRYPT("[Send failed] ")) + f.display_text;
-                            std::string errVn = std::string(ENCRYPT(u8"[Gửi thất bại] ")) + f.display_text;
+                            std::string errVn = std::string(ENCRYPT("[Gửi thất bại] ")) + f.display_text;
                             err.message  = setting::Lang(errEn.c_str(), errVn.c_str());
                             err.created  = std::chrono::steady_clock::now();
                             err.lifetime = 8;
@@ -189,7 +189,7 @@ namespace auth {
     }
 
     void login() {
-        auth_text = setting::Lang(ENCRYPT("Preparing for authentication..."), ENCRYPT(u8"Đang chuẩn bị xác thực..."));
+        auth_text = setting::Lang(ENCRYPT("Preparing for authentication..."), ENCRYPT("Đang chuẩn bị xác thực..."));
         auth_text_color = ImColor(255, 255, 0);
 
 #ifdef __OBJC__
@@ -225,7 +225,7 @@ namespace auth {
             seal_code_hash();
             save_key(auth::username);
 
-            auth_text = setting::Lang(ENCRYPT("Developer License Activated!"), ENCRYPT(u8"Bản quyền Developer đã kích hoạt!"));
+            auth_text = setting::Lang(ENCRYPT("Developer License Activated!"), ENCRYPT("Bản quyền Developer đã kích hoạt!"));
             auth_text_color = ImColor(0.07f, 0.85f, 0.25f, 1.0f);
             return;
         }
@@ -233,7 +233,7 @@ namespace auth {
 
         std::string resp = http_post(ENCRYPT("login"));
         if (resp.empty()) {
-            auth_text = setting::Lang(ENCRYPT("Connection failed. Check your network."), ENCRYPT(u8"Kết nối thất bại. Kiểm tra mạng."));
+            auth_text = setting::Lang(ENCRYPT("Connection failed. Check your network."), ENCRYPT("Kết nối thất bại. Kiểm tra mạng."));
             auth_text_color = ImColor(255, 0, 0);
             return;
         }
@@ -243,7 +243,7 @@ namespace auth {
         NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
 
         if (json && [json[[NSString stringWithUTF8String:ENCRYPT("success")]] boolValue]) {
-            auth_text = setting::Lang(ENCRYPT("Activated successfully starting..."), ENCRYPT(u8"Kích hoạt thành công, đang khởi động..."));
+            auth_text = setting::Lang(ENCRYPT("Activated successfully starting..."), ENCRYPT("Kích hoạt thành công, đang khởi động..."));
             auth_text_color = ImColor(0.07f, 0.52f, 0.17f, 1.0f);
 
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -278,16 +278,16 @@ namespace auth {
         } else {
             NSString *code = json[[NSString stringWithUTF8String:ENCRYPT("code")]];
             if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_NOT_FOUND")]]) {
-                auth_text = setting::Lang(ENCRYPT("Key not found. Please check your input."), ENCRYPT(u8"Không tìm thấy key. Vui lòng kiểm tra."));
+                auth_text = setting::Lang(ENCRYPT("Key not found. Please check your input."), ENCRYPT("Không tìm thấy key. Vui lòng kiểm tra."));
             } else if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_EXPIRED")]]) {
-                auth_text = setting::Lang(ENCRYPT("License is expired. Renew your subscription."), ENCRYPT(u8"License đã hết hạn. Vui lòng gia hạn."));
+                auth_text = setting::Lang(ENCRYPT("License is expired. Renew your subscription."), ENCRYPT("License đã hết hạn. Vui lòng gia hạn."));
             } else if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("HWID_MISMATCH")]]) {
-                auth_text = setting::Lang(ENCRYPT("Device ID mismatch. Verify your device."), ENCRYPT(u8"Thiết bị không khớp. Vui lòng xác minh."));
+                auth_text = setting::Lang(ENCRYPT("Device ID mismatch. Verify your device."), ENCRYPT("Thiết bị không khớp. Vui lòng xác minh."));
             } else if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_BANNED")]]) {
-                auth_text = setting::Lang(ENCRYPT("This license has been banned. Contact support."), ENCRYPT(u8"License này đã bị khóa. Liên hệ hỗ trợ."));
+                auth_text = setting::Lang(ENCRYPT("This license has been banned. Contact support."), ENCRYPT("License này đã bị khóa. Liên hệ hỗ trợ."));
             } else {
                 NSString *errMsg = json[[NSString stringWithUTF8String:ENCRYPT("message")]] ? json[[NSString stringWithUTF8String:ENCRYPT("message")]] : [NSString stringWithUTF8String:ENCRYPT("Authentication error")];
-                auth_text = setting::Lang((std::string(ENCRYPT("Authentication error: ")) + std::string([errMsg UTF8String])).c_str(), (std::string(ENCRYPT(u8"Lỗi xác thực: ")) + std::string([errMsg UTF8String])).c_str());
+                auth_text = setting::Lang((std::string(ENCRYPT("Authentication error: ")) + std::string([errMsg UTF8String])).c_str(), (std::string(ENCRYPT("Lỗi xác thực: ")) + std::string([errMsg UTF8String])).c_str());
             }
             auth_text_color = ImColor(255, 0, 0);
         }

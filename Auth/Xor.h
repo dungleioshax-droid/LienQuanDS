@@ -83,6 +83,11 @@ template <uintptr_t... Idx> struct vxCplEncryptedString<vxCplIndexList<Idx...> >
     constexpr ALWAYS_INLINE vxCplEncryptedString(const char* const Str)  
     : Value{ vxCplEncryptChar(Str[Idx], Idx)... } {}
 
+#if __cplusplus >= 202002L || defined(__cpp_char8_t)
+    constexpr ALWAYS_INLINE vxCplEncryptedString(const char8_t* const Str)  
+    : Value{ vxCplEncryptChar((char)Str[Idx], Idx)... } {}
+#endif
+
     // Run-time decryption
     inline const char* decrypt()
     {
