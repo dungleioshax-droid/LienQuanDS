@@ -9,6 +9,14 @@
 #import <notify.h>
 #import <sys/sysctl.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#import "libproc.h"
+#ifdef __cplusplus
+}
+#endif
+
 #import "HUDHelper.h"
 #import "DSBridge.h"
 #import "MainButton.h"
@@ -22,6 +30,16 @@
 
 static BOOL _gShouldToggleHUDAfterLaunch = NO;
 
+static NSString *CurrentLanguage(void) {
+    NSString *lang = [[NSUserDefaults standardUserDefaults] stringForKey:@"AppLanguage"];
+    if (!lang || lang.length == 0) return @"vi";
+    return lang;
+}
+
+static BOOL IsEnglish(void) {
+    return [CurrentLanguage() isEqualToString:@"en"];
+}
+
 static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatusStr) {
     NSString *version = [[UIDevice currentDevice] systemVersion];
     if (outVersionStr) *outVersionStr = [NSString stringWithFormat:@"iOS %@", version];
@@ -29,12 +47,77 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     NSOperatingSystemVersion os = [[NSProcessInfo processInfo] operatingSystemVersion];
     // DarkSword kexploit supports iOS 15.0 through iOS 26.0
     if (os.majorVersion >= 15 && os.majorVersion <= 26) {
-        if (outStatusStr) *outStatusStr = @"DarkSword: Đã hỗ trợ";
+        if (outStatusStr) *outStatusStr = IsEnglish() ? @"DarkSword: Supported" : @"DarkSword: Đã hỗ trợ";
         return YES;
     } else {
-        if (outStatusStr) *outStatusStr = @"DarkSword: Chưa hỗ trợ";
+        if (outStatusStr) *outStatusStr = IsEnglish() ? @"DarkSword: Unsupported" : @"DarkSword: Chưa hỗ trợ";
         return NO;
     }
+}
+
+static BOOL IsPUBGProcessRunning(void) {
+    // 1. Primary check via proc_listallpids
+    int count = proc_listallpids(NULL, 0);
+    if (count > 0 && count < 100000) {
+        pid_t *pids = (pid_t *)malloc((size_t)count * sizeof(pid_t));
+        if (pids) {
+            int got = proc_listallpids(pids, count * (int)sizeof(pid_t));
+            if (got > 0) {
+                if (got > count) got = count;
+                char name[1024];
+                char path[1024];
+                for (int i = 0; i < got; i++) {
+                    pid_t p = pids[i];
+                    if (p <= 0) continue;
+
+                    memset(name, 0, sizeof(name));
+                    if (proc_name(p, name, sizeof(name) - 1) > 0) {
+                        if (strcasestr(name, "ShadowTracker") != NULL ||
+                            strcasestr(name, "PUBG") != NULL) {
+                            free(pids);
+                            return YES;
+                        }
+                    }
+
+                    memset(path, 0, sizeof(path));
+                    if (proc_pidpath(p, path, sizeof(path) - 1) > 0) {
+                        if (strcasestr(path, "ShadowTracker") != NULL ||
+                            strcasestr(path, "PUBG") != NULL) {
+                            free(pids);
+                            return YES;
+                        }
+                    }
+                }
+            }
+            free(pids);
+        }
+    }
+
+    // 2. Secondary check with proc_listpids(PROC_ALL_PIDS)
+    int bytes = proc_listpids(1 /* PROC_ALL_PIDS */, 0, NULL, 0);
+    if (bytes > 0 && bytes < 400000) {
+        pid_t *pids = (pid_t *)malloc((size_t)bytes);
+        if (pids) {
+            int gotBytes = proc_listpids(1, 0, pids, bytes);
+            int got = gotBytes / (int)sizeof(pid_t);
+            char name[1024];
+            for (int i = 0; i < got; i++) {
+                pid_t p = pids[i];
+                if (p <= 0) continue;
+                memset(name, 0, sizeof(name));
+                if (proc_name(p, name, sizeof(name) - 1) > 0) {
+                    if (strcasestr(name, "ShadowTracker") != NULL ||
+                        strcasestr(name, "PUBG") != NULL) {
+                        free(pids);
+                        return YES;
+                    }
+                }
+            }
+            free(pids);
+        }
+    }
+
+    return NO;
 }
 
 @implementation RootViewController {
@@ -45,16 +128,41 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     // Tab Navigation Containers
     UIView *_homeView;
     UIView *_settingView;
+    UIScrollView *_settingScrollView;
+    UIView *_settingContentView;
     UIView *_bottomTabBar;
     UIButton *_homeTabButton;
     UIButton *_settingTabButton;
     NSInteger _selectedTabIndex;
 
-    // Home status components
+    // Home localized labels
+    UILabel *_homeTitleLabel;
+    UILabel *_homeSubTitleLabel;
     UILabel *_iosVersionLabel;
+    UILabel *_systemTagLabel;
     UILabel *_dsStatusLabel;
     UIView *_dsStatusBadge;
     UILabel *_dsBadgeLabel;
+
+    // Setting localized labels
+    UILabel *_settingTitleLabel;
+    UILabel *_settingSubTitleLabel;
+    UILabel *_langHeaderLabel;
+    UISegmentedControl *_langSegmentedControl;
+    UILabel *_devHeaderLabel;
+    UILabel *_devNameLabel;
+
+    UILabel *_infoRow1Title;
+    UILabel *_infoRow2Title;
+    UILabel *_infoRow3Title;
+    UILabel *_infoRow4Title;
+    UILabel *_noteLabel;
+
+    // Red warning popup
+    UIView *_warningPopupOverlay;
+    UILabel *_warningTitleLabel;
+    UILabel *_warningSubLabel;
+    UIButton *_warningDismissBtn;
 
     BOOL _isRemoteHUDActive;
     UIImpactFeedbackGenerator *_impactFeedbackGenerator;
@@ -124,6 +232,7 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     [self setupSettingView];
 
     [self updateTabSelection:0];
+    [self applyLanguageTexts];
     [self reloadMainButtonState];
 }
 
@@ -248,21 +357,21 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     ]];
 
     // 1. App Header Title
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = @"DarkPubg";
-    titleLabel.textColor = UIColor.whiteColor;
-    titleLabel.font = [UIFont systemFontOfSize:30 weight:UIFontWeightHeavy];
-    titleLabel.textAlignment = NSTextAlignmentCenter;
-    [_homeView addSubview:titleLabel];
+    _homeTitleLabel = [[UILabel alloc] init];
+    _homeTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _homeTitleLabel.text = @"DarkPubg";
+    _homeTitleLabel.textColor = UIColor.whiteColor;
+    _homeTitleLabel.font = [UIFont systemFontOfSize:30 weight:UIFontWeightHeavy];
+    _homeTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [_homeView addSubview:_homeTitleLabel];
 
-    UILabel *subTitleLabel = [[UILabel alloc] init];
-    subTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    subTitleLabel.text = @"PUBG Mobile Edition";
-    subTitleLabel.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
-    subTitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    subTitleLabel.textAlignment = NSTextAlignmentCenter;
-    [_homeView addSubview:subTitleLabel];
+    _homeSubTitleLabel = [[UILabel alloc] init];
+    _homeSubTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _homeSubTitleLabel.text = @"PUBG Mobile Edition";
+    _homeSubTitleLabel.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    _homeSubTitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    _homeSubTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [_homeView addSubview:_homeSubTitleLabel];
 
     // 2. iOS Version & DarkSword Support Card
     UIView *statusCard = [[UIView alloc] init];
@@ -286,17 +395,15 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
 
     _iosVersionLabel = [[UILabel alloc] init];
     _iosVersionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _iosVersionLabel.text = [NSString stringWithFormat:@"Phiên bản: %@", iosVer];
     _iosVersionLabel.textColor = UIColor.whiteColor;
     _iosVersionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
     [statusCard addSubview:_iosVersionLabel];
 
-    UILabel *systemTag = [[UILabel alloc] init];
-    systemTag.translatesAutoresizingMaskIntoConstraints = NO;
-    systemTag.text = @"Thiết bị";
-    systemTag.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
-    systemTag.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
-    [statusCard addSubview:systemTag];
+    _systemTagLabel = [[UILabel alloc] init];
+    _systemTagLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _systemTagLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _systemTagLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    [statusCard addSubview:_systemTagLabel];
 
     // Card Separator
     UIView *cardSep = [[UIView alloc] init];
@@ -313,7 +420,6 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
 
     _dsStatusLabel = [[UILabel alloc] init];
     _dsStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _dsStatusLabel.text = dsStatus;
     _dsStatusLabel.textColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
     _dsStatusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
     [statusCard addSubview:_dsStatusLabel];
@@ -326,7 +432,6 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
 
     _dsBadgeLabel = [[UILabel alloc] init];
     _dsBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _dsBadgeLabel.text = isSupported ? @"Tương thích" : @"Không hỗ trợ";
     _dsBadgeLabel.textColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
     _dsBadgeLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
     [_dsStatusBadge addSubview:_dsBadgeLabel];
@@ -348,7 +453,6 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
 
     _buttonSubLabel = [[UILabel alloc] init];
     _buttonSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _buttonSubLabel.text = @"Nhấn để bật menu ESP trong game";
     _buttonSubLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
     _buttonSubLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
     _buttonSubLabel.textAlignment = NSTextAlignmentCenter;
@@ -356,13 +460,13 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
 
     // Layout Constraints for Home View
     [NSLayoutConstraint activateConstraints:@[
-        [titleLabel.topAnchor constraintEqualToAnchor:_homeView.topAnchor constant:28.0f],
-        [titleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+        [_homeTitleLabel.topAnchor constraintEqualToAnchor:_homeView.topAnchor constant:28.0f],
+        [_homeTitleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
 
-        [subTitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4.0f],
-        [subTitleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+        [_homeSubTitleLabel.topAnchor constraintEqualToAnchor:_homeTitleLabel.bottomAnchor constant:4.0f],
+        [_homeSubTitleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
 
-        [statusCard.topAnchor constraintEqualToAnchor:subTitleLabel.bottomAnchor constant:28.0f],
+        [statusCard.topAnchor constraintEqualToAnchor:_homeSubTitleLabel.bottomAnchor constant:28.0f],
         [statusCard.leadingAnchor constraintEqualToAnchor:_homeView.leadingAnchor constant:24.0f],
         [statusCard.trailingAnchor constraintEqualToAnchor:_homeView.trailingAnchor constant:-24.0f],
         [statusCard.heightAnchor constraintEqualToConstant:90.0f],
@@ -375,8 +479,8 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
         [_iosVersionLabel.leadingAnchor constraintEqualToAnchor:appleIcon.trailingAnchor constant:8.0f],
         [_iosVersionLabel.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
 
-        [systemTag.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
-        [systemTag.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
+        [_systemTagLabel.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [_systemTagLabel.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
 
         [cardSep.topAnchor constraintEqualToAnchor:appleIcon.bottomAnchor constant:12.0f],
         [cardSep.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
@@ -427,31 +531,107 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
         [_settingView.bottomAnchor constraintEqualToAnchor:_bottomTabBar.topAnchor],
     ]];
 
+    _settingScrollView = [[UIScrollView alloc] init];
+    _settingScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingScrollView.showsVerticalScrollIndicator = NO;
+    [_settingView addSubview:_settingScrollView];
+
+    _settingContentView = [[UIView alloc] init];
+    _settingContentView.translatesAutoresizingMaskIntoConstraints = NO;
+    [_settingScrollView addSubview:_settingContentView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_settingScrollView.topAnchor constraintEqualToAnchor:_settingView.topAnchor],
+        [_settingScrollView.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor],
+        [_settingScrollView.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor],
+        [_settingScrollView.bottomAnchor constraintEqualToAnchor:_settingView.bottomAnchor],
+
+        [_settingContentView.topAnchor constraintEqualToAnchor:_settingScrollView.topAnchor],
+        [_settingContentView.leadingAnchor constraintEqualToAnchor:_settingScrollView.leadingAnchor],
+        [_settingContentView.trailingAnchor constraintEqualToAnchor:_settingScrollView.trailingAnchor],
+        [_settingContentView.bottomAnchor constraintEqualToAnchor:_settingScrollView.bottomAnchor],
+        [_settingContentView.widthAnchor constraintEqualToAnchor:_settingScrollView.widthAnchor],
+    ]];
+
     // 1. Setting Header Title
-    UILabel *settingTitle = [[UILabel alloc] init];
-    settingTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    settingTitle.text = @"Cài Đặt";
-    settingTitle.textColor = UIColor.whiteColor;
-    settingTitle.font = [UIFont systemFontOfSize:30 weight:UIFontWeightHeavy];
-    settingTitle.textAlignment = NSTextAlignmentCenter;
-    [_settingView addSubview:settingTitle];
+    _settingTitleLabel = [[UILabel alloc] init];
+    _settingTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingTitleLabel.textColor = UIColor.whiteColor;
+    _settingTitleLabel.font = [UIFont systemFontOfSize:30 weight:UIFontWeightHeavy];
+    _settingTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [_settingContentView addSubview:_settingTitleLabel];
 
-    UILabel *settingSubTitle = [[UILabel alloc] init];
-    settingSubTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    settingSubTitle.text = @"Thông tin & Tác giả";
-    settingSubTitle.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
-    settingSubTitle.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-    settingSubTitle.textAlignment = NSTextAlignmentCenter;
-    [_settingView addSubview:settingSubTitle];
+    _settingSubTitleLabel = [[UILabel alloc] init];
+    _settingSubTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingSubTitleLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _settingSubTitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    _settingSubTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [_settingContentView addSubview:_settingSubTitleLabel];
 
-    // 2. Developer Card (DLX07)
+    // 2. Language Selection Card
+    UIView *langCard = [[UIView alloc] init];
+    langCard.translatesAutoresizingMaskIntoConstraints = NO;
+    langCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
+    langCard.layer.cornerRadius = 16.0f;
+    langCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
+    langCard.layer.borderWidth = 1.0f;
+    [_settingContentView addSubview:langCard];
+
+    UIImageView *globeIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"globe"]];
+    globeIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    globeIcon.tintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    globeIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [langCard addSubview:globeIcon];
+
+    _langHeaderLabel = [[UILabel alloc] init];
+    _langHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _langHeaderLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _langHeaderLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [langCard addSubview:_langHeaderLabel];
+
+    _langSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[ @"Tiếng Việt", @"English" ]];
+    _langSegmentedControl.translatesAutoresizingMaskIntoConstraints = NO;
+    _langSegmentedControl.selectedSegmentIndex = IsEnglish() ? 1 : 0;
+    if (@available(iOS 13.0, *)) {
+        _langSegmentedControl.selectedSegmentTintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.85];
+    }
+    NSDictionary *segNormal = @{
+        NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.75],
+        NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium],
+    };
+    NSDictionary *segSelected = @{
+        NSForegroundColorAttributeName: UIColor.whiteColor,
+        NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightBold],
+    };
+    [_langSegmentedControl setTitleTextAttributes:segNormal forState:UIControlStateNormal];
+    [_langSegmentedControl setTitleTextAttributes:segSelected forState:UIControlStateSelected];
+    [_langSegmentedControl addTarget:self action:@selector(langSegmentChanged:) forControlEvents:UIControlEventValueChanged];
+    [langCard addSubview:_langSegmentedControl];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [globeIcon.leadingAnchor constraintEqualToAnchor:langCard.leadingAnchor constant:16.0f],
+        [globeIcon.topAnchor constraintEqualToAnchor:langCard.topAnchor constant:14.0f],
+        [globeIcon.widthAnchor constraintEqualToConstant:18.0f],
+        [globeIcon.heightAnchor constraintEqualToConstant:18.0f],
+
+        [_langHeaderLabel.leadingAnchor constraintEqualToAnchor:globeIcon.trailingAnchor constant:8.0f],
+        [_langHeaderLabel.centerYAnchor constraintEqualToAnchor:globeIcon.centerYAnchor],
+
+        [_langSegmentedControl.topAnchor constraintEqualToAnchor:globeIcon.bottomAnchor constant:10.0f],
+        [_langSegmentedControl.leadingAnchor constraintEqualToAnchor:langCard.leadingAnchor constant:16.0f],
+        [_langSegmentedControl.trailingAnchor constraintEqualToAnchor:langCard.trailingAnchor constant:-16.0f],
+        [_langSegmentedControl.heightAnchor constraintEqualToConstant:32.0f],
+        [_langSegmentedControl.bottomAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:-14.0f],
+    ]];
+
+    // 3. Developer Card (DLX07)
     UIView *devCard = [[UIView alloc] init];
     devCard.translatesAutoresizingMaskIntoConstraints = NO;
     devCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
     devCard.layer.cornerRadius = 16.0f;
     devCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
     devCard.layer.borderWidth = 1.0f;
-    [_settingView addSubview:devCard];
+    [_settingContentView addSubview:devCard];
 
     UIImageView *devAvatar = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
     devAvatar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -459,44 +639,56 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     devAvatar.contentMode = UIViewContentModeScaleAspectFit;
     [devCard addSubview:devAvatar];
 
-    UILabel *devHeader = [[UILabel alloc] init];
-    devHeader.translatesAutoresizingMaskIntoConstraints = NO;
-    devHeader.text = @"NGƯỜI PHÁT TRIỂN";
-    devHeader.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
-    devHeader.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-    [devCard addSubview:devHeader];
+    _devHeaderLabel = [[UILabel alloc] init];
+    _devHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _devHeaderLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _devHeaderLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [devCard addSubview:_devHeaderLabel];
 
-    UILabel *devName = [[UILabel alloc] init];
-    devName.translatesAutoresizingMaskIntoConstraints = NO;
-    devName.text = @"DLX07";
-    devName.textColor = UIColor.whiteColor;
-    devName.font = [UIFont systemFontOfSize:24 weight:UIFontWeightHeavy];
-    [devCard addSubview:devName];
+    _devNameLabel = [[UILabel alloc] init];
+    _devNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _devNameLabel.text = @"DLX07";
+    _devNameLabel.textColor = UIColor.whiteColor;
+    _devNameLabel.font = [UIFont systemFontOfSize:24 weight:UIFontWeightHeavy];
+    [devCard addSubview:_devNameLabel];
 
-    // 3. App Details Card
+    [NSLayoutConstraint activateConstraints:@[
+        [devAvatar.leadingAnchor constraintEqualToAnchor:devCard.leadingAnchor constant:18.0f],
+        [devAvatar.centerYAnchor constraintEqualToAnchor:devCard.centerYAnchor],
+        [devAvatar.widthAnchor constraintEqualToConstant:48.0f],
+        [devAvatar.heightAnchor constraintEqualToConstant:48.0f],
+
+        [_devHeaderLabel.leadingAnchor constraintEqualToAnchor:devAvatar.trailingAnchor constant:16.0f],
+        [_devHeaderLabel.topAnchor constraintEqualToAnchor:devCard.topAnchor constant:18.0f],
+
+        [_devNameLabel.leadingAnchor constraintEqualToAnchor:devAvatar.trailingAnchor constant:16.0f],
+        [_devNameLabel.topAnchor constraintEqualToAnchor:_devHeaderLabel.bottomAnchor constant:2.0f],
+    ]];
+
+    // 4. App Details Card
     UIView *infoCard = [[UIView alloc] init];
     infoCard.translatesAutoresizingMaskIntoConstraints = NO;
     infoCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
     infoCard.layer.cornerRadius = 16.0f;
     infoCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
     infoCard.layer.borderWidth = 1.0f;
-    [_settingView addSubview:infoCard];
+    [_settingContentView addSubview:infoCard];
 
-    auto addInfoRow = ^UIView *(NSString *title, NSString *value, UIView *topAnchorView) {
+    auto addInfoRow = ^UIView *(UILabel **outTitleLabel, NSString *valStr, UIView *topAnchorView) {
         UIView *row = [[UIView alloc] init];
         row.translatesAutoresizingMaskIntoConstraints = NO;
         [infoCard addSubview:row];
 
         UILabel *tLabel = [[UILabel alloc] init];
         tLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        tLabel.text = title;
         tLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
         tLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
         [row addSubview:tLabel];
+        if (outTitleLabel) *outTitleLabel = tLabel;
 
         UILabel *vLabel = [[UILabel alloc] init];
         vLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        vLabel.text = value;
+        vLabel.text = valStr;
         vLabel.textColor = UIColor.whiteColor;
         vLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
         [row addSubview:vLabel];
@@ -519,65 +711,260 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
         return row;
     };
 
-    UIView *r1 = addInfoRow(@"Ứng dụng", @"DarkPubg", nil);
-    UIView *r2 = addInfoRow(@"Phiên bản", @"1.0-1", r1);
-    UIView *r3 = addInfoRow(@"Trò chơi", @"PUBG Mobile", r2);
-    UIView *r4 = addInfoRow(@"Kiểu can thiệp", @"DarkSword Kernel (TrollStore)", r3);
+    UIView *r1 = addInfoRow(&_infoRow1Title, @"DarkPubg", nil);
+    UIView *r2 = addInfoRow(&_infoRow2Title, @"1.0-1", r1);
+    UIView *r3 = addInfoRow(&_infoRow3Title, @"PUBG Mobile", r2);
+    UIView *r4 = addInfoRow(&_infoRow4Title, @"DarkSword Kernel (TrollStore)", r3);
 
-    // 4. Note Card
+    // 5. Note Card
     UIView *noteCard = [[UIView alloc] init];
     noteCard.translatesAutoresizingMaskIntoConstraints = NO;
     noteCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.6];
     noteCard.layer.cornerRadius = 12.0f;
-    [_settingView addSubview:noteCard];
+    [_settingContentView addSubview:noteCard];
 
-    UILabel *noteLabel = [[UILabel alloc] init];
-    noteLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    noteLabel.text = @"DarkPubg hoạt động trực tiếp thông qua TrollStore trên iOS mà không cần Jailbreak.";
-    noteLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
-    noteLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
-    noteLabel.numberOfLines = 0;
-    noteLabel.textAlignment = NSTextAlignmentCenter;
-    [noteCard addSubview:noteLabel];
+    _noteLabel = [[UILabel alloc] init];
+    _noteLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _noteLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _noteLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
+    _noteLabel.numberOfLines = 0;
+    _noteLabel.textAlignment = NSTextAlignmentCenter;
+    [noteCard addSubview:_noteLabel];
 
     // Layout Constraints for Setting View
     [NSLayoutConstraint activateConstraints:@[
-        [settingTitle.topAnchor constraintEqualToAnchor:_settingView.topAnchor constant:28.0f],
-        [settingTitle.centerXAnchor constraintEqualToAnchor:_settingView.centerXAnchor],
+        [_settingTitleLabel.topAnchor constraintEqualToAnchor:_settingContentView.topAnchor constant:24.0f],
+        [_settingTitleLabel.centerXAnchor constraintEqualToAnchor:_settingContentView.centerXAnchor],
 
-        [settingSubTitle.topAnchor constraintEqualToAnchor:settingTitle.bottomAnchor constant:4.0f],
-        [settingSubTitle.centerXAnchor constraintEqualToAnchor:_settingView.centerXAnchor],
+        [_settingSubTitleLabel.topAnchor constraintEqualToAnchor:_settingTitleLabel.bottomAnchor constant:4.0f],
+        [_settingSubTitleLabel.centerXAnchor constraintEqualToAnchor:_settingContentView.centerXAnchor],
 
-        [devCard.topAnchor constraintEqualToAnchor:settingSubTitle.bottomAnchor constant:28.0f],
-        [devCard.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor constant:24.0f],
-        [devCard.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor constant:-24.0f],
+        [langCard.topAnchor constraintEqualToAnchor:_settingSubTitleLabel.bottomAnchor constant:22.0f],
+        [langCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
+        [langCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
+
+        [devCard.topAnchor constraintEqualToAnchor:langCard.bottomAnchor constant:18.0f],
+        [devCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
+        [devCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
         [devCard.heightAnchor constraintEqualToConstant:84.0f],
 
-        [devAvatar.leadingAnchor constraintEqualToAnchor:devCard.leadingAnchor constant:18.0f],
-        [devAvatar.centerYAnchor constraintEqualToAnchor:devCard.centerYAnchor],
-        [devAvatar.widthAnchor constraintEqualToConstant:48.0f],
-        [devAvatar.heightAnchor constraintEqualToConstant:48.0f],
-
-        [devHeader.leadingAnchor constraintEqualToAnchor:devAvatar.trailingAnchor constant:16.0f],
-        [devHeader.topAnchor constraintEqualToAnchor:devCard.topAnchor constant:18.0f],
-
-        [devName.leadingAnchor constraintEqualToAnchor:devAvatar.trailingAnchor constant:16.0f],
-        [devName.topAnchor constraintEqualToAnchor:devHeader.bottomAnchor constant:2.0f],
-
-        [infoCard.topAnchor constraintEqualToAnchor:devCard.bottomAnchor constant:20.0f],
-        [infoCard.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor constant:24.0f],
-        [infoCard.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor constant:-24.0f],
+        [infoCard.topAnchor constraintEqualToAnchor:devCard.bottomAnchor constant:18.0f],
+        [infoCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
+        [infoCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
         [infoCard.bottomAnchor constraintEqualToAnchor:r4.bottomAnchor constant:14.0f],
 
-        [noteCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:20.0f],
-        [noteCard.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor constant:24.0f],
-        [noteCard.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor constant:-24.0f],
+        [noteCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:18.0f],
+        [noteCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:24.0f],
+        [noteCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-24.0f],
+        [noteCard.bottomAnchor constraintEqualToAnchor:_settingContentView.bottomAnchor constant:-30.0f],
 
-        [noteLabel.topAnchor constraintEqualToAnchor:noteCard.topAnchor constant:12.0f],
-        [noteLabel.bottomAnchor constraintEqualToAnchor:noteCard.bottomAnchor constant:-12.0f],
-        [noteLabel.leadingAnchor constraintEqualToAnchor:noteCard.leadingAnchor constant:16.0f],
-        [noteLabel.trailingAnchor constraintEqualToAnchor:noteCard.trailingAnchor constant:-16.0f],
+        [_noteLabel.topAnchor constraintEqualToAnchor:noteCard.topAnchor constant:12.0f],
+        [_noteLabel.bottomAnchor constraintEqualToAnchor:noteCard.bottomAnchor constant:-12.0f],
+        [_noteLabel.leadingAnchor constraintEqualToAnchor:noteCard.leadingAnchor constant:16.0f],
+        [_noteLabel.trailingAnchor constraintEqualToAnchor:noteCard.trailingAnchor constant:-16.0f],
     ]];
+}
+
+#pragma mark - Language Change
+
+- (void)langSegmentChanged:(UISegmentedControl *)sender
+{
+    NSString *newLang = (sender.selectedSegmentIndex == 1) ? @"en" : @"vi";
+    [[NSUserDefaults standardUserDefaults] setObject:newLang forKey:@"AppLanguage"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    if (_impactFeedbackGenerator) {
+        [_impactFeedbackGenerator impactOccurred];
+    }
+
+    [UIView transitionWithView:self.view duration:0.25 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
+        [self applyLanguageTexts];
+    } completion:nil];
+}
+
+- (void)applyLanguageTexts
+{
+    BOOL isEN = IsEnglish();
+
+    // Bottom tab bar
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *cfgHome = _homeTabButton.configuration;
+        cfgHome.title = isEN ? @"Home" : @"Trang chủ";
+        _homeTabButton.configuration = cfgHome;
+
+        UIButtonConfiguration *cfgSet = _settingTabButton.configuration;
+        cfgSet.title = isEN ? @"Setting" : @"Cài đặt";
+        _settingTabButton.configuration = cfgSet;
+    } else {
+        [_homeTabButton setTitle:isEN ? @"Home" : @"Trang chủ" forState:UIControlStateNormal];
+        [_settingTabButton setTitle:isEN ? @"Setting" : @"Cài đặt" forState:UIControlStateNormal];
+    }
+
+    // Home tab
+    _homeTitleLabel.text = @"DarkPubg";
+    _homeSubTitleLabel.text = @"PUBG Mobile Edition";
+
+    NSString *iosVer = @"";
+    NSString *dsStatus = @"";
+    BOOL isSupported = CheckDarkSwordSupport(&iosVer, &dsStatus);
+    _iosVersionLabel.text = [NSString stringWithFormat:isEN ? @"Device OS: %@" : @"Phiên bản: %@", iosVer];
+    _systemTagLabel.text = isEN ? @"Device" : @"Thiết bị";
+
+    if (isSupported) {
+        _dsStatusLabel.text = isEN ? @"DarkSword: Supported" : @"DarkSword: Đã hỗ trợ";
+        _dsBadgeLabel.text = isEN ? @"Compatible" : @"Tương thích";
+    } else {
+        _dsStatusLabel.text = isEN ? @"DarkSword: Unsupported" : @"DarkSword: Chưa hỗ trợ";
+        _dsBadgeLabel.text = isEN ? @"Unsupported" : @"Không hỗ trợ";
+    }
+
+    if (_isRemoteHUDActive) {
+        [_mainButton setTitle:@"EXIT HUD" forState:UIControlStateNormal];
+        _buttonSubLabel.text = isEN ? @"DarkPubg is currently active in game" : @"DarkPubg đang hoạt động trong game";
+    } else {
+        [_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
+        _buttonSubLabel.text = isEN ? @"Tap to launch in-game ESP menu" : @"Nhấn để bật menu ESP trong game";
+    }
+
+    // Setting tab
+    _settingTitleLabel.text = isEN ? @"Settings" : @"Cài Đặt";
+    _settingSubTitleLabel.text = isEN ? @"Information & Options" : @"Thông tin & Tuỳ chọn";
+    _langHeaderLabel.text = isEN ? @"LANGUAGE" : @"NGÔN NGỮ";
+    _devHeaderLabel.text = isEN ? @"DEVELOPER" : @"NGƯỜI PHÁT TRIỂN";
+    _devNameLabel.text = @"DLX07";
+
+    _infoRow1Title.text = isEN ? @"App Name" : @"Ứng dụng";
+    _infoRow2Title.text = isEN ? @"Version" : @"Phiên bản";
+    _infoRow3Title.text = isEN ? @"Target Game" : @"Trò chơi";
+    _infoRow4Title.text = isEN ? @"Exploit Engine" : @"Kiểu can thiệp";
+
+    _noteLabel.text = isEN ?
+        @"DarkPubg runs directly via TrollStore on iOS without Jailbreak." :
+        @"DarkPubg hoạt động trực tiếp thông qua TrollStore trên iOS mà không cần Jailbreak.";
+
+    // Warning popup texts if initialized
+    if (_warningTitleLabel) {
+        _warningTitleLabel.text = isEN ? @"Please launch the game first" : @"Vui lòng vào game trước";
+    }
+    if (_warningSubLabel) {
+        _warningSubLabel.text = isEN ?
+            @"Please open PUBG Mobile before launching HUD." :
+            @"Hãy mở PUBG Mobile trước khi bật HUD để hệ thống có thể kết nối vào game.";
+    }
+    if (_warningDismissBtn) {
+        [_warningDismissBtn setTitle:isEN ? @"OK" : @"Đã hiểu" forState:UIControlStateNormal];
+    }
+}
+
+#pragma mark - Red Warning Popup (Vui lòng vào game trước)
+
+- (void)showGameNotRunningAlert
+{
+    UINotificationFeedbackGenerator *feedback = [[UINotificationFeedbackGenerator alloc] init];
+    [feedback notificationOccurred:UINotificationFeedbackTypeWarning];
+
+    if (!_warningPopupOverlay) {
+        _warningPopupOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
+        _warningPopupOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _warningPopupOverlay.backgroundColor = [UIColor colorWithWhite:0 alpha:0.75];
+        _warningPopupOverlay.alpha = 0.0f;
+
+        UIView *card = [[UIView alloc] init];
+        card.translatesAutoresizingMaskIntoConstraints = NO;
+        card.backgroundColor = [UIColor colorWithRed:22/255.0 green:20/255.0 blue:24/255.0 alpha:0.98];
+        card.layer.cornerRadius = 22.0f;
+        card.layer.borderColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:0.85].CGColor; // Vibrant Red
+        card.layer.borderWidth = 1.8f;
+        card.layer.shadowColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:0.4].CGColor;
+        card.layer.shadowRadius = 18.0f;
+        card.layer.shadowOffset = CGSizeMake(0, 8);
+        card.layer.shadowOpacity = 0.8f;
+        [_warningPopupOverlay addSubview:card];
+
+        UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"exclamationmark.triangle.fill"]];
+        icon.translatesAutoresizingMaskIntoConstraints = NO;
+        icon.tintColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]; // Bright Red
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        [card addSubview:icon];
+
+        // RED TITLE (User requirement: chữ màu đỏ hiện lên vui lòng vào game trước)
+        _warningTitleLabel = [[UILabel alloc] init];
+        _warningTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _warningTitleLabel.textColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]; // Bright RED
+        _warningTitleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightHeavy];
+        _warningTitleLabel.textAlignment = NSTextAlignmentCenter;
+        _warningTitleLabel.numberOfLines = 0;
+        [card addSubview:_warningTitleLabel];
+
+        _warningSubLabel = [[UILabel alloc] init];
+        _warningSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _warningSubLabel.textColor = [UIColor colorWithRed:160/255.0 green:168/255.0 blue:178/255.0 alpha:1.0];
+        _warningSubLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        _warningSubLabel.textAlignment = NSTextAlignmentCenter;
+        _warningSubLabel.numberOfLines = 0;
+        [card addSubview:_warningSubLabel];
+
+        _warningDismissBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        _warningDismissBtn.translatesAutoresizingMaskIntoConstraints = NO;
+        [_warningDismissBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        _warningDismissBtn.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+        _warningDismissBtn.backgroundColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0];
+        _warningDismissBtn.layer.cornerRadius = 20.0f;
+        [_warningDismissBtn addTarget:self action:@selector(dismissWarningPopup) forControlEvents:UIControlEventTouchUpInside];
+        [card addSubview:_warningDismissBtn];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [card.centerXAnchor constraintEqualToAnchor:_warningPopupOverlay.centerXAnchor],
+            [card.centerYAnchor constraintEqualToAnchor:_warningPopupOverlay.centerYAnchor],
+            [card.widthAnchor constraintEqualToConstant:300.0f],
+
+            [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0f],
+            [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
+            [icon.widthAnchor constraintEqualToConstant:44.0f],
+            [icon.heightAnchor constraintEqualToConstant:44.0f],
+
+            [_warningTitleLabel.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:14.0f],
+            [_warningTitleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
+            [_warningTitleLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
+
+            [_warningSubLabel.topAnchor constraintEqualToAnchor:_warningTitleLabel.bottomAnchor constant:10.0f],
+            [_warningSubLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0f],
+            [_warningSubLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0f],
+
+            [_warningDismissBtn.topAnchor constraintEqualToAnchor:_warningSubLabel.bottomAnchor constant:20.0f],
+            [_warningDismissBtn.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
+            [_warningDismissBtn.widthAnchor constraintEqualToConstant:140.0f],
+            [_warningDismissBtn.heightAnchor constraintEqualToConstant:40.0f],
+            [_warningDismissBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20.0f],
+        ]];
+    }
+
+    [self applyLanguageTexts];
+
+    if (!_warningPopupOverlay.superview) {
+        [self.view addSubview:_warningPopupOverlay];
+    }
+    [self.view bringSubviewToFront:_warningPopupOverlay];
+
+    _warningPopupOverlay.hidden = NO;
+    _warningPopupOverlay.alpha = 0.0f;
+    _warningPopupOverlay.transform = CGAffineTransformMakeScale(0.92, 0.92);
+
+    [UIView animateWithDuration:0.25 delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:1.0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+        self->_warningPopupOverlay.alpha = 1.0f;
+        self->_warningPopupOverlay.transform = CGAffineTransformIdentity;
+    } completion:nil];
+}
+
+- (void)dismissWarningPopup
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+    [UIView animateWithDuration:0.2 delay:0 options:UIViewAnimationOptionCurveEaseIn animations:^{
+        self->_warningPopupOverlay.alpha = 0.0f;
+        self->_warningPopupOverlay.transform = CGAffineTransformMakeScale(0.92, 0.92);
+    } completion:^(BOOL finished) {
+        self->_warningPopupOverlay.hidden = YES;
+    }];
 }
 
 #pragma mark - Lifecycle
@@ -609,16 +996,13 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     _isRemoteHUDActive = [self isHUDEnabled];
 
     dispatch_async(dispatch_get_main_queue(), ^{
+        [self applyLanguageTexts];
         if (self->_isRemoteHUDActive) {
-            [self->_mainButton setTitle:@"EXIT HUD" forState:UIControlStateNormal];
             self->_mainButton.backgroundColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0]; // Red
             self->_mainButton.layer.shadowColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:0.5].CGColor;
-            self->_buttonSubLabel.text = @"DarkPubg đang hoạt động trong game";
         } else {
-            [self->_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
             self->_mainButton.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]; // Cyan
             self->_mainButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.45].CGColor;
-            self->_buttonSubLabel.text = @"Nhấn để bật menu ESP trong game";
         }
     });
 }
@@ -626,18 +1010,24 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
 - (void)tapMainButton:(UIButton *)sender
 {
     BOOL isNowEnabled = [self isHUDEnabled];
-#if USE_DARKSWORD
+
+    // If HUD is currently OFF and user taps to OPEN HUD:
     if (!isNowEnabled) {
-        [self showDSProgressOverlay];
-    } else {
-        [self hideDSProgressOverlay];
+        // Check if PUBG Mobile is running
+        if (!IsPUBGProcessRunning()) {
+            [self showGameNotRunningAlert];
+            return;
+        }
     }
-#endif
+
     [self setHUDEnabled:!isNowEnabled];
     isNowEnabled = !isNowEnabled;
 
     if (isNowEnabled)
     {
+#if USE_DARKSWORD
+        [self showDSProgressOverlay];
+#endif
         [_impactFeedbackGenerator prepare];
         int anyToken;
         __weak typeof(self) weakSelf = self;
@@ -656,6 +1046,9 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     }
     else
     {
+#if USE_DARKSWORD
+        [self hideDSProgressOverlay];
+#endif
         [self.backgroundView setUserInteractionEnabled:NO];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             dispatch_async(dispatch_get_main_queue(), ^{
