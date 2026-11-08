@@ -44,15 +44,31 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     NSString *version = [[UIDevice currentDevice] systemVersion];
     if (outVersionStr) *outVersionStr = [NSString stringWithFormat:@"iOS %@", version];
 
-    NSOperatingSystemVersion os = [[NSProcessInfo processInfo] operatingSystemVersion];
-    // DarkSword kexploit supports iOS 15.0 through iOS 26.0
-    if (os.majorVersion >= 15 && os.majorVersion <= 26) {
-        if (outStatusStr) *outStatusStr = IsEnglish() ? @"DarkSword: Supported" : @"DarkSword: Đã hỗ trợ";
-        return YES;
-    } else {
-        if (outStatusStr) *outStatusStr = IsEnglish() ? @"DarkSword: Unsupported" : @"DarkSword: Chưa hỗ trợ";
-        return NO;
+    BOOL supported = NO;
+    if (version.length > 0) {
+        // Supported ranges specified by user: 17.0 - 17.7, 18.0 - 18.7.1, 26.0 - 26.0.1
+        if ([version compare:@"17.0" options:NSNumericSearch] != NSOrderedAscending &&
+            [version compare:@"17.7.99" options:NSNumericSearch] == NSOrderedAscending) {
+            supported = YES;
+        }
+        else if ([version compare:@"18.0" options:NSNumericSearch] != NSOrderedAscending &&
+                 [version compare:@"18.7.1" options:NSNumericSearch] != NSOrderedDescending) {
+            supported = YES;
+        }
+        else if ([version compare:@"26.0" options:NSNumericSearch] != NSOrderedAscending &&
+                 [version compare:@"26.0.1" options:NSNumericSearch] != NSOrderedDescending) {
+            supported = YES;
+        }
     }
+
+    if (outStatusStr) {
+        if (supported) {
+            *outStatusStr = IsEnglish() ? @"DarkSword: Supported" : @"DarkSword: Đã hỗ trợ";
+        } else {
+            *outStatusStr = IsEnglish() ? @"DarkSword: Unsupported" : @"DarkSword: Chưa hỗ trợ";
+        }
+    }
+    return supported;
 }
 
 static BOOL IsPUBGProcessRunning(void) {
@@ -140,6 +156,7 @@ static BOOL IsPUBGProcessRunning(void) {
     UILabel *_homeSubTitleLabel;
     UILabel *_iosVersionLabel;
     UILabel *_systemTagLabel;
+    UIView *_statusDotView;
     UILabel *_dsStatusLabel;
     UIView *_dsStatusBadge;
     UILabel *_dsBadgeLabel;
@@ -412,11 +429,11 @@ static BOOL IsPUBGProcessRunning(void) {
     [statusCard addSubview:cardSep];
 
     // Row 2: DarkSword Support Indicator
-    UIView *dotView = [[UIView alloc] init];
-    dotView.translatesAutoresizingMaskIntoConstraints = NO;
-    dotView.backgroundColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
-    dotView.layer.cornerRadius = 4.0f;
-    [statusCard addSubview:dotView];
+    _statusDotView = [[UIView alloc] init];
+    _statusDotView.translatesAutoresizingMaskIntoConstraints = NO;
+    _statusDotView.backgroundColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+    _statusDotView.layer.cornerRadius = 4.0f;
+    [statusCard addSubview:_statusDotView];
 
     _dsStatusLabel = [[UILabel alloc] init];
     _dsStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -487,16 +504,16 @@ static BOOL IsPUBGProcessRunning(void) {
         [cardSep.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
         [cardSep.heightAnchor constraintEqualToConstant:1.0f],
 
-        [dotView.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
-        [dotView.topAnchor constraintEqualToAnchor:cardSep.bottomAnchor constant:14.0f],
-        [dotView.widthAnchor constraintEqualToConstant:8.0f],
-        [dotView.heightAnchor constraintEqualToConstant:8.0f],
+        [_statusDotView.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
+        [_statusDotView.topAnchor constraintEqualToAnchor:cardSep.bottomAnchor constant:14.0f],
+        [_statusDotView.widthAnchor constraintEqualToConstant:8.0f],
+        [_statusDotView.heightAnchor constraintEqualToConstant:8.0f],
 
-        [_dsStatusLabel.leadingAnchor constraintEqualToAnchor:dotView.trailingAnchor constant:8.0f],
-        [_dsStatusLabel.centerYAnchor constraintEqualToAnchor:dotView.centerYAnchor],
+        [_dsStatusLabel.leadingAnchor constraintEqualToAnchor:_statusDotView.trailingAnchor constant:8.0f],
+        [_dsStatusLabel.centerYAnchor constraintEqualToAnchor:_statusDotView.centerYAnchor],
 
         [_dsStatusBadge.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
-        [_dsStatusBadge.centerYAnchor constraintEqualToAnchor:dotView.centerYAnchor],
+        [_dsStatusBadge.centerYAnchor constraintEqualToAnchor:_statusDotView.centerYAnchor],
         [_dsStatusBadge.heightAnchor constraintEqualToConstant:22.0f],
 
         [_dsBadgeLabel.leadingAnchor constraintEqualToAnchor:_dsStatusBadge.leadingAnchor constant:8.0f],
@@ -674,17 +691,15 @@ static BOOL IsPUBGProcessRunning(void) {
     infoCard.layer.borderWidth = 1.0f;
     [_settingContentView addSubview:infoCard];
 
-    auto addInfoRow = ^UIView *(UILabel **outTitleLabel, NSString *valStr, UIView *topAnchorView) {
+    auto makeRow = ^UIView *(UILabel *titleLbl, NSString *valStr, UIView *topView) {
         UIView *row = [[UIView alloc] init];
         row.translatesAutoresizingMaskIntoConstraints = NO;
         [infoCard addSubview:row];
 
-        UILabel *tLabel = [[UILabel alloc] init];
-        tLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        tLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
-        tLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-        [row addSubview:tLabel];
-        if (outTitleLabel) *outTitleLabel = tLabel;
+        titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
+        titleLbl.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+        titleLbl.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        [row addSubview:titleLbl];
 
         UILabel *vLabel = [[UILabel alloc] init];
         vLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -697,24 +712,29 @@ static BOOL IsPUBGProcessRunning(void) {
             [row.leadingAnchor constraintEqualToAnchor:infoCard.leadingAnchor constant:16.0f],
             [row.trailingAnchor constraintEqualToAnchor:infoCard.trailingAnchor constant:-16.0f],
             [row.heightAnchor constraintEqualToConstant:32.0f],
-            [tLabel.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
-            [tLabel.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+            [titleLbl.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+            [titleLbl.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
             [vLabel.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
             [vLabel.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
         ]];
 
-        if (topAnchorView) {
-            [row.topAnchor constraintEqualToAnchor:topAnchorView.bottomAnchor constant:8.0f].active = YES;
+        if (topView) {
+            [row.topAnchor constraintEqualToAnchor:topView.bottomAnchor constant:8.0f].active = YES;
         } else {
             [row.topAnchor constraintEqualToAnchor:infoCard.topAnchor constant:12.0f].active = YES;
         }
         return row;
     };
 
-    UIView *r1 = addInfoRow(&_infoRow1Title, @"DarkPubg", nil);
-    UIView *r2 = addInfoRow(&_infoRow2Title, @"1.0-1", r1);
-    UIView *r3 = addInfoRow(&_infoRow3Title, @"PUBG Mobile", r2);
-    UIView *r4 = addInfoRow(&_infoRow4Title, @"DarkSword Kernel (TrollStore)", r3);
+    _infoRow1Title = [[UILabel alloc] init];
+    _infoRow2Title = [[UILabel alloc] init];
+    _infoRow3Title = [[UILabel alloc] init];
+    _infoRow4Title = [[UILabel alloc] init];
+
+    UIView *r1 = makeRow(_infoRow1Title, @"DarkPubg", nil);
+    UIView *r2 = makeRow(_infoRow2Title, @"1.0-1", r1);
+    UIView *r3 = makeRow(_infoRow3Title, @"PUBG Mobile", r2);
+    UIView *r4 = makeRow(_infoRow4Title, @"DarkSword Kernel (TrollStore)", r3);
 
     // 5. Note Card
     UIView *noteCard = [[UIView alloc] init];
@@ -811,11 +831,17 @@ static BOOL IsPUBGProcessRunning(void) {
     _systemTagLabel.text = isEN ? @"Device" : @"Thiết bị";
 
     if (isSupported) {
+        if (_statusDotView) _statusDotView.backgroundColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
+        if (_dsStatusBadge) _dsStatusBadge.backgroundColor = [UIColor colorWithRed:28/255.0 green:58/255.0 blue:45/255.0 alpha:1.0];
+        if (_dsBadgeLabel) _dsBadgeLabel.textColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
         _dsStatusLabel.text = isEN ? @"DarkSword: Supported" : @"DarkSword: Đã hỗ trợ";
         _dsBadgeLabel.text = isEN ? @"Compatible" : @"Tương thích";
     } else {
+        if (_statusDotView) _statusDotView.backgroundColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+        if (_dsStatusBadge) _dsStatusBadge.backgroundColor = [UIColor colorWithRed:58/255.0 green:28/255.0 blue:28/255.0 alpha:1.0];
+        if (_dsBadgeLabel) _dsBadgeLabel.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
         _dsStatusLabel.text = isEN ? @"DarkSword: Unsupported" : @"DarkSword: Chưa hỗ trợ";
-        _dsBadgeLabel.text = isEN ? @"Unsupported" : @"Không hỗ trợ";
+        _dsBadgeLabel.text = isEN ? @"Unsupported" : @"Chưa hỗ trợ";
     }
 
     if (_isRemoteHUDActive) {
