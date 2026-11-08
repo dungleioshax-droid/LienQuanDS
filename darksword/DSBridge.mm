@@ -991,6 +991,10 @@ typedef struct {
     char name[36];
     DSPUBGItemCategory category;
     bool isVisible;
+    float hp;
+    float hpMax;
+    float fuel;
+    float fuelMax;
 } DSPUBGProjectedItem;
 
 static const int kDSPUBGMaxPlayers = 96;
@@ -1006,6 +1010,8 @@ static BOOL g_pubgEspName = YES;
 static BOOL g_pubgEspDist = YES;
 static BOOL g_pubgEspBot = YES;
 static BOOL g_pubgEspVehicle = YES;
+static BOOL g_pubgEspVehicleHp = YES;
+static BOOL g_pubgEspVehicleFuel = YES;
 static BOOL g_pubgEspWeapon = YES;
 static BOOL g_pubgEspArmor = YES;
 static BOOL g_pubgEspBag = YES;

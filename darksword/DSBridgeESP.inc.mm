@@ -943,11 +943,15 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UISwitch *_pubgBotSwitch;
     UILabel *_pubgVehicleLabel;
     UISwitch *_pubgVehicleSwitch;
+    UILabel *_pubgVehicleHpLabel;
+    UISwitch *_pubgVehicleHpSwitch;
+    UILabel *_pubgVehicleFuelLabel;
+    UISwitch *_pubgVehicleFuelSwitch;
     int _pubgCurrentTab;
     UIView *_pubgTabBar;
     UIButton *_pubgTabButtonPlayer;
     UIButton *_pubgTabButtonItems;
-    UIView *_pubgItemCards[6];
+    UIView *_pubgItemCards[8];
     UILabel *_pubgWeaponLabel;
     UISwitch *_pubgWeaponSwitch;
     UILabel *_pubgArmorLabel;
@@ -1014,7 +1018,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgCards[ci] = card;
     }
 
-    for (int ci = 0; ci < 6; ci++) {
+    for (int ci = 0; ci < 8; ci++) {
         UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
         card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
         card.layer.cornerRadius = 8.0;
@@ -1284,6 +1288,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
+    _pubgVehicleHpLabel = pubgCreateLabel(@"Máu Xe");
+    _pubgVehicleHpSwitch = pubgCreateSwitch(@selector(dsPubgVehicleHpChanged:));
+    _pubgVehicleFuelLabel = pubgCreateLabel(@"Xăng Xe");
+    _pubgVehicleFuelSwitch = pubgCreateSwitch(@selector(dsPubgVehicleFuelChanged:));
     _pubgWeaponLabel = pubgCreateLabel(@"Hiện Súng");
     _pubgWeaponSwitch = pubgCreateSwitch(@selector(dsPubgWeaponChanged:));
     _pubgArmorLabel = pubgCreateLabel(@"Giáp & Mũ");
@@ -1409,6 +1417,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgArrowSwitch.on = g_pubgEspArrow;
         if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
         _pubgVehicleSwitch.on = g_pubgEspVehicle;
+        if ([defaults objectForKey:@"pubg_vehicle_hp"] != nil) g_pubgEspVehicleHp = [defaults boolForKey:@"pubg_vehicle_hp"];
+        _pubgVehicleHpSwitch.on = g_pubgEspVehicleHp;
+        if ([defaults objectForKey:@"pubg_vehicle_fuel"] != nil) g_pubgEspVehicleFuel = [defaults boolForKey:@"pubg_vehicle_fuel"];
+        _pubgVehicleFuelSwitch.on = g_pubgEspVehicleFuel;
         if ([defaults objectForKey:@"pubg_weapon"] != nil) g_pubgEspWeapon = [defaults boolForKey:@"pubg_weapon"];
         _pubgWeaponSwitch.on = g_pubgEspWeapon;
         if ([defaults objectForKey:@"pubg_armor"] != nil) g_pubgEspArmor = [defaults boolForKey:@"pubg_armor"];
@@ -1568,8 +1580,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             [_pubgTabButtonItems setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
 
             // Hide Tab 1 (Items)
-            for (int ci = 0; ci < 6; ci++) _pubgItemCards[ci].hidden = YES;
+            for (int ci = 0; ci < 8; ci++) _pubgItemCards[ci].hidden = YES;
             _pubgVehicleLabel.hidden = YES; _pubgVehicleSwitch.hidden = YES;
+            _pubgVehicleHpLabel.hidden = YES; _pubgVehicleHpSwitch.hidden = YES;
+            _pubgVehicleFuelLabel.hidden = YES; _pubgVehicleFuelSwitch.hidden = YES;
             _pubgWeaponLabel.hidden = YES; _pubgWeaponSwitch.hidden = YES;
             _pubgArmorLabel.hidden = YES; _pubgArmorSwitch.hidden = YES;
             _pubgBagLabel.hidden = YES; _pubgBagSwitch.hidden = YES;
@@ -1689,42 +1703,57 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
             _pubgItemCards[1].frame = CGRectMake(col2X, y0, cardW, cardH1);
             _pubgItemCards[1].hidden = NO;
-            _pubgWeaponLabel.frame = CGRectMake(col2X + 8.0, y0 + 4.0, cardW - 48.0, 20.0);
-            _pubgWeaponLabel.hidden = NO;
-            _pubgWeaponSwitch.hidden = NO;
-            layoutCardSwitch(_pubgWeaponSwitch, col2X + cardW, y0 + cardH1 * 0.5);
+            _pubgVehicleHpLabel.frame = CGRectMake(col2X + 8.0, y0 + 4.0, cardW - 48.0, 20.0);
+            _pubgVehicleHpLabel.hidden = NO;
+            _pubgVehicleHpSwitch.hidden = NO;
+            layoutCardSwitch(_pubgVehicleHpSwitch, col2X + cardW, y0 + cardH1 * 0.5);
 
             CGFloat y1 = 132.0;
             _pubgItemCards[2].frame = CGRectMake(col1X, y1, cardW, cardH1);
             _pubgItemCards[2].hidden = NO;
-            _pubgArmorLabel.frame = CGRectMake(col1X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
-            _pubgArmorLabel.hidden = NO;
-            _pubgArmorSwitch.hidden = NO;
-            layoutCardSwitch(_pubgArmorSwitch, col1X + cardW, y1 + cardH1 * 0.5);
+            _pubgVehicleFuelLabel.frame = CGRectMake(col1X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
+            _pubgVehicleFuelLabel.hidden = NO;
+            _pubgVehicleFuelSwitch.hidden = NO;
+            layoutCardSwitch(_pubgVehicleFuelSwitch, col1X + cardW, y1 + cardH1 * 0.5);
 
             _pubgItemCards[3].frame = CGRectMake(col2X, y1, cardW, cardH1);
             _pubgItemCards[3].hidden = NO;
-            _pubgBagLabel.frame = CGRectMake(col2X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
-            _pubgBagLabel.hidden = NO;
-            _pubgBagSwitch.hidden = NO;
-            layoutCardSwitch(_pubgBagSwitch, col2X + cardW, y1 + cardH1 * 0.5);
+            _pubgWeaponLabel.frame = CGRectMake(col2X + 8.0, y1 + 4.0, cardW - 48.0, 20.0);
+            _pubgWeaponLabel.hidden = NO;
+            _pubgWeaponSwitch.hidden = NO;
+            layoutCardSwitch(_pubgWeaponSwitch, col2X + cardW, y1 + cardH1 * 0.5);
 
             CGFloat y2 = 164.0;
             _pubgItemCards[4].frame = CGRectMake(col1X, y2, cardW, cardH1);
             _pubgItemCards[4].hidden = NO;
-            _pubgScopeLabel.frame = CGRectMake(col1X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
-            _pubgScopeLabel.hidden = NO;
-            _pubgScopeSwitch.hidden = NO;
-            layoutCardSwitch(_pubgScopeSwitch, col1X + cardW, y2 + cardH1 * 0.5);
+            _pubgArmorLabel.frame = CGRectMake(col1X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgArmorLabel.hidden = NO;
+            _pubgArmorSwitch.hidden = NO;
+            layoutCardSwitch(_pubgArmorSwitch, col1X + cardW, y2 + cardH1 * 0.5);
 
             _pubgItemCards[5].frame = CGRectMake(col2X, y2, cardW, cardH1);
             _pubgItemCards[5].hidden = NO;
-            _pubgCrateLabel.frame = CGRectMake(col2X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgBagLabel.frame = CGRectMake(col2X + 8.0, y2 + 4.0, cardW - 48.0, 20.0);
+            _pubgBagLabel.hidden = NO;
+            _pubgBagSwitch.hidden = NO;
+            layoutCardSwitch(_pubgBagSwitch, col2X + cardW, y2 + cardH1 * 0.5);
+
+            CGFloat y3 = 196.0;
+            _pubgItemCards[6].frame = CGRectMake(col1X, y3, cardW, cardH1);
+            _pubgItemCards[6].hidden = NO;
+            _pubgScopeLabel.frame = CGRectMake(col1X + 8.0, y3 + 4.0, cardW - 48.0, 20.0);
+            _pubgScopeLabel.hidden = NO;
+            _pubgScopeSwitch.hidden = NO;
+            layoutCardSwitch(_pubgScopeSwitch, col1X + cardW, y3 + cardH1 * 0.5);
+
+            _pubgItemCards[7].frame = CGRectMake(col2X, y3, cardW, cardH1);
+            _pubgItemCards[7].hidden = NO;
+            _pubgCrateLabel.frame = CGRectMake(col2X + 8.0, y3 + 4.0, cardW - 48.0, 20.0);
             _pubgCrateLabel.hidden = NO;
             _pubgCrateSwitch.hidden = NO;
-            layoutCardSwitch(_pubgCrateSwitch, col2X + cardW, y2 + cardH1 * 0.5);
+            layoutCardSwitch(_pubgCrateSwitch, col2X + cardW, y3 + cardH1 * 0.5);
 
-            CGFloat y4 = 206.0;
+            CGFloat y4 = 230.0;
             _pubgItemScanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
             _pubgItemScanCard.hidden = NO;
             _pubgItemScanLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
@@ -1767,8 +1796,12 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgArrowSwitch.hidden = YES;
         _pubgVehicleLabel.hidden = YES;
         _pubgVehicleSwitch.hidden = YES;
+        _pubgVehicleHpLabel.hidden = YES;
+        _pubgVehicleHpSwitch.hidden = YES;
+        _pubgVehicleFuelLabel.hidden = YES;
+        _pubgVehicleFuelSwitch.hidden = YES;
         _pubgTabBar.hidden = YES;
-        for (int ci = 0; ci < 6; ci++) _pubgItemCards[ci].hidden = YES;
+        for (int ci = 0; ci < 8; ci++) _pubgItemCards[ci].hidden = YES;
         _pubgWeaponLabel.hidden = YES; _pubgWeaponSwitch.hidden = YES;
         _pubgArmorLabel.hidden = YES; _pubgArmorSwitch.hidden = YES;
         _pubgBagLabel.hidden = YES; _pubgBagSwitch.hidden = YES;
@@ -1989,6 +2022,16 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
 }
 
+- (void)dsPubgVehicleHpChanged:(UISwitch *)sender {
+    g_pubgEspVehicleHp = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle_hp"];
+}
+
+- (void)dsPubgVehicleFuelChanged:(UISwitch *)sender {
+    g_pubgEspVehicleFuel = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle_fuel"];
+}
+
 - (void)dsPubgWeaponChanged:(UISwitch *)sender {
     g_pubgEspWeapon = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_weapon"];
@@ -2115,6 +2158,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [defaults setBool:YES forKey:@"pubg_arrow"];
 
         [_pubgVehicleSwitch setOn:YES animated:YES];
+        [_pubgVehicleHpSwitch setOn:YES animated:YES];
+        [_pubgVehicleFuelSwitch setOn:YES animated:YES];
         [_pubgWeaponSwitch setOn:YES animated:YES];
         [_pubgArmorSwitch setOn:YES animated:YES];
         [_pubgBagSwitch setOn:YES animated:YES];
@@ -2124,6 +2169,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgItemScanValueLabel.text = @"150m";
 
         g_pubgEspVehicle = YES;
+        g_pubgEspVehicleHp = YES;
+        g_pubgEspVehicleFuel = YES;
         g_pubgEspWeapon = YES;
         g_pubgEspArmor = YES;
         g_pubgEspBag = YES;
@@ -2132,6 +2179,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         g_pubgItemMaxDistance = 150.0f;
 
         [defaults setBool:YES forKey:@"pubg_vehicle"];
+        [defaults setBool:YES forKey:@"pubg_vehicle_hp"];
+        [defaults setBool:YES forKey:@"pubg_vehicle_fuel"];
         [defaults setBool:YES forKey:@"pubg_weapon"];
         [defaults setBool:YES forKey:@"pubg_armor"];
         [defaults setBool:YES forKey:@"pubg_bag"];
@@ -3373,6 +3422,10 @@ static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGArrowLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGArrowTextLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGItemLabels[kDSPUBGMaxItems] = {};
+static CALayer *g_hostedPUBGItemHpBgLayers[kDSPUBGMaxItems] = {};
+static CALayer *g_hostedPUBGItemHpBarLayers[kDSPUBGMaxItems] = {};
+static CALayer *g_hostedPUBGItemFuelBgLayers[kDSPUBGMaxItems] = {};
+static CALayer *g_hostedPUBGItemFuelBarLayers[kDSPUBGMaxItems] = {};
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -3391,6 +3444,10 @@ static void ds_hosted_pubg_hide_all(void) {
     }
     for (int i = 0; i < kDSPUBGMaxItems; i++) {
         if (g_hostedPUBGItemLabels[i] && !g_hostedPUBGItemLabels[i].hidden) g_hostedPUBGItemLabels[i].hidden = YES;
+        if (g_hostedPUBGItemHpBgLayers[i] && !g_hostedPUBGItemHpBgLayers[i].hidden) g_hostedPUBGItemHpBgLayers[i].hidden = YES;
+        if (g_hostedPUBGItemHpBarLayers[i] && !g_hostedPUBGItemHpBarLayers[i].hidden) g_hostedPUBGItemHpBarLayers[i].hidden = YES;
+        if (g_hostedPUBGItemFuelBgLayers[i] && !g_hostedPUBGItemFuelBgLayers[i].hidden) g_hostedPUBGItemFuelBgLayers[i].hidden = YES;
+        if (g_hostedPUBGItemFuelBarLayers[i] && !g_hostedPUBGItemFuelBarLayers[i].hidden) g_hostedPUBGItemFuelBarLayers[i].hidden = YES;
     }
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
@@ -3912,10 +3969,18 @@ static void ds_hosted_apply_pubg(void) {
 
     for (int i = 0; i < kDSPUBGMaxItems; i++) {
         CATextLayer *lbl = g_hostedPUBGItemLabels[i];
+        CALayer *hpBg = g_hostedPUBGItemHpBgLayers[i];
+        CALayer *hpBar = g_hostedPUBGItemHpBarLayers[i];
+        CALayer *fuelBg = g_hostedPUBGItemFuelBgLayers[i];
+        CALayer *fuelBar = g_hostedPUBGItemFuelBarLayers[i];
         if (!lbl) continue;
 
         if (i >= itemCount) {
             if (!lbl.hidden) lbl.hidden = YES;
+            if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
+            if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
+            if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
+            if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
             continue;
         }
 
@@ -3935,12 +4000,16 @@ static void ds_hosted_apply_pubg(void) {
                         ((it.category == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
         if (!show || !it.isVisible || it.distanceMeters > maxDist) {
             if (!lbl.hidden) lbl.hidden = YES;
+            if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
+            if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
+            if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
+            if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
             continue;
         }
 
         UIColor *color = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95]; // Gold default
         if (it.category == DSPUBGItemCategoryVehicle) {
-            color = [UIColor colorWithRed:50/255.0 green:255/255.0 blue:50/255.0 alpha:0.95]; // Green
+            color = [UIColor whiteColor]; // White text for vehicle
         } else if (it.category == DSPUBGItemCategoryScope) {
             color = [UIColor colorWithRed:190/255.0 green:110/255.0 blue:255/255.0 alpha:0.95]; // Purple
         } else if (it.category == DSPUBGItemCategoryArmor) {
@@ -3963,16 +4032,79 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         NSString *str = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
-        CGFloat strW = 130.0f;
-        CGFloat strH = 18.0f;
+        CGFloat strW = 140.0f;
+        CGFloat strH = 16.0f;
         lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
         lbl.fontSize = 10.0f;
         lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
         lbl.foregroundColor = color.CGColor;
-        lbl.backgroundColor = [UIColor colorWithRed:10/255.0 green:14/255.0 blue:20/255.0 alpha:0.65].CGColor;
+        if (it.category == DSPUBGItemCategoryVehicle) {
+            lbl.backgroundColor = UIColor.clearColor.CGColor;
+            lbl.shadowColor = UIColor.blackColor.CGColor;
+            lbl.shadowRadius = 2.0;
+            lbl.shadowOpacity = 0.95;
+            lbl.shadowOffset = CGSizeMake(0, 1);
+        } else {
+            lbl.backgroundColor = [UIColor colorWithRed:10/255.0 green:14/255.0 blue:20/255.0 alpha:0.65].CGColor;
+            lbl.shadowColor = UIColor.blackColor.CGColor;
+            lbl.shadowRadius = 1.0;
+            lbl.shadowOpacity = 0.75;
+            lbl.shadowOffset = CGSizeMake(0, 1);
+        }
         lbl.cornerRadius = 3.0f;
         lbl.string = str;
         lbl.hidden = NO;
+
+        if (it.category == DSPUBGItemCategoryVehicle) {
+            CGFloat vBarW = 56.0f;
+            CGFloat vBarH = 3.5f;
+            CGFloat vBarX = it.screenX - vBarW * 0.5f;
+            CGFloat curY = it.screenY + strH * 0.5f + 1.0f;
+
+            if (g_pubgEspVehicleHp && it.hpMax > 0.0f && hpBar) {
+                float hpRatio = it.hp / it.hpMax;
+                if (hpRatio < 0.0f) hpRatio = 0.0f;
+                if (hpRatio > 1.0f) hpRatio = 1.0f;
+                CGFloat fillW = vBarW * hpRatio;
+                if (fillW < 1.0f && it.hp > 0.0f) fillW = 1.0f;
+
+                if (hpBg) {
+                    hpBg.frame = CGRectMake(vBarX - 0.5f, curY - 0.5f, vBarW + 1.0f, vBarH + 1.0f);
+                    hpBg.hidden = NO;
+                }
+                hpBar.frame = CGRectMake(vBarX, curY, fillW, vBarH);
+                hpBar.backgroundColor = [UIColor colorWithRed:50/255.0 green:220/255.0 blue:50/255.0 alpha:0.95].CGColor;
+                hpBar.hidden = NO;
+                curY += vBarH + 2.5f;
+            } else {
+                if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
+                if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
+            }
+
+            if (g_pubgEspVehicleFuel && it.fuelMax > 0.0f && fuelBar) {
+                float fuelRatio = it.fuel / it.fuelMax;
+                if (fuelRatio < 0.0f) fuelRatio = 0.0f;
+                if (fuelRatio > 1.0f) fuelRatio = 1.0f;
+                CGFloat fillW = vBarW * fuelRatio;
+                if (fillW < 1.0f && it.fuel > 0.0f) fillW = 1.0f;
+
+                if (fuelBg) {
+                    fuelBg.frame = CGRectMake(vBarX - 0.5f, curY - 0.5f, vBarW + 1.0f, vBarH + 1.0f);
+                    fuelBg.hidden = NO;
+                }
+                fuelBar.frame = CGRectMake(vBarX, curY, fillW, vBarH);
+                fuelBar.backgroundColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95].CGColor;
+                fuelBar.hidden = NO;
+            } else {
+                if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
+                if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
+            }
+        } else {
+            if (hpBg && !hpBg.hidden) hpBg.hidden = YES;
+            if (hpBar && !hpBar.hidden) hpBar.hidden = YES;
+            if (fuelBg && !fuelBg.hidden) fuelBg.hidden = YES;
+            if (fuelBar && !fuelBar.hidden) fuelBar.hidden = YES;
+        }
     }
 }
 
@@ -4404,6 +4536,42 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 itemLbl.hidden = YES;
                 [g_hostedLayer addSublayer:itemLbl];
                 g_hostedPUBGItemLabels[i] = itemLbl;
+
+                CALayer *hpBg = [CALayer layer];
+                hpBg.actions = noAnim;
+                hpBg.contentsScale = scale;
+                hpBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.60].CGColor;
+                hpBg.cornerRadius = 1.5;
+                hpBg.hidden = YES;
+                [g_hostedLayer addSublayer:hpBg];
+                g_hostedPUBGItemHpBgLayers[i] = hpBg;
+
+                CALayer *hpBar = [CALayer layer];
+                hpBar.actions = noAnim;
+                hpBar.contentsScale = scale;
+                hpBar.backgroundColor = [UIColor colorWithRed:50/255.0 green:220/255.0 blue:50/255.0 alpha:0.95].CGColor;
+                hpBar.cornerRadius = 1.5;
+                hpBar.hidden = YES;
+                [g_hostedLayer addSublayer:hpBar];
+                g_hostedPUBGItemHpBarLayers[i] = hpBar;
+
+                CALayer *fuelBg = [CALayer layer];
+                fuelBg.actions = noAnim;
+                fuelBg.contentsScale = scale;
+                fuelBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.60].CGColor;
+                fuelBg.cornerRadius = 1.5;
+                fuelBg.hidden = YES;
+                [g_hostedLayer addSublayer:fuelBg];
+                g_hostedPUBGItemFuelBgLayers[i] = fuelBg;
+
+                CALayer *fuelBar = [CALayer layer];
+                fuelBar.actions = noAnim;
+                fuelBar.contentsScale = scale;
+                fuelBar.backgroundColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.95].CGColor;
+                fuelBar.cornerRadius = 1.5;
+                fuelBar.hidden = YES;
+                [g_hostedLayer addSublayer:fuelBar];
+                g_hostedPUBGItemFuelBarLayers[i] = fuelBar;
             }
 
             CAShapeLayer *topBg = [CAShapeLayer layer];

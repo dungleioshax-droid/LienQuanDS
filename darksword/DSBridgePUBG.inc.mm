@@ -3032,6 +3032,50 @@ static void ds_pubg_tick(void) {
         pi.isVisible = true;
         strncpy(pi.name, displayName, sizeof(pi.name) - 1);
         pi.name[sizeof(pi.name) - 1] = '\0';
+        pi.hp = 0.0f;
+        pi.hpMax = 0.0f;
+        pi.fuel = 0.0f;
+        pi.fuelMax = 0.0f;
+
+        if (cat == DSPUBGItemCategoryVehicle) {
+            uint64_t vCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
+            if (!vCommon || !ds_pubg_valid(vCommon)) {
+                const uint64_t candidateOffsets[] = { 0xC00ULL, 0xC10ULL, 0xC18ULL, 0x6F8ULL, 0x700ULL, 0xBF8ULL };
+                for (size_t ci = 0; ci < sizeof(candidateOffsets)/sizeof(candidateOffsets[0]); ci++) {
+                    uint64_t cand = ds_pubg_read_ptr(actor + candidateOffsets[ci]);
+                    if (cand && ds_pubg_valid(cand)) {
+                        float testHpMax = ds_pubg_read_f32(cand + 0x350ULL);
+                        if (!isnan(testHpMax) && !isinf(testHpMax) && testHpMax >= 50.0f && testHpMax <= 50000.0f) {
+                            vCommon = cand;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (vCommon && ds_pubg_valid(vCommon)) {
+                float hpMax = ds_pubg_read_f32(vCommon + 0x350ULL);
+                float hp = ds_pubg_read_f32(vCommon + 0x354ULL);
+                float fuelMax = ds_pubg_read_f32(vCommon + 0x438ULL);
+                float fuel = ds_pubg_read_f32(vCommon + 0x43CULL);
+
+                if (!isnan(hpMax) && !isinf(hpMax) && hpMax > 0.0f && hpMax <= 200000.0f) {
+                    pi.hpMax = hpMax;
+                    if (!isnan(hp) && !isinf(hp) && hp >= 0.0f) {
+                        pi.hp = (hp > hpMax) ? hpMax : hp;
+                    } else {
+                        pi.hp = 0.0f;
+                    }
+                }
+                if (!isnan(fuelMax) && !isinf(fuelMax) && fuelMax > 0.0f && fuelMax <= 200000.0f) {
+                    pi.fuelMax = fuelMax;
+                    if (!isnan(fuel) && !isinf(fuel) && fuel >= 0.0f) {
+                        pi.fuel = (fuel > fuelMax) ? fuelMax : fuel;
+                    } else {
+                        pi.fuel = 0.0f;
+                    }
+                }
+            }
+        }
     };
 
     // Source 1: GameState.PlayerArray
