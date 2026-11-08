@@ -3006,8 +3006,7 @@ static void ds_pubg_tick(void) {
                                 float realTop = (p.skeleton[15].valid) ? (p.skeleton[15].y - 3.0f) : (minBoneY - 4.0f);
                                 float realBot = maxBoneY + 1.5f;
                                 topY = realTop;
-                                bottomY = realBot;
-                                boxH = bottomY - topY;
+                                boxH = realBot - realTop;
                                 if (boxH < 8.0f) boxH = 8.0f;
                                 boxW = boxH * 0.45f;
                                 boxX = centerX - boxW * 0.5f;
