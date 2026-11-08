@@ -1799,7 +1799,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgAimFovLabel.hidden = YES;
         _pubgAimFovValueLabel.hidden = YES;
         _pubgAimFovSlider.hidden = YES;
-    } else {
         _masterCard.hidden = YES;
         for (int ci = 0; ci < 7; ci++) _pubgCards[ci].hidden = YES;
         _scanCard.hidden = YES;
