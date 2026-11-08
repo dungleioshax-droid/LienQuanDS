@@ -4004,6 +4004,7 @@ static void ds_hosted_apply_pubg(void) {
             lbl.shadowRadius = 2.0;
             lbl.shadowOpacity = 0.95;
             lbl.shadowOffset = CGSizeMake(0, 1);
+            lbl.cornerRadius = 0.0f;
             lbl.wrapped = YES;
 
             NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
@@ -4082,12 +4083,12 @@ static void ds_hosted_apply_pubg(void) {
             lbl.fontSize = 10.0f;
             lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
             lbl.foregroundColor = color.CGColor;
-            lbl.backgroundColor = [UIColor colorWithRed:10/255.0 green:14/255.0 blue:20/255.0 alpha:0.65].CGColor;
+            lbl.backgroundColor = UIColor.clearColor.CGColor;
             lbl.shadowColor = UIColor.blackColor.CGColor;
-            lbl.shadowRadius = 1.0;
-            lbl.shadowOpacity = 0.75;
+            lbl.shadowRadius = 2.0;
+            lbl.shadowOpacity = 0.95;
             lbl.shadowOffset = CGSizeMake(0, 1);
-            lbl.cornerRadius = 3.0f;
+            lbl.cornerRadius = 0.0f;
             lbl.wrapped = NO;
             lbl.string = str;
             lbl.hidden = NO;

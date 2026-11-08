@@ -505,7 +505,8 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
 
     // 1. Vehicles
     bool isNonVehicle = (strcasestr(name, "Wrapper") != nullptr) ||
-                        (strcasestr(name, "PickUpList") != nullptr) ||
+                        (strcasestr(name, "PickUp") != nullptr && strcasestr(name, "VH_") == nullptr) ||
+                        (strcasestr(name, "Pickup") != nullptr && strcasestr(name, "VH_") == nullptr) ||
                         (strcasestr(name, "WheelComponent") != nullptr) ||
                         (strcasestr(name, "VehicleWheel") != nullptr) ||
                         (strcasestr(name, "SeatComponent") != nullptr) ||
@@ -528,11 +529,11 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
             snprintf(outDisplay, outCap, "Xe Buggy");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strcasestr(name, "PickUp") || strcasestr(name, "Pickup") || strcasestr(name, "Truck") || strcasestr(name, "Rony")) {
+        if (strcasestr(name, "VH_PickUp") || strcasestr(name, "VH_Pickup") || (strcasestr(name, "Truck") && !strcasestr(name, "Monster")) || strcasestr(name, "Rony")) {
             snprintf(outDisplay, outCap, "Xe Bán Tải");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strcasestr(name, "Motorcycle") || strcasestr(name, "Motorbike") || strcasestr(name, "Motor") || strcasestr(name, "Bike")) {
+        if (strcasestr(name, "Motorcycle") || strcasestr(name, "Motorbike") || strcasestr(name, "VH_Motor") || strcasestr(name, "Bike")) {
             snprintf(outDisplay, outCap, "Xe Máy");
             return DSPUBGItemCategoryVehicle;
         }
@@ -540,11 +541,11 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
             snprintf(outDisplay, outCap, "Xe Scooter");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strcasestr(name, "Tuk") || strcasestr(name, "TukTuk")) {
+        if (strcasestr(name, "TukTuk")) {
             snprintf(outDisplay, outCap, "Xe TukTuk");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strcasestr(name, "MiniBus") || strcasestr(name, "Bus")) {
+        if (strcasestr(name, "MiniBus") || strcasestr(name, "Bus_")) {
             snprintf(outDisplay, outCap, "Xe MiniBus");
             return DSPUBGItemCategoryVehicle;
         }
@@ -608,166 +609,250 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
             snprintf(outDisplay, outCap, "Xe ATV");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strcasestr(name, "VH_") || strcasestr(name, "Vehicle") || strcasestr(name, "WheeledVehicle") || strcasestr(name, "Car")) {
+        if (strcasestr(name, "VH_") || strcasestr(name, "WheeledVehicle") || strcasestr(name, "Vehicle_")) {
             snprintf(outDisplay, outCap, "Xe Ô Tô");
             return DSPUBGItemCategoryVehicle;
         }
     }
 
     // 2. Scopes
-    if (strstr(name, "8X") || strstr(name, "8x")) {
+    if (strcasestr(name, "8X")) {
         snprintf(outDisplay, outCap, "Scope 8x");
         return DSPUBGItemCategoryScope;
     }
-    if (strstr(name, "6X") || strstr(name, "6x")) {
+    if (strcasestr(name, "6X")) {
         snprintf(outDisplay, outCap, "Scope 6x");
         return DSPUBGItemCategoryScope;
     }
-    if (strstr(name, "4X") || strstr(name, "4x")) {
+    if (strcasestr(name, "4X")) {
         snprintf(outDisplay, outCap, "Scope 4x");
         return DSPUBGItemCategoryScope;
     }
-    if (strstr(name, "3X") || strstr(name, "3x")) {
+    if (strcasestr(name, "3X")) {
         snprintf(outDisplay, outCap, "Scope 3x");
         return DSPUBGItemCategoryScope;
     }
-    if (strstr(name, "2X") || strstr(name, "2x")) {
+    if (strcasestr(name, "2X")) {
         snprintf(outDisplay, outCap, "Scope 2x");
         return DSPUBGItemCategoryScope;
     }
-    if (strstr(name, "HD") || strstr(name, "RedDot")) {
+    if (strcasestr(name, "RedDot") || strcasestr(name, "HD")) {
         snprintf(outDisplay, outCap, "Red Dot");
         return DSPUBGItemCategoryScope;
     }
-    if (strstr(name, "MZJ_QX") || strstr(name, "Holo")) {
+    if (strcasestr(name, "Holo") || strcasestr(name, "MZJ_QX")) {
         snprintf(outDisplay, outCap, "Holo");
         return DSPUBGItemCategoryScope;
     }
 
     // 3. Armor & Helmets
-    if (strstr(name, "Armor_Lv3") || strstr(name, "Armor3")) {
+    if (strcasestr(name, "Armor_Lv3") || strcasestr(name, "Armor3")) {
         snprintf(outDisplay, outCap, "Giáp 3");
         return DSPUBGItemCategoryArmor;
     }
-    if (strstr(name, "Armor_Lv2") || strstr(name, "Armor2")) {
+    if (strcasestr(name, "Armor_Lv2") || strcasestr(name, "Armor2")) {
         snprintf(outDisplay, outCap, "Giáp 2");
         return DSPUBGItemCategoryArmor;
     }
-    if (strstr(name, "Head_Lv3") || strstr(name, "Helmet_Lv3")) {
+    if (strcasestr(name, "Armor_Lv1") || strcasestr(name, "Armor1")) {
+        snprintf(outDisplay, outCap, "Giáp 1");
+        return DSPUBGItemCategoryArmor;
+    }
+    if (strcasestr(name, "Head_Lv3") || strcasestr(name, "Helmet_Lv3") || strcasestr(name, "Head3")) {
         snprintf(outDisplay, outCap, "Mũ 3");
         return DSPUBGItemCategoryArmor;
     }
-    if (strstr(name, "Head_Lv2") || strstr(name, "Helmet_Lv2")) {
+    if (strcasestr(name, "Head_Lv2") || strcasestr(name, "Helmet_Lv2") || strcasestr(name, "Head2")) {
         snprintf(outDisplay, outCap, "Mũ 2");
+        return DSPUBGItemCategoryArmor;
+    }
+    if (strcasestr(name, "Head_Lv1") || strcasestr(name, "Helmet_Lv1") || strcasestr(name, "Head1")) {
+        snprintf(outDisplay, outCap, "Mũ 1");
         return DSPUBGItemCategoryArmor;
     }
 
     // 4. Backpacks
-    if (strstr(name, "Bag_Lv3")) {
+    if (strcasestr(name, "Bag_Lv3") || strcasestr(name, "Bag3")) {
         snprintf(outDisplay, outCap, "Balo 3");
         return DSPUBGItemCategoryBag;
     }
-    if (strstr(name, "Bag_Lv2")) {
+    if (strcasestr(name, "Bag_Lv2") || strcasestr(name, "Bag2")) {
         snprintf(outDisplay, outCap, "Balo 2");
         return DSPUBGItemCategoryBag;
     }
+    if (strcasestr(name, "Bag_Lv1") || strcasestr(name, "Bag1")) {
+        snprintf(outDisplay, outCap, "Balo 1");
+        return DSPUBGItemCategoryBag;
+    }
 
-    // 5. High-Value Weapons
-    if (strstr(name, "Flare")) {
+    // 5. Weapons
+    if (strcasestr(name, "Flare")) {
         snprintf(outDisplay, outCap, "Flare Gun");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "AWM")) {
+    if (strcasestr(name, "AWM")) {
         snprintf(outDisplay, outCap, "AWM");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "M416")) {
+    if (strcasestr(name, "M416")) {
         snprintf(outDisplay, outCap, "M416");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "AKM")) {
+    if (strcasestr(name, "AKM")) {
         snprintf(outDisplay, outCap, "AKM");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "M24")) {
+    if (strcasestr(name, "M24")) {
         snprintf(outDisplay, outCap, "M24");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "Kar98")) {
+    if (strcasestr(name, "Kar98")) {
         snprintf(outDisplay, outCap, "Kar98k");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "Groza")) {
+    if (strcasestr(name, "Groza")) {
         snprintf(outDisplay, outCap, "Groza");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "AUG")) {
+    if (strcasestr(name, "AUG")) {
         snprintf(outDisplay, outCap, "AUG");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "M762")) {
+    if (strcasestr(name, "M762")) {
         snprintf(outDisplay, outCap, "M762");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "Mk14")) {
+    if (strcasestr(name, "Mk14")) {
         snprintf(outDisplay, outCap, "Mk14");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "SLR")) {
+    if (strcasestr(name, "SLR")) {
         snprintf(outDisplay, outCap, "SLR");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "SKS")) {
+    if (strcasestr(name, "SKS")) {
         snprintf(outDisplay, outCap, "SKS");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "Mini14")) {
+    if (strcasestr(name, "Mini14")) {
         snprintf(outDisplay, outCap, "Mini14");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "AMR")) {
+    if (strcasestr(name, "AMR")) {
         snprintf(outDisplay, outCap, "Lynx AMR");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "MG3")) {
+    if (strcasestr(name, "MG3")) {
         snprintf(outDisplay, outCap, "MG3");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "M249")) {
+    if (strcasestr(name, "M249")) {
         snprintf(outDisplay, outCap, "M249");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "DP28") || strstr(name, "DP-28")) {
+    if (strcasestr(name, "DP28") || strcasestr(name, "DP-28")) {
         snprintf(outDisplay, outCap, "DP-28");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "P90")) {
+    if (strcasestr(name, "P90")) {
         snprintf(outDisplay, outCap, "P90");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "Vector")) {
+    if (strcasestr(name, "Vector")) {
         snprintf(outDisplay, outCap, "Vector");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "UMP")) {
+    if (strcasestr(name, "UMP")) {
         snprintf(outDisplay, outCap, "UMP45");
         return DSPUBGItemCategoryWeapon;
     }
-    if (strstr(name, "DBS")) {
+    if (strcasestr(name, "DBS")) {
         snprintf(outDisplay, outCap, "DBS");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "SCAR")) {
+        snprintf(outDisplay, outCap, "SCAR-L");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "M16A4") || strcasestr(name, "M16")) {
+        snprintf(outDisplay, outCap, "M16A4");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "QBZ")) {
+        snprintf(outDisplay, outCap, "QBZ");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "G36")) {
+        snprintf(outDisplay, outCap, "G36C");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "ACE32")) {
+        snprintf(outDisplay, outCap, "ACE32");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "Honey")) {
+        snprintf(outDisplay, outCap, "Honey Badger");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "FAMAS")) {
+        snprintf(outDisplay, outCap, "FAMAS");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "Mosin")) {
+        snprintf(outDisplay, outCap, "Mosin");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "Mk12")) {
+        snprintf(outDisplay, outCap, "Mk12");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "QBU")) {
+        snprintf(outDisplay, outCap, "QBU");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "VSS")) {
+        snprintf(outDisplay, outCap, "VSS");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "S12K")) {
+        snprintf(outDisplay, outCap, "S12K");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "S686")) {
+        snprintf(outDisplay, outCap, "S686");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "S1897")) {
+        snprintf(outDisplay, outCap, "S1897");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "UZI") || strcasestr(name, "MicroUZI")) {
+        snprintf(outDisplay, outCap, "Micro UZI");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "Bizon") || strcasestr(name, "PP19")) {
+        snprintf(outDisplay, outCap, "PP-19 Bizon");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "MP5K") || strcasestr(name, "MP5")) {
+        snprintf(outDisplay, outCap, "MP5K");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (strcasestr(name, "Pan")) {
+        snprintf(outDisplay, outCap, "Chảo");
         return DSPUBGItemCategoryWeapon;
     }
 
     // 6. Crates & AirDrops
-    if (strstr(name, "AirDrop")) {
+    if (strcasestr(name, "AirDrop")) {
         snprintf(outDisplay, outCap, "HÒM THÍNH");
         return DSPUBGItemCategoryCrate;
     }
-    if (strstr(name, "DeadBox") || strstr(name, "PlayerDeadInventoryBox")) {
+    if (strcasestr(name, "DeadBox") || strcasestr(name, "PlayerDeadInventoryBox") || strcasestr(name, "TombBox")) {
         snprintf(outDisplay, outCap, "Hòm Xác");
         return DSPUBGItemCategoryCrate;
     }
-    if (strstr(name, "PickUpListWrapper")) {
+    if (strcasestr(name, "PickUpListWrapper")) {
         snprintf(outDisplay, outCap, "Đồ Rơi");
         return DSPUBGItemCategoryCrate;
     }
@@ -1102,7 +1187,8 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     // 1. Check if Actor is a Vehicle (ASTExtraVehicleBase)
     if (hasName) {
         bool isNonVehicle = (strcasestr(actorName, "Wrapper") != nullptr) ||
-                            (strcasestr(actorName, "PickUpList") != nullptr) ||
+                            (strcasestr(actorName, "PickUp") != nullptr && strcasestr(actorName, "VH_") == nullptr) ||
+                            (strcasestr(actorName, "Pickup") != nullptr && strcasestr(actorName, "VH_") == nullptr) ||
                             (strcasestr(actorName, "WheelComponent") != nullptr) ||
                             (strcasestr(actorName, "VehicleWheel") != nullptr) ||
                             (strcasestr(actorName, "SeatComponent") != nullptr) ||
@@ -1125,11 +1211,11 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
                 snprintf(outDisplay, outCap, "Xe Buggy");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strcasestr(actorName, "PickUp") || strcasestr(actorName, "Pickup") || strcasestr(actorName, "Truck") || strcasestr(actorName, "Rony")) {
+            if (strcasestr(actorName, "VH_PickUp") || strcasestr(actorName, "VH_Pickup") || (strcasestr(actorName, "Truck") && !strcasestr(actorName, "Monster")) || strcasestr(actorName, "Rony")) {
                 snprintf(outDisplay, outCap, "Xe Bán Tải");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strcasestr(actorName, "Motorcycle") || strcasestr(actorName, "Motorbike") || strcasestr(actorName, "Motor") || strcasestr(actorName, "Bike")) {
+            if (strcasestr(actorName, "Motorcycle") || strcasestr(actorName, "Motorbike") || strcasestr(actorName, "VH_Motor") || strcasestr(actorName, "Bike")) {
                 snprintf(outDisplay, outCap, "Xe Máy");
                 return DSPUBGItemCategoryVehicle;
             }
@@ -1137,11 +1223,11 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
                 snprintf(outDisplay, outCap, "Xe Scooter");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strcasestr(actorName, "Tuk") || strcasestr(actorName, "TukTuk")) {
+            if (strcasestr(actorName, "TukTuk")) {
                 snprintf(outDisplay, outCap, "Xe TukTuk");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strcasestr(actorName, "MiniBus") || strcasestr(actorName, "Bus")) {
+            if (strcasestr(actorName, "MiniBus") || strcasestr(actorName, "Bus_")) {
                 snprintf(outDisplay, outCap, "Xe MiniBus");
                 return DSPUBGItemCategoryVehicle;
             }
@@ -1205,7 +1291,7 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
                 snprintf(outDisplay, outCap, "Xe ATV");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strcasestr(actorName, "VH_") || strcasestr(actorName, "Vehicle") || strcasestr(actorName, "WheeledVehicle") || strcasestr(actorName, "Car")) {
+            if (strcasestr(actorName, "VH_") || strcasestr(actorName, "WheeledVehicle") || strcasestr(actorName, "Vehicle_")) {
                 uint8_t shape = ds_pubg_read_u8(actor + 0x70DULL);
                 if (shape > 0 && shape <= 125) {
                     DSPUBGItemCategory cat = ds_pubg_classify_vehicle_shape(shape, outDisplay, outCap);
@@ -1319,6 +1405,34 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     if (targetId > 0) {
         DSPUBGItemCategory idCat = ds_pubg_classify_item_id(targetId, outDisplay, outCap);
         if (idCat != DSPUBGItemCategoryNone) return idCat;
+    }
+
+    // Try other known offsets in PickUpWrapperActor / ItemActor
+    static const uint64_t kIdOffsets[] = {
+        0x5F8ULL, 0x600ULL, 0x604ULL, 0x608ULL, 0x64CULL, 0x650ULL,
+        0x750ULL, 0x754ULL, 0x760ULL, 0x798ULL, 0x868ULL
+    };
+    for (uint64_t off : kIdOffsets) {
+        int32_t candId = ds_pubg_read_i32(actor + off);
+        if (candId >= 101001 && candId <= 699999) {
+            DSPUBGItemCategory idCat = ds_pubg_classify_item_id(candId, outDisplay, outCap);
+            if (idCat != DSPUBGItemCategoryNone) return idCat;
+        }
+    }
+
+    // Try PickUpDataList (TArray) at 0x600, 0x620, 0x630, 0x640, 0x650
+    static const uint64_t kListOffsets[] = { 0x600ULL, 0x620ULL, 0x630ULL, 0x640ULL, 0x650ULL };
+    for (uint64_t lOff : kListOffsets) {
+        uint64_t dataPtr = ds_pubg_read_ptr(actor + lOff);
+        int32_t count = ds_pubg_read_i32(actor + lOff + 8ULL);
+        if (dataPtr && ds_pubg_valid(dataPtr) && count > 0 && count <= 30) {
+            int32_t subId = ds_pubg_read_i32(dataPtr + 4ULL);
+            if (subId < 101001 || subId > 699999) subId = ds_pubg_read_i32(dataPtr);
+            if (subId >= 101001 && subId <= 699999) {
+                DSPUBGItemCategory idCat = ds_pubg_classify_item_id(subId, outDisplay, outCap);
+                if (idCat != DSPUBGItemCategoryNone) return idCat;
+            }
+        }
     }
 
     // 5. Fallback string classification if actorName was resolved
