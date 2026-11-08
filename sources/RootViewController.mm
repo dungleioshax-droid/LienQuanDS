@@ -1,11 +1,13 @@
 //
 //  RootViewController.mm
-//  TrollSpeed
+//  DarkPubg
 //
 //  Created by Lessica on 2024/1/24.
+//  Redesigned by DLX07 on 2026/11/08.
 //
 
 #import <notify.h>
+#import <sys/sysctl.h>
 
 #import "HUDHelper.h"
 #import "DSBridge.h"
@@ -19,30 +21,44 @@
 #define HUD_TRANSITION_DURATION 0.25
 
 static BOOL _gShouldToggleHUDAfterLaunch = NO;
-static const CGFloat _gTopButtonConstraintsConstantCompact = 46.f;
-static const CGFloat _gTopButtonConstraintsConstantRegular = 28.f;
-static const CGFloat _gTopButtonConstraintsConstantRegularPad = 46.f;
-static const CGFloat _gAuthorLabelBottomConstraintConstantCompact = -20.f;
-static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
+
+static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatusStr) {
+    NSString *version = [[UIDevice currentDevice] systemVersion];
+    if (outVersionStr) *outVersionStr = [NSString stringWithFormat:@"iOS %@", version];
+
+    NSOperatingSystemVersion os = [[NSProcessInfo processInfo] operatingSystemVersion];
+    // DarkSword kexploit supports iOS 15.0 through iOS 26.0
+    if (os.majorVersion >= 15 && os.majorVersion <= 26) {
+        if (outStatusStr) *outStatusStr = @"DarkSword: Đã hỗ trợ";
+        return YES;
+    } else {
+        if (outStatusStr) *outStatusStr = @"DarkSword: Chưa hỗ trợ";
+        return NO;
+    }
+}
 
 @implementation RootViewController {
     NSMutableDictionary *_userDefaults;
     MainButton *_mainButton;
-    UIButton *_settingsButton;
-    UIButton *_topLeftButton;
-    UIButton *_topRightButton;
-    UIButton *_topCenterButton;
-    UIButton *_topCenterMostButton;
-    UILabel *_authorLabel;
-    BOOL _supportsCenterMost;
-    NSLayoutConstraint *_topLeftConstraint;
-    NSLayoutConstraint *_topRightConstraint;
-    NSLayoutConstraint *_topCenterConstraint;
-    NSLayoutConstraint *_authorLabelBottomConstraint;
+    UILabel *_buttonSubLabel;
+
+    // Tab Navigation Containers
+    UIView *_homeView;
+    UIView *_settingView;
+    UIView *_bottomTabBar;
+    UIButton *_homeTabButton;
+    UIButton *_settingTabButton;
+    NSInteger _selectedTabIndex;
+
+    // Home status components
+    UILabel *_iosVersionLabel;
+    UILabel *_dsStatusLabel;
+    UIView *_dsStatusBadge;
+    UILabel *_dsBadgeLabel;
+
     BOOL _isRemoteHUDActive;
-    HUDRootViewController *_localHUDRootViewController;  // Only for debugging
     UIImpactFeedbackGenerator *_impactFeedbackGenerator;
-    UISegmentedControl *_gameSegmentedControl;
+
 #if USE_DARKSWORD
     UIView *_dsProgressOverlay;
     UIProgressView *_dsProgressBar;
@@ -96,699 +112,515 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     CGRect bounds = UIScreen.mainScreen.bounds;
 
     self.view = [[UIView alloc] initWithFrame:bounds];
-#if USE_DARKSWORD
-    // Solid background for normal app presentation (no translucent HUD chrome).
-    self.view.backgroundColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-#else
-    self.view.backgroundColor = [UIColor colorWithRed:0.0f / 255.0f green:0.0f / 255.0f blue:0.0f / 255.0f alpha:.580f / 1.0f];  // rgba(0, 0, 0, 0.580)
-#endif
+    self.view.backgroundColor = [UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0]; // #0D1117
 
     self.backgroundView = [[UIView alloc] initWithFrame:bounds];
     self.backgroundView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    self.backgroundView.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-        if ([traitCollection userInterfaceStyle] == UIUserInterfaceStyleDark) {
-            return [UIColor colorWithRed:28/255.0 green:74/255.0 blue:82/255.0 alpha:1.0];  // rgba(28, 74, 82, 1.0)
-        } else {
-            return [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];  // rgba(26, 188, 156, 1.0)
-        }
-    }];
+    self.backgroundView.backgroundColor = [UIColor colorWithRed:15/255.0 green:20/255.0 blue:28/255.0 alpha:1.0]; // #0F141C
     [self.view addSubview:self.backgroundView];
 
-    _topLeftButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_topLeftButton setTintColor:[UIColor whiteColor]];
-    [_topLeftButton addTarget:self action:@selector(tapTopLeftButton:) forControlEvents:UIControlEventTouchUpInside];
-    [_topLeftButton setImage:[UIImage systemImageNamed:@"arrow.up.left"] forState:UIControlStateNormal];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [_topLeftButton setAdjustsImageWhenHighlighted:NO];
-#pragma clang diagnostic pop
-    [self.backgroundView addSubview:_topLeftButton];
-    if (@available(iOS 15.0, *))
-    {
-        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-        [config setCornerStyle:UIButtonConfigurationCornerStyleLarge];
-        [_topLeftButton setConfiguration:config];
-    }
-    UILayoutGuide *safeArea = self.backgroundView.safeAreaLayoutGuide;
-    [_topLeftButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    _topLeftConstraint = [_topLeftButton.topAnchor constraintEqualToAnchor:safeArea.topAnchor constant:_gTopButtonConstraintsConstantRegular];
-    [NSLayoutConstraint activateConstraints:@[
-        _topLeftConstraint,
-        [_topLeftButton.leadingAnchor constraintEqualToAnchor:safeArea.leadingAnchor constant:20.0f],
-        [_topLeftButton.widthAnchor constraintEqualToConstant:40.0f],
-        [_topLeftButton.heightAnchor constraintEqualToConstant:40.0f],
-    ]];
+    [self setupBottomTabBar];
+    [self setupHomeView];
+    [self setupSettingView];
 
-    _topRightButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_topRightButton setTintColor:[UIColor whiteColor]];
-    [_topRightButton addTarget:self action:@selector(tapTopRightButton:) forControlEvents:UIControlEventTouchUpInside];
-    [_topRightButton setImage:[UIImage systemImageNamed:@"arrow.up.right"] forState:UIControlStateNormal];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [_topRightButton setAdjustsImageWhenHighlighted:NO];
-#pragma clang diagnostic pop
-    [self.backgroundView addSubview:_topRightButton];
-    if (@available(iOS 15.0, *))
-    {
-        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-        [config setCornerStyle:UIButtonConfigurationCornerStyleLarge];
-        [_topRightButton setConfiguration:config];
-    }
-    [_topRightButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    _topRightConstraint = [_topRightButton.topAnchor constraintEqualToAnchor:safeArea.topAnchor constant:_gTopButtonConstraintsConstantRegular];
-    [NSLayoutConstraint activateConstraints:@[
-        _topRightConstraint,
-        [_topRightButton.trailingAnchor constraintEqualToAnchor:safeArea.trailingAnchor constant:-20.0f],
-        [_topRightButton.widthAnchor constraintEqualToConstant:40.0f],
-        [_topRightButton.heightAnchor constraintEqualToConstant:40.0f],
-    ]];
-
-    _topCenterButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_topCenterButton setTintColor:[UIColor whiteColor]];
-    [_topCenterButton addTarget:self action:@selector(tapTopCenterButton:) forControlEvents:UIControlEventTouchUpInside];
-    [_topCenterButton setImage:[UIImage systemImageNamed:@"arrow.up"] forState:UIControlStateNormal];
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    [_topCenterButton setAdjustsImageWhenHighlighted:NO];
-#pragma clang diagnostic pop
-    [self.backgroundView addSubview:_topCenterButton];
-    if (@available(iOS 15.0, *))
-    {
-        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
-        [config setCornerStyle:UIButtonConfigurationCornerStyleLarge];
-        [_topCenterButton setConfiguration:config];
-    }
-    [_topCenterButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    _topCenterConstraint = [_topCenterButton.topAnchor constraintEqualToAnchor:safeArea.topAnchor constant:_gTopButtonConstraintsConstantRegular];
-    [NSLayoutConstraint activateConstraints:@[
-        _topCenterConstraint,
-        [_topCenterButton.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
-        [_topCenterButton.widthAnchor constraintEqualToConstant:40.0f],
-        [_topCenterButton.heightAnchor constraintEqualToConstant:40.0f],
-    ]];
-
-    [self reloadModeButtonState];
-
-    _mainButton = [MainButton buttonWithType:UIButtonTypeSystem];
-    [_mainButton setTintColor:[UIColor whiteColor]];
-    [_mainButton addTarget:self action:@selector(tapMainButton:) forControlEvents:UIControlEventTouchUpInside];
-    if (@available(iOS 15.0, *))
-    {
-        UIButtonConfiguration *config = [UIButtonConfiguration tintedButtonConfiguration];
-        [config setTitleTextAttributesTransformer:^NSDictionary <NSAttributedStringKey, id> * _Nonnull(NSDictionary <NSAttributedStringKey, id> * _Nonnull textAttributes) {
-            NSMutableDictionary *newAttributes = [textAttributes mutableCopy];
-            [newAttributes setObject:[UIFont boldSystemFontOfSize:32.0] forKey:NSFontAttributeName];
-            return newAttributes;
-        }];
-        [config setCornerStyle:UIButtonConfigurationCornerStyleLarge];
-        [_mainButton setConfiguration:config];
-    }
-    else
-    {
-        [_mainButton.titleLabel setFont:[UIFont boldSystemFontOfSize:32.0]];
-    }
-    [self.backgroundView addSubview:_mainButton];
-
-    [_mainButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [NSLayoutConstraint activateConstraints:@[
-        [_mainButton.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
-        [_mainButton.centerYAnchor constraintEqualToAnchor:self.backgroundView.centerYAnchor],
-    ]];
-
-    _gameSegmentedControl = [[UISegmentedControl alloc] initWithItems:@[
-        NSLocalizedString(@"Liên Quân (AOV)", nil),
-        NSLocalizedString(@"PUBG Mobile", nil)
-    ]];
-    if (@available(iOS 13.0, *)) {
-        _gameSegmentedControl.selectedSegmentTintColor = [UIColor colorWithWhite:1.0 alpha:0.35];
-    }
-    NSDictionary *segNormal = @{
-        NSForegroundColorAttributeName: [UIColor colorWithWhite:1.0 alpha:0.85],
-        NSFontAttributeName: [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium],
-    };
-    NSDictionary *segSelected = @{
-        NSForegroundColorAttributeName: [UIColor whiteColor],
-        NSFontAttributeName: [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold],
-    };
-    [_gameSegmentedControl setTitleTextAttributes:segNormal forState:UIControlStateNormal];
-    [_gameSegmentedControl setTitleTextAttributes:segSelected forState:UIControlStateSelected];
-
-    NSInteger currentActiveGame = [[NSUserDefaults standardUserDefaults] integerForKey:@"DSActiveGame"];
-    _gameSegmentedControl.selectedSegmentIndex = (currentActiveGame == 1) ? 1 : 0;
-    [_gameSegmentedControl addTarget:self action:@selector(gameSegmentChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.backgroundView addSubview:_gameSegmentedControl];
-
-    [_gameSegmentedControl setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [NSLayoutConstraint activateConstraints:@[
-        [_gameSegmentedControl.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
-        [_gameSegmentedControl.bottomAnchor constraintEqualToAnchor:_mainButton.topAnchor constant:-28.0f],
-        [_gameSegmentedControl.widthAnchor constraintEqualToConstant:260.0f],
-        [_gameSegmentedControl.heightAnchor constraintEqualToConstant:36.0f],
-    ]];
-
-    _settingsButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_settingsButton setTintColor:[UIColor whiteColor]];
-    [_settingsButton addTarget:self action:@selector(tapSettingsButton:) forControlEvents:UIControlEventTouchUpInside];
-    [_settingsButton setImage:[UIImage systemImageNamed:@"gear"] forState:UIControlStateNormal];
-    [self.backgroundView addSubview:_settingsButton];
-    if (@available(iOS 15.0, *))
-    {
-        UIButtonConfiguration *config = [UIButtonConfiguration tintedButtonConfiguration];
-        [config setCornerStyle:UIButtonConfigurationCornerStyleLarge];
-        [_settingsButton setConfiguration:config];
-    }
-    [_settingsButton setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [NSLayoutConstraint activateConstraints:@[
-        [_settingsButton.bottomAnchor constraintEqualToAnchor:safeArea.bottomAnchor constant:-20.0f],
-        [_settingsButton.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
-        [_settingsButton.widthAnchor constraintEqualToConstant:40.0f],
-        [_settingsButton.heightAnchor constraintEqualToConstant:40.0f],
-    ]];
-
-    _authorLabel = [[UILabel alloc] init];
-    [_authorLabel setNumberOfLines:0];
-    [_authorLabel setTextAlignment:NSTextAlignmentCenter];
-    [_authorLabel setTextColor:[UIColor whiteColor]];
-    [_authorLabel setFont:[UIFont systemFontOfSize:14.0]];
-    [_authorLabel sizeToFit];
-    [self.backgroundView addSubview:_authorLabel];
-
-    _authorLabelBottomConstraint = [_authorLabel.bottomAnchor constraintEqualToAnchor:safeArea.bottomAnchor constant:_gAuthorLabelBottomConstraintConstantRegular];
-    [_authorLabel setTranslatesAutoresizingMaskIntoConstraints:NO];
-    [NSLayoutConstraint activateConstraints:@[
-        _authorLabelBottomConstraint,
-        [_authorLabel.centerXAnchor constraintEqualToAnchor:safeArea.centerXAnchor],
-    ]];
-
-    UITapGestureRecognizer *authorTapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapAuthorLabel:)];
-    [_authorLabel setUserInteractionEnabled:YES];
-    [_authorLabel addGestureRecognizer:authorTapGesture];
-
-    [self verticalSizeClassUpdated];
+    [self updateTabSelection:0];
     [self reloadMainButtonState];
 }
 
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-    _supportsCenterMost = CGRectGetMinY(self.view.window.safeAreaLayoutGuide.layoutFrame) >= 51;
+#pragma mark - Bottom Tab Bar
+
+- (void)setupBottomTabBar
+{
+    _bottomTabBar = [[UIView alloc] init];
+    _bottomTabBar.translatesAutoresizingMaskIntoConstraints = NO;
+    _bottomTabBar.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.98]; // #161B22
+
+    UIView *topLine = [[UIView alloc] init];
+    topLine.translatesAutoresizingMaskIntoConstraints = NO;
+    topLine.backgroundColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0]; // #21262D
+    [_bottomTabBar addSubview:topLine];
+
+    _homeTabButton = [self createTabButtonWithTitle:@"Home" iconName:@"house.fill" tag:0];
+    _settingTabButton = [self createTabButtonWithTitle:@"Setting" iconName:@"gearshape.fill" tag:1];
+
+    [_bottomTabBar addSubview:_homeTabButton];
+    [_bottomTabBar addSubview:_settingTabButton];
+
+    [self.view addSubview:_bottomTabBar];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_bottomTabBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_bottomTabBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_bottomTabBar.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [_bottomTabBar.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-56.0f],
+
+        [topLine.topAnchor constraintEqualToAnchor:_bottomTabBar.topAnchor],
+        [topLine.leadingAnchor constraintEqualToAnchor:_bottomTabBar.leadingAnchor],
+        [topLine.trailingAnchor constraintEqualToAnchor:_bottomTabBar.trailingAnchor],
+        [topLine.heightAnchor constraintEqualToConstant:1.0f],
+
+        [_homeTabButton.leadingAnchor constraintEqualToAnchor:_bottomTabBar.leadingAnchor],
+        [_homeTabButton.topAnchor constraintEqualToAnchor:_bottomTabBar.topAnchor constant:4.0f],
+        [_homeTabButton.widthAnchor constraintEqualToAnchor:_bottomTabBar.widthAnchor multiplier:0.5],
+        [_homeTabButton.heightAnchor constraintEqualToConstant:48.0f],
+
+        [_settingTabButton.leadingAnchor constraintEqualToAnchor:_homeTabButton.trailingAnchor],
+        [_settingTabButton.topAnchor constraintEqualToAnchor:_bottomTabBar.topAnchor constant:4.0f],
+        [_settingTabButton.trailingAnchor constraintEqualToAnchor:_bottomTabBar.trailingAnchor],
+        [_settingTabButton.heightAnchor constraintEqualToConstant:48.0f],
+    ]];
 }
 
-- (void)viewDidLoad {
+- (UIButton *)createTabButtonWithTitle:(NSString *)title iconName:(NSString *)iconName tag:(NSInteger)tag
+{
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.tag = tag;
+    [btn addTarget:self action:@selector(tabButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+
+    UIImage *img = [UIImage systemImageNamed:iconName];
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *config = [UIButtonConfiguration plainButtonConfiguration];
+        config.image = img;
+        config.title = title;
+        config.imagePlacement = NSDirectionalRectEdgeTop;
+        config.imagePadding = 3.0f;
+        btn.configuration = config;
+    } else {
+        [btn setImage:img forState:UIControlStateNormal];
+        [btn setTitle:title forState:UIControlStateNormal];
+        btn.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightMedium];
+    }
+    return btn;
+}
+
+- (void)tabButtonTapped:(UIButton *)sender
+{
+    [self updateTabSelection:sender.tag];
+}
+
+- (void)updateTabSelection:(NSInteger)index
+{
+    _selectedTabIndex = index;
+    if (_impactFeedbackGenerator) {
+        [_impactFeedbackGenerator impactOccurred];
+    }
+
+    UIColor *activeColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]; // Cyan
+    UIColor *inactiveColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0]; // Muted
+
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *cfgHome = _homeTabButton.configuration;
+        cfgHome.baseForegroundColor = (index == 0) ? activeColor : inactiveColor;
+        _homeTabButton.configuration = cfgHome;
+
+        UIButtonConfiguration *cfgSet = _settingTabButton.configuration;
+        cfgSet.baseForegroundColor = (index == 1) ? activeColor : inactiveColor;
+        _settingTabButton.configuration = cfgSet;
+    } else {
+        [_homeTabButton setTitleColor:(index == 0) ? activeColor : inactiveColor forState:UIControlStateNormal];
+        [_homeTabButton setTintColor:(index == 0) ? activeColor : inactiveColor];
+        [_settingTabButton setTitleColor:(index == 1) ? activeColor : inactiveColor forState:UIControlStateNormal];
+        [_settingTabButton setTintColor:(index == 1) ? activeColor : inactiveColor];
+    }
+
+    [UIView transitionWithView:self.backgroundView duration:0.2 options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
+        self->_homeView.hidden = (index != 0);
+        self->_settingView.hidden = (index != 1);
+    } completion:nil];
+}
+
+#pragma mark - Home View
+
+- (void)setupHomeView
+{
+    _homeView = [[UIView alloc] init];
+    _homeView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.backgroundView addSubview:_homeView];
+
+    UILayoutGuide *safeArea = self.view.safeAreaLayoutGuide;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_homeView.topAnchor constraintEqualToAnchor:safeArea.topAnchor],
+        [_homeView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_homeView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_homeView.bottomAnchor constraintEqualToAnchor:_bottomTabBar.topAnchor],
+    ]];
+
+    // 1. App Header Title
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.text = @"DarkPubg";
+    titleLabel.textColor = UIColor.whiteColor;
+    titleLabel.font = [UIFont systemFontOfSize:30 weight:UIFontWeightHeavy];
+    titleLabel.textAlignment = NSTextAlignmentCenter;
+    [_homeView addSubview:titleLabel];
+
+    UILabel *subTitleLabel = [[UILabel alloc] init];
+    subTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    subTitleLabel.text = @"PUBG Mobile Edition";
+    subTitleLabel.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    subTitleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    subTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [_homeView addSubview:subTitleLabel];
+
+    // 2. iOS Version & DarkSword Support Card
+    UIView *statusCard = [[UIView alloc] init];
+    statusCard.translatesAutoresizingMaskIntoConstraints = NO;
+    statusCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.9];
+    statusCard.layer.cornerRadius = 16.0f;
+    statusCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
+    statusCard.layer.borderWidth = 1.0f;
+    [_homeView addSubview:statusCard];
+
+    NSString *iosVer = @"";
+    NSString *dsStatus = @"";
+    BOOL isSupported = CheckDarkSwordSupport(&iosVer, &dsStatus);
+
+    // Row 1: iOS Version
+    UIImageView *appleIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"apple.logo"]];
+    appleIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    appleIcon.tintColor = UIColor.whiteColor;
+    appleIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [statusCard addSubview:appleIcon];
+
+    _iosVersionLabel = [[UILabel alloc] init];
+    _iosVersionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _iosVersionLabel.text = [NSString stringWithFormat:@"Phiên bản: %@", iosVer];
+    _iosVersionLabel.textColor = UIColor.whiteColor;
+    _iosVersionLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    [statusCard addSubview:_iosVersionLabel];
+
+    UILabel *systemTag = [[UILabel alloc] init];
+    systemTag.translatesAutoresizingMaskIntoConstraints = NO;
+    systemTag.text = @"Thiết bị";
+    systemTag.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    systemTag.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+    [statusCard addSubview:systemTag];
+
+    // Card Separator
+    UIView *cardSep = [[UIView alloc] init];
+    cardSep.translatesAutoresizingMaskIntoConstraints = NO;
+    cardSep.backgroundColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0];
+    [statusCard addSubview:cardSep];
+
+    // Row 2: DarkSword Support Indicator
+    UIView *dotView = [[UIView alloc] init];
+    dotView.translatesAutoresizingMaskIntoConstraints = NO;
+    dotView.backgroundColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+    dotView.layer.cornerRadius = 4.0f;
+    [statusCard addSubview:dotView];
+
+    _dsStatusLabel = [[UILabel alloc] init];
+    _dsStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _dsStatusLabel.text = dsStatus;
+    _dsStatusLabel.textColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+    _dsStatusLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
+    [statusCard addSubview:_dsStatusLabel];
+
+    _dsStatusBadge = [[UIView alloc] init];
+    _dsStatusBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    _dsStatusBadge.backgroundColor = isSupported ? [UIColor colorWithRed:28/255.0 green:58/255.0 blue:45/255.0 alpha:1.0] : [UIColor colorWithRed:60/255.0 green:25/255.0 blue:25/255.0 alpha:1.0];
+    _dsStatusBadge.layer.cornerRadius = 6.0f;
+    [statusCard addSubview:_dsStatusBadge];
+
+    _dsBadgeLabel = [[UILabel alloc] init];
+    _dsBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _dsBadgeLabel.text = isSupported ? @"Tương thích" : @"Không hỗ trợ";
+    _dsBadgeLabel.textColor = isSupported ? [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] : [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+    _dsBadgeLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
+    [_dsStatusBadge addSubview:_dsBadgeLabel];
+
+    // 3. Central OPEN HUD Button
+    _mainButton = [MainButton buttonWithType:UIButtonTypeSystem];
+    _mainButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [_mainButton addTarget:self action:@selector(tapMainButton:) forControlEvents:UIControlEventTouchUpInside];
+    [_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
+    [_mainButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    _mainButton.titleLabel.font = [UIFont systemFontOfSize:22 weight:UIFontWeightHeavy];
+    _mainButton.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    _mainButton.layer.cornerRadius = 32.0f;
+    _mainButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.45].CGColor;
+    _mainButton.layer.shadowOffset = CGSizeMake(0, 8);
+    _mainButton.layer.shadowRadius = 16.0f;
+    _mainButton.layer.shadowOpacity = 0.8f;
+    [_homeView addSubview:_mainButton];
+
+    _buttonSubLabel = [[UILabel alloc] init];
+    _buttonSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _buttonSubLabel.text = @"Nhấn để bật menu ESP trong game";
+    _buttonSubLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _buttonSubLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    _buttonSubLabel.textAlignment = NSTextAlignmentCenter;
+    [_homeView addSubview:_buttonSubLabel];
+
+    // Layout Constraints for Home View
+    [NSLayoutConstraint activateConstraints:@[
+        [titleLabel.topAnchor constraintEqualToAnchor:_homeView.topAnchor constant:28.0f],
+        [titleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+
+        [subTitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4.0f],
+        [subTitleLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+
+        [statusCard.topAnchor constraintEqualToAnchor:subTitleLabel.bottomAnchor constant:28.0f],
+        [statusCard.leadingAnchor constraintEqualToAnchor:_homeView.leadingAnchor constant:24.0f],
+        [statusCard.trailingAnchor constraintEqualToAnchor:_homeView.trailingAnchor constant:-24.0f],
+        [statusCard.heightAnchor constraintEqualToConstant:90.0f],
+
+        [appleIcon.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
+        [appleIcon.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:14.0f],
+        [appleIcon.widthAnchor constraintEqualToConstant:18.0f],
+        [appleIcon.heightAnchor constraintEqualToConstant:18.0f],
+
+        [_iosVersionLabel.leadingAnchor constraintEqualToAnchor:appleIcon.trailingAnchor constant:8.0f],
+        [_iosVersionLabel.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
+
+        [systemTag.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [systemTag.centerYAnchor constraintEqualToAnchor:appleIcon.centerYAnchor],
+
+        [cardSep.topAnchor constraintEqualToAnchor:appleIcon.bottomAnchor constant:12.0f],
+        [cardSep.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
+        [cardSep.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [cardSep.heightAnchor constraintEqualToConstant:1.0f],
+
+        [dotView.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0f],
+        [dotView.topAnchor constraintEqualToAnchor:cardSep.bottomAnchor constant:14.0f],
+        [dotView.widthAnchor constraintEqualToConstant:8.0f],
+        [dotView.heightAnchor constraintEqualToConstant:8.0f],
+
+        [_dsStatusLabel.leadingAnchor constraintEqualToAnchor:dotView.trailingAnchor constant:8.0f],
+        [_dsStatusLabel.centerYAnchor constraintEqualToAnchor:dotView.centerYAnchor],
+
+        [_dsStatusBadge.trailingAnchor constraintEqualToAnchor:statusCard.trailingAnchor constant:-16.0f],
+        [_dsStatusBadge.centerYAnchor constraintEqualToAnchor:dotView.centerYAnchor],
+        [_dsStatusBadge.heightAnchor constraintEqualToConstant:22.0f],
+
+        [_dsBadgeLabel.leadingAnchor constraintEqualToAnchor:_dsStatusBadge.leadingAnchor constant:8.0f],
+        [_dsBadgeLabel.trailingAnchor constraintEqualToAnchor:_dsStatusBadge.trailingAnchor constant:-8.0f],
+        [_dsBadgeLabel.centerYAnchor constraintEqualToAnchor:_dsStatusBadge.centerYAnchor],
+
+        [_mainButton.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+        [_mainButton.centerYAnchor constraintEqualToAnchor:_homeView.centerYAnchor constant:50.0f],
+        [_mainButton.widthAnchor constraintEqualToConstant:240.0f],
+        [_mainButton.heightAnchor constraintEqualToConstant:64.0f],
+
+        [_buttonSubLabel.topAnchor constraintEqualToAnchor:_mainButton.bottomAnchor constant:18.0f],
+        [_buttonSubLabel.centerXAnchor constraintEqualToAnchor:_homeView.centerXAnchor],
+    ]];
+}
+
+#pragma mark - Setting View
+
+- (void)setupSettingView
+{
+    _settingView = [[UIView alloc] init];
+    _settingView.translatesAutoresizingMaskIntoConstraints = NO;
+    _settingView.hidden = YES;
+    [self.backgroundView addSubview:_settingView];
+
+    UILayoutGuide *safeArea = self.view.safeAreaLayoutGuide;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_settingView.topAnchor constraintEqualToAnchor:safeArea.topAnchor],
+        [_settingView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_settingView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_settingView.bottomAnchor constraintEqualToAnchor:_bottomTabBar.topAnchor],
+    ]];
+
+    // 1. Setting Header Title
+    UILabel *settingTitle = [[UILabel alloc] init];
+    settingTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    settingTitle.text = @"Cài Đặt";
+    settingTitle.textColor = UIColor.whiteColor;
+    settingTitle.font = [UIFont systemFontOfSize:30 weight:UIFontWeightHeavy];
+    settingTitle.textAlignment = NSTextAlignmentCenter;
+    [_settingView addSubview:settingTitle];
+
+    UILabel *settingSubTitle = [[UILabel alloc] init];
+    settingSubTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    settingSubTitle.text = @"Thông tin & Tác giả";
+    settingSubTitle.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    settingSubTitle.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    settingSubTitle.textAlignment = NSTextAlignmentCenter;
+    [_settingView addSubview:settingSubTitle];
+
+    // 2. Developer Card (DLX07)
+    UIView *devCard = [[UIView alloc] init];
+    devCard.translatesAutoresizingMaskIntoConstraints = NO;
+    devCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
+    devCard.layer.cornerRadius = 16.0f;
+    devCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
+    devCard.layer.borderWidth = 1.0f;
+    [_settingView addSubview:devCard];
+
+    UIImageView *devAvatar = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
+    devAvatar.translatesAutoresizingMaskIntoConstraints = NO;
+    devAvatar.tintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+    devAvatar.contentMode = UIViewContentModeScaleAspectFit;
+    [devCard addSubview:devAvatar];
+
+    UILabel *devHeader = [[UILabel alloc] init];
+    devHeader.translatesAutoresizingMaskIntoConstraints = NO;
+    devHeader.text = @"NGƯỜI PHÁT TRIỂN";
+    devHeader.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    devHeader.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    [devCard addSubview:devHeader];
+
+    UILabel *devName = [[UILabel alloc] init];
+    devName.translatesAutoresizingMaskIntoConstraints = NO;
+    devName.text = @"DLX07";
+    devName.textColor = UIColor.whiteColor;
+    devName.font = [UIFont systemFontOfSize:24 weight:UIFontWeightHeavy];
+    [devCard addSubview:devName];
+
+    // 3. App Details Card
+    UIView *infoCard = [[UIView alloc] init];
+    infoCard.translatesAutoresizingMaskIntoConstraints = NO;
+    infoCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.95];
+    infoCard.layer.cornerRadius = 16.0f;
+    infoCard.layer.borderColor = [UIColor colorWithRed:33/255.0 green:38/255.0 blue:45/255.0 alpha:1.0].CGColor;
+    infoCard.layer.borderWidth = 1.0f;
+    [_settingView addSubview:infoCard];
+
+    auto addInfoRow = ^UIView *(NSString *title, NSString *value, UIView *topAnchorView) {
+        UIView *row = [[UIView alloc] init];
+        row.translatesAutoresizingMaskIntoConstraints = NO;
+        [infoCard addSubview:row];
+
+        UILabel *tLabel = [[UILabel alloc] init];
+        tLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        tLabel.text = title;
+        tLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+        tLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+        [row addSubview:tLabel];
+
+        UILabel *vLabel = [[UILabel alloc] init];
+        vLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        vLabel.text = value;
+        vLabel.textColor = UIColor.whiteColor;
+        vLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
+        [row addSubview:vLabel];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [row.leadingAnchor constraintEqualToAnchor:infoCard.leadingAnchor constant:16.0f],
+            [row.trailingAnchor constraintEqualToAnchor:infoCard.trailingAnchor constant:-16.0f],
+            [row.heightAnchor constraintEqualToConstant:32.0f],
+            [tLabel.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+            [tLabel.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+            [vLabel.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+            [vLabel.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        ]];
+
+        if (topAnchorView) {
+            [row.topAnchor constraintEqualToAnchor:topAnchorView.bottomAnchor constant:8.0f].active = YES;
+        } else {
+            [row.topAnchor constraintEqualToAnchor:infoCard.topAnchor constant:12.0f].active = YES;
+        }
+        return row;
+    };
+
+    UIView *r1 = addInfoRow(@"Ứng dụng", @"DarkPubg", nil);
+    UIView *r2 = addInfoRow(@"Phiên bản", @"1.0-1", r1);
+    UIView *r3 = addInfoRow(@"Trò chơi", @"PUBG Mobile", r2);
+    UIView *r4 = addInfoRow(@"Kiểu can thiệp", @"DarkSword Kernel (TrollStore)", r3);
+
+    // 4. Note Card
+    UIView *noteCard = [[UIView alloc] init];
+    noteCard.translatesAutoresizingMaskIntoConstraints = NO;
+    noteCard.backgroundColor = [UIColor colorWithRed:22/255.0 green:27/255.0 blue:34/255.0 alpha:0.6];
+    noteCard.layer.cornerRadius = 12.0f;
+    [_settingView addSubview:noteCard];
+
+    UILabel *noteLabel = [[UILabel alloc] init];
+    noteLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    noteLabel.text = @"DarkPubg hoạt động trực tiếp thông qua TrollStore trên iOS mà không cần Jailbreak.";
+    noteLabel.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    noteLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
+    noteLabel.numberOfLines = 0;
+    noteLabel.textAlignment = NSTextAlignmentCenter;
+    [noteCard addSubview:noteLabel];
+
+    // Layout Constraints for Setting View
+    [NSLayoutConstraint activateConstraints:@[
+        [settingTitle.topAnchor constraintEqualToAnchor:_settingView.topAnchor constant:28.0f],
+        [settingTitle.centerXAnchor constraintEqualToAnchor:_settingView.centerXAnchor],
+
+        [settingSubTitle.topAnchor constraintEqualToAnchor:settingTitle.bottomAnchor constant:4.0f],
+        [settingSubTitle.centerXAnchor constraintEqualToAnchor:_settingView.centerXAnchor],
+
+        [devCard.topAnchor constraintEqualToAnchor:settingSubTitle.bottomAnchor constant:28.0f],
+        [devCard.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor constant:24.0f],
+        [devCard.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor constant:-24.0f],
+        [devCard.heightAnchor constraintEqualToConstant:84.0f],
+
+        [devAvatar.leadingAnchor constraintEqualToAnchor:devCard.leadingAnchor constant:18.0f],
+        [devAvatar.centerYAnchor constraintEqualToAnchor:devCard.centerYAnchor],
+        [devAvatar.widthAnchor constraintEqualToConstant:48.0f],
+        [devAvatar.heightAnchor constraintEqualToConstant:48.0f],
+
+        [devHeader.leadingAnchor constraintEqualToAnchor:devAvatar.trailingAnchor constant:16.0f],
+        [devHeader.topAnchor constraintEqualToAnchor:devCard.topAnchor constant:18.0f],
+
+        [devName.leadingAnchor constraintEqualToAnchor:devAvatar.trailingAnchor constant:16.0f],
+        [devName.topAnchor constraintEqualToAnchor:devHeader.bottomAnchor constant:2.0f],
+
+        [infoCard.topAnchor constraintEqualToAnchor:devCard.bottomAnchor constant:20.0f],
+        [infoCard.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor constant:24.0f],
+        [infoCard.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor constant:-24.0f],
+        [infoCard.bottomAnchor constraintEqualToAnchor:r4.bottomAnchor constant:14.0f],
+
+        [noteCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:20.0f],
+        [noteCard.leadingAnchor constraintEqualToAnchor:_settingView.leadingAnchor constant:24.0f],
+        [noteCard.trailingAnchor constraintEqualToAnchor:_settingView.trailingAnchor constant:-24.0f],
+
+        [noteLabel.topAnchor constraintEqualToAnchor:noteCard.topAnchor constant:12.0f],
+        [noteLabel.bottomAnchor constraintEqualToAnchor:noteCard.bottomAnchor constant:-12.0f],
+        [noteLabel.leadingAnchor constraintEqualToAnchor:noteCard.leadingAnchor constant:16.0f],
+        [noteLabel.trailingAnchor constraintEqualToAnchor:noteCard.trailingAnchor constant:-16.0f],
+    ]];
+}
+
+#pragma mark - Lifecycle
+
+- (void)viewDidLoad
+{
     [super viewDidLoad];
 
     _impactFeedbackGenerator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleMedium];
 
-    [self registerNotifications];
-    [self updateGameModeVisuals];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    [super viewDidAppear:animated];
-    [self checkInitialGameSelection];
-    [self toggleHUDAfterLaunch];
-}
-
-- (void)gameSegmentChanged:(UISegmentedControl *)sender {
-    NSInteger selected = sender.selectedSegmentIndex;
-    [[NSUserDefaults standardUserDefaults] setInteger:selected forKey:@"DSActiveGame"];
+    // Force active game to PUBG Mobile (AOV temporarily hidden)
+    [[NSUserDefaults standardUserDefaults] setInteger:1 forKey:@"DSActiveGame"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 #if USE_DARKSWORD
-    DSBridgeSetActiveGame((int)selected);
+    DSBridgeSetActiveGame(1);
 #endif
-    [_impactFeedbackGenerator impactOccurred];
-    [self updateGameModeVisuals];
+
+    [self registerNotifications];
 }
 
-- (void)checkInitialGameSelection {
-    if ([[NSUserDefaults standardUserDefaults] objectForKey:@"DSActiveGame"] == nil) {
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Chọn Game", nil)
-                                                                       message:NSLocalizedString(@"Vui lòng chọn game bạn muốn sử dụng ESP:", nil)
-                                                                preferredStyle:UIAlertControllerStyleActionSheet];
-
-        __weak typeof(self) weakSelf = self;
-        UIAlertAction *aovAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"Liên Quân Mobile (AOV)", nil)
-                                                            style:UIAlertActionStyleDefault
-                                                          handler:^(UIAlertAction * _Nonnull action) {
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf) {
-                strongSelf->_gameSegmentedControl.selectedSegmentIndex = 0;
-                [strongSelf gameSegmentChanged:strongSelf->_gameSegmentedControl];
-            }
-        }];
-
-        UIAlertAction *pubgAction = [UIAlertAction actionWithTitle:NSLocalizedString(@"PUBG Mobile", nil)
-                                                             style:UIAlertActionStyleDefault
-                                                           handler:^(UIAlertAction * _Nonnull action) {
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf) {
-                strongSelf->_gameSegmentedControl.selectedSegmentIndex = 1;
-                [strongSelf gameSegmentChanged:strongSelf->_gameSegmentedControl];
-            }
-        }];
-
-        [alert addAction:aovAction];
-        [alert addAction:pubgAction];
-
-        if (alert.popoverPresentationController) {
-            alert.popoverPresentationController.sourceView = _gameSegmentedControl;
-            alert.popoverPresentationController.sourceRect = _gameSegmentedControl.bounds;
-        }
-
-        [self presentViewController:alert animated:YES completion:nil];
-    }
-}
-
-- (void)updateGameModeVisuals {
-    NSInteger game = [[NSUserDefaults standardUserDefaults] integerForKey:@"DSActiveGame"];
-    [UIView animateWithDuration:0.3 animations:^{
-        if (game == 1) {
-            self.backgroundView.backgroundColor = [UIColor colorWithRed:32/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
-        } else {
-            self.backgroundView.backgroundColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-        }
-    }];
-}
-
-- (BOOL)shouldAutorotate
+- (void)viewDidAppear:(BOOL)animated
 {
-    return NO;
-}
-
-- (UIInterfaceOrientationMask)supportedInterfaceOrientations
-{
-    return UIInterfaceOrientationMaskPortrait;
-}
-
-- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation
-{
-    return UIInterfaceOrientationPortrait;
-}
-
-- (void)toggleHUDNotificationReceived:(NSNotification *)notification {
-    NSString *toggleAction = notification.userInfo[kToggleHUDAfterLaunchNotificationActionKey];
-    if (!toggleAction) {
-        [self toggleHUDAfterLaunch];
-    } else if ([toggleAction isEqualToString:kToggleHUDAfterLaunchNotificationActionToggleOn]) {
-        [self toggleOnHUDAfterLaunch];
-    } else if ([toggleAction isEqualToString:kToggleHUDAfterLaunchNotificationActionToggleOff]) {
-        [self toggleOffHUDAfterLaunch];
-    }
-}
-
-- (void)toggleHUDAfterLaunch {
-    if ([RootViewController shouldToggleHUDAfterLaunch]) {
-        [RootViewController setShouldToggleHUDAfterLaunch:NO];
-        [self tapMainButton:_mainButton];
-#if !USE_DARKSWORD
-        // Stock TrollStore flow: toggle then background. Under Apple Development
-        // this looks exactly like a black-screen flash-crash on icon/URL launch.
-        [[UIApplication sharedApplication] suspend];
-#endif
-    }
-}
-
-- (void)toggleOnHUDAfterLaunch {
-    if ([RootViewController shouldToggleHUDAfterLaunch]) {
-        [RootViewController setShouldToggleHUDAfterLaunch:NO];
-        if (!_isRemoteHUDActive) {
-            [self tapMainButton:_mainButton];
-        }
-#if !USE_DARKSWORD
-        [[UIApplication sharedApplication] suspend];
-#endif
-    }
-}
-
-- (void)toggleOffHUDAfterLaunch {
-    if ([RootViewController shouldToggleHUDAfterLaunch]) {
-        [RootViewController setShouldToggleHUDAfterLaunch:NO];
-        if (_isRemoteHUDActive) {
-            [self tapMainButton:_mainButton];
-        }
-#if !USE_DARKSWORD
-        [[UIApplication sharedApplication] suspend];
-#endif
-    }
-}
-
-- (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
-    if (motion == UIEventSubtypeMotionShake) {
-        UIAlertController *alertController = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Developer Area", nil) message:NSLocalizedString(@"Choose an action below.", nil) preferredStyle:UIAlertControllerStyleAlert];
-        [alertController addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Dismiss", nil) style:UIAlertActionStyleCancel handler:nil]];
-        [alertController addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Reset Settings", nil) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-            [self resetUserDefaults];
-        }]];
-        [self presentViewController:alertController animated:YES completion:nil];
-    }
-}
-
-- (void)resetUserDefaults
-{
-    // Reset user defaults
-    NSString *bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
-    if (bundleIdentifier) {
-        [GetStandardUserDefaults() removePersistentDomainForName:bundleIdentifier];
-        [GetStandardUserDefaults() synchronize];
-    }
-
-    // Reset custom user defaults
-    BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH)) error:nil];
-    if (removed)
-    {
-        // Terminate HUD
-        [self setHUDEnabled:NO];
-
-        // Terminate App
-        [[UIApplication sharedApplication] terminateWithSuccess];
-    }
-}
-
-- (void)loadUserDefaults:(BOOL)forceReload
-{
-    if (forceReload || !_userDefaults) {
-        _userDefaults = [[NSDictionary dictionaryWithContentsOfFile:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH))] mutableCopy] ?: [NSMutableDictionary dictionary];
-    }
-}
-
-- (void)saveUserDefaults
-{
-    if (![_userDefaults writeToFile:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH))
-                         atomically:YES]) return;
-    notify_post(NOTIFY_RELOAD_HUD);
-}
-
-- (BOOL)isLandscapeOrientation
-{
-    UIInterfaceOrientation orientation;
-    orientation = self.view.window.windowScene.interfaceOrientation;
-    BOOL isLandscape;
-    if (orientation == UIInterfaceOrientationUnknown) {
-        isLandscape = CGRectGetWidth(self.view.bounds) > CGRectGetHeight(self.view.bounds);
-    } else {
-        isLandscape = UIInterfaceOrientationIsLandscape(orientation);
-    }
-    return isLandscape;
-}
-
-- (HUDUserDefaultsKey)selectedModeKeyForCurrentOrientation
-{
-    return [self isLandscapeOrientation] ? HUDUserDefaultsKeySelectedModeLandscape : HUDUserDefaultsKeySelectedMode;
-}
-
-- (HUDPresetPosition)selectedModeForCurrentOrientation
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:[self selectedModeKeyForCurrentOrientation]];
-    return mode != nil ? (HUDPresetPosition)[mode integerValue] : HUDPresetPositionTopCenter;
-}
-
-- (void)setSelectedModeForCurrentOrientation:(HUDPresetPosition)selectedMode
-{
-    [self loadUserDefaults:NO];
-    // Remove some keys that are not persistent
-    if ([self isLandscapeOrientation]) {
-        [_userDefaults removeObjectForKey:HUDUserDefaultsKeyCurrentLandscapePositionY];
-    } else {
-        [_userDefaults removeObjectForKey:HUDUserDefaultsKeyCurrentPositionY];
-    }
-    [_userDefaults setObject:@(selectedMode) forKey:[self selectedModeKeyForCurrentOrientation]];
-    [self saveUserDefaults];
-}
-
-- (BOOL)passthroughMode
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyPassthroughMode];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setPassthroughMode:(BOOL)passthroughMode
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(passthroughMode) forKey:HUDUserDefaultsKeyPassthroughMode];
-    [self saveUserDefaults];
-}
-
-- (BOOL)singleLineMode
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeySingleLineMode];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setSingleLineMode:(BOOL)singleLineMode
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(singleLineMode) forKey:HUDUserDefaultsKeySingleLineMode];
-    [self saveUserDefaults];
-}
-
-- (BOOL)usesBitrate
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyUsesBitrate];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setUsesBitrate:(BOOL)usesBitrate
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(usesBitrate) forKey:HUDUserDefaultsKeyUsesBitrate];
-    [self saveUserDefaults];
-}
-
-- (BOOL)usesArrowPrefixes
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyUsesArrowPrefixes];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setUsesArrowPrefixes:(BOOL)usesArrowPrefixes
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(usesArrowPrefixes) forKey:HUDUserDefaultsKeyUsesArrowPrefixes];
-    [self saveUserDefaults];
-}
-
-- (BOOL)usesLargeFont
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyUsesLargeFont];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setUsesLargeFont:(BOOL)usesLargeFont
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(usesLargeFont) forKey:HUDUserDefaultsKeyUsesLargeFont];
-    [self saveUserDefaults];
-}
-
-- (BOOL)usesRotation
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyUsesRotation];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setUsesRotation:(BOOL)usesRotation
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(usesRotation) forKey:HUDUserDefaultsKeyUsesRotation];
-    [self saveUserDefaults];
-}
-
-- (BOOL)usesInvertedColor
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyUsesInvertedColor];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setUsesInvertedColor:(BOOL)usesInvertedColor
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(usesInvertedColor) forKey:HUDUserDefaultsKeyUsesInvertedColor];
-    [self saveUserDefaults];
-}
-
-- (BOOL)keepInPlace
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyKeepInPlace];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setKeepInPlace:(BOOL)keepInPlace
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(keepInPlace) forKey:HUDUserDefaultsKeyKeepInPlace];
-    [self saveUserDefaults];
-}
-
-- (BOOL)hideAtSnapshot
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyHideAtSnapshot];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setHideAtSnapshot:(BOOL)hideAtSnapshot
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(hideAtSnapshot) forKey:HUDUserDefaultsKeyHideAtSnapshot];
-    [self saveUserDefaults];
-}
-
-- (BOOL)displayMode
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:HUDUserDefaultsKeyDisplayMode];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)setDisplayMode:(BOOL)displayMode
-{
-    [self loadUserDefaults:NO];
-    [_userDefaults setObject:@(displayMode) forKey:HUDUserDefaultsKeyDisplayMode];
-    [self saveUserDefaults];
+    [super viewDidAppear:animated];
+    [self toggleHUDAfterLaunch];
 }
 
 - (void)reloadMainButtonState
 {
     _isRemoteHUDActive = [self isHUDEnabled];
 
-    static NSAttributedString *hintAttributedString = nil;
-    static NSAttributedString *creditsAttributedString = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSDictionary *defaultAttributes = @{
-            NSForegroundColorAttributeName: [UIColor whiteColor],
-            NSFontAttributeName: [UIFont systemFontOfSize:14],
-        };
-
-        NSMutableParagraphStyle *creditsParaStyle = [[NSMutableParagraphStyle alloc] init];
-        creditsParaStyle.lineHeightMultiple = 1.2;
-        creditsParaStyle.alignment = NSTextAlignmentCenter;
-
-        NSDictionary *creditsAttributes = @{
-            NSForegroundColorAttributeName: [UIColor whiteColor],
-            NSFontAttributeName: [UIFont systemFontOfSize:14],
-            NSParagraphStyleAttributeName: creditsParaStyle,
-        };
-
-        NSString *hintText = NSLocalizedString(@"DarkPubg is running in the background.\nDo not force-quit it after enabling the HUD.", nil);
-        hintAttributedString = [[NSAttributedString alloc] initWithString:hintText attributes:defaultAttributes];
-
-        NSTextAttachment *githubIcon = [NSTextAttachment textAttachmentWithImage:[UIImage imageNamed:@"github-mark-white"]];
-        [githubIcon setBounds:CGRectMake(0, 0, 14, 14)];
-
-        NSAttributedString *githubIconText = [NSAttributedString attributedStringWithAttachment:githubIcon];
-        NSMutableAttributedString *githubIconTextFull = [[NSMutableAttributedString alloc] initWithAttributedString:githubIconText];
-        [githubIconTextFull appendAttributedString:[[NSAttributedString alloc] initWithString:@" " attributes:creditsAttributes]];
-
-        NSString *creditsText = NSLocalizedString(@"DarkPubg by @GITHUB@huami1314\nBased on TrollSpeed by @GITHUB@i_82", nil);
-        NSMutableAttributedString *creditsAttributedText = [[NSMutableAttributedString alloc] initWithString:creditsText attributes:creditsAttributes];
-
-        // replace all "@GITHUB@" with github icon
-        NSRange atRange;
-
-        atRange = [creditsAttributedText.string rangeOfString:@"@GITHUB@"];
-        while (atRange.location != NSNotFound) {
-            [creditsAttributedText replaceCharactersInRange:atRange withAttributedString:githubIconTextFull];
-            atRange = [creditsAttributedText.string rangeOfString:@"@GITHUB@"];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_isRemoteHUDActive) {
+            [self->_mainButton setTitle:@"EXIT HUD" forState:UIControlStateNormal];
+            self->_mainButton.backgroundColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0]; // Red
+            self->_mainButton.layer.shadowColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:0.5].CGColor;
+            self->_buttonSubLabel.text = @"DarkPubg đang hoạt động trong game";
+        } else {
+            [self->_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
+            self->_mainButton.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]; // Cyan
+            self->_mainButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.45].CGColor;
+            self->_buttonSubLabel.text = @"Nhấn để bật menu ESP trong game";
         }
-
-        creditsAttributedString = creditsAttributedText;
     });
-
-    __weak typeof(self) weakSelf = self;
-    [UIView transitionWithView:self.backgroundView duration:HUD_TRANSITION_DURATION options:UIViewAnimationOptionTransitionCrossDissolve animations:^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        [strongSelf->_mainButton setTitle:(strongSelf->_isRemoteHUDActive ? NSLocalizedString(@"Exit HUD", nil) : NSLocalizedString(@"Open HUD", nil)) forState:UIControlStateNormal];
-        NSString *bridgeError = DSBridgeCompiledIn() ? DSBridgeLastError() : @"";
-        if (!strongSelf->_isRemoteHUDActive && bridgeError.length > 0) {
-            [strongSelf->_authorLabel setText:bridgeError];
-        } else {
-            [strongSelf->_authorLabel setAttributedText:(strongSelf->_isRemoteHUDActive ? hintAttributedString : creditsAttributedString)];
-        }
-    } completion:nil];
-}
-
-- (void)presentTopCenterMostHints
-{
-    if (!_isRemoteHUDActive) {
-        return;
-    }
-    [_authorLabel setText:NSLocalizedString(@"Tap that button on the center again,\nto toggle ON/OFF “Dynamic Island” mode.", nil)];
-}
-
-- (BOOL)settingHighlightedWithKey:(NSString * _Nonnull)key
-{
-    [self loadUserDefaults:NO];
-    NSNumber *mode = [_userDefaults objectForKey:key];
-    return mode != nil ? [mode boolValue] : NO;
-}
-
-- (void)settingDidSelectWithKey:(NSString * _Nonnull)key
-{
-    BOOL highlighted = [self settingHighlightedWithKey:key];
-    [_userDefaults setObject:@(!highlighted) forKey:key];
-    [self saveUserDefaults];
-}
-
-- (void)reloadModeButtonState
-{
-    HUDPresetPosition selectedMode = [self selectedModeForCurrentOrientation];
-    BOOL isCentered = (selectedMode == HUDPresetPositionTopCenter || selectedMode == HUDPresetPositionTopCenterMost);
-    BOOL isCenteredMost = (selectedMode == HUDPresetPositionTopCenterMost);
-    [_topLeftButton setSelected:(selectedMode == HUDPresetPositionTopLeft)];
-    [_topCenterButton setSelected:isCentered];
-    [_topRightButton setSelected:(selectedMode == HUDPresetPositionTopRight)];
-    UIImage *topCenterImage = (isCenteredMost ? [UIImage systemImageNamed:@"arrow.up.to.line"] : [UIImage systemImageNamed:@"arrow.up"]);
-    [_topCenterButton setImage:topCenterImage forState:UIControlStateNormal];
-}
-
-- (void)tapAuthorLabel:(UITapGestureRecognizer *)sender
-{
-    if (_isRemoteHUDActive) {
-        return;
-    }
-    NSString *repoURLString = @"https://github.com/huami1314/DarkSpeed";
-    NSURL *repoURL = [NSURL URLWithString:repoURLString];
-    [[UIApplication sharedApplication] openURL:repoURL options:@{} completionHandler:nil];
-}
-
-- (void)tapTopLeftButton:(UIButton *)sender
-{
-    [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopLeft];
-    [self reloadModeButtonState];
-}
-
-- (void)tapTopRightButton:(UIButton *)sender
-{
-    [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopRight];
-    [self reloadModeButtonState];
-}
-
-- (void)tapTopCenterButton:(UIButton *)sender
-{
-    HUDPresetPosition selectedMode = [self selectedModeForCurrentOrientation];
-    BOOL isCenteredMost = (selectedMode == HUDPresetPositionTopCenterMost);
-    if (!sender.isSelected || !_supportsCenterMost) {
-        [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopCenter];
-        if (_supportsCenterMost) {
-            [self presentTopCenterMostHints];
-        }
-    } else {
-        if (isCenteredMost) {
-            [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopCenter];
-        } else {
-            [self setSelectedModeForCurrentOrientation:HUDPresetPositionTopCenterMost];
-        }
-    }
-    [self reloadModeButtonState];
 }
 
 - (void)tapMainButton:(UIButton *)sender
@@ -821,28 +653,20 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
         });
 
         [self.backgroundView setUserInteractionEnabled:NO];
-#if USE_DARKSWORD
-        // DarkSword bootstrap can take minutes; the progress bar is the feedback.
-        // Do not auto re-enable after 5s — only success (notify) or failure
-        // (NOTIFY_RELOAD_APP) ends the busy state.
-#else
+    }
+    else
+    {
+        [self.backgroundView setUserInteractionEnabled:NO];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self reloadMainButtonState];
                 [self.backgroundView setUserInteractionEnabled:YES];
             });
         });
-#endif
-    }
-    else
-    {
-        [self.backgroundView setUserInteractionEnabled:NO];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self reloadMainButtonState];
-            [self.backgroundView setUserInteractionEnabled:YES];
-        });
     }
 }
+
+#pragma mark - DarkSword Progress Overlay
 
 #if USE_DARKSWORD
 - (void)showDSProgressOverlay
@@ -850,12 +674,12 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     if (!_dsProgressOverlay) {
         UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
         overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        overlay.backgroundColor = [UIColor colorWithWhite:0.28 alpha:0.96];
+        overlay.backgroundColor = [UIColor colorWithWhite:0.12 alpha:0.96];
 
         UIProgressView *bar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleBar];
         bar.translatesAutoresizingMaskIntoConstraints = NO;
-        bar.progressTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-        bar.trackTintColor = [UIColor colorWithWhite:1.0 alpha:0.25];
+        bar.progressTintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+        bar.trackTintColor = [UIColor colorWithWhite:1.0 alpha:0.15];
         bar.progress = 0.0;
         [overlay addSubview:bar];
 
@@ -887,7 +711,7 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
     if (!_dsProgressOverlay.superview) [self.view addSubview:_dsProgressOverlay];
     [self.view bringSubviewToFront:_dsProgressOverlay];
     _dsProgressOverlay.hidden = NO;
-    _dsProgressBar.progressTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+    _dsProgressBar.progressTintColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
     _dsProgressBar.progress = 0.0;
     _dsProgressLabel.numberOfLines = 0;
     _dsProgressLabel.lineBreakMode = NSLineBreakByWordWrapping;
@@ -921,7 +745,6 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
 - (void)dsProgressDidChange:(NSNotification *)note
 {
     if (!DSBridgeIsRunning()) {
-        // Done or failed — only auto-hide on success; error hides via NOTIFY_RELOAD_APP.
         if (DSBridgeHUDEnabled()) [self hideDSProgressOverlay];
         return;
     }
@@ -935,53 +758,103 @@ static const CGFloat _gAuthorLabelBottomConstraintConstantRegular = -80.f;
 }
 #endif
 
-- (void)tapSettingsButton:(UIButton *)sender
-{
-    if (![_mainButton isEnabled]) return;
-    TSSettingsController *settingsViewController = [[TSSettingsController alloc] init];
-    settingsViewController.delegate = self;
-    settingsViewController.alreadyLaunched = _isRemoteHUDActive;
+#pragma mark - TSSettingsControllerDelegate
 
-    SPLarkTransitioningDelegate *transitioningDelegate = [[SPLarkTransitioningDelegate alloc] init];
-    settingsViewController.transitioningDelegate = transitioningDelegate;
-    settingsViewController.modalPresentationStyle = UIModalPresentationCustom;
-    settingsViewController.modalPresentationCapturesStatusBarAppearance = YES;
-    [self presentViewController:settingsViewController animated:YES completion:nil];
+- (BOOL)settingHighlightedWithKey:(NSString * _Nonnull)key
+{
+    [self loadUserDefaults:NO];
+    NSNumber *mode = [_userDefaults objectForKey:key];
+    return mode != nil ? [mode boolValue] : NO;
 }
 
-- (void)verticalSizeClassUpdated
+- (void)settingDidSelectWithKey:(NSString * _Nonnull)key
 {
-    UIUserInterfaceSizeClass verticalClass = self.traitCollection.verticalSizeClass;
-    BOOL isPad = ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad);
-    if (verticalClass == UIUserInterfaceSizeClassCompact) {
-        CGFloat topConstant = _gTopButtonConstraintsConstantCompact;
-        [_settingsButton setHidden:YES];
-        [_authorLabelBottomConstraint setConstant:_gAuthorLabelBottomConstraintConstantCompact];
-        [_topLeftConstraint setConstant:topConstant];
-        [_topRightConstraint setConstant:topConstant];
-        [_topCenterConstraint setConstant:topConstant];
-    } else {
-        CGFloat topConstant = isPad ? _gTopButtonConstraintsConstantRegularPad : _gTopButtonConstraintsConstantRegular;
-        [_settingsButton setHidden:NO];
-        [_authorLabelBottomConstraint setConstant:_gAuthorLabelBottomConstraintConstantRegular];
-        [_topLeftConstraint setConstant:topConstant];
-        [_topRightConstraint setConstant:topConstant];
-        [_topCenterConstraint setConstant:topConstant];
+    BOOL highlighted = [self settingHighlightedWithKey:key];
+    [_userDefaults setObject:@(!highlighted) forKey:key];
+    [self saveUserDefaults];
+}
+
+#pragma mark - Rotation & Orientation
+
+- (BOOL)shouldAutorotate { return NO; }
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskPortrait; }
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation { return UIInterfaceOrientationPortrait; }
+
+- (void)reloadModeButtonState {}
+- (void)verticalSizeClassUpdated {}
+
+- (void)toggleHUDNotificationReceived:(NSNotification *)notification {
+    NSString *toggleAction = notification.userInfo[kToggleHUDAfterLaunchNotificationActionKey];
+    if (!toggleAction) {
+        [self toggleHUDAfterLaunch];
+    } else if ([toggleAction isEqualToString:kToggleHUDAfterLaunchNotificationActionToggleOn]) {
+        [self toggleOnHUDAfterLaunch];
+    } else if ([toggleAction isEqualToString:kToggleHUDAfterLaunchNotificationActionToggleOff]) {
+        [self toggleOffHUDAfterLaunch];
     }
 }
 
-- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
-{
-    [self verticalSizeClassUpdated];
+- (void)toggleHUDAfterLaunch {
+    if ([RootViewController shouldToggleHUDAfterLaunch]) {
+        [RootViewController setShouldToggleHUDAfterLaunch:NO];
+        [self tapMainButton:_mainButton];
+    }
 }
 
-- (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
-{
-    [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
+- (void)toggleOnHUDAfterLaunch {
+    if ([RootViewController shouldToggleHUDAfterLaunch]) {
+        [RootViewController setShouldToggleHUDAfterLaunch:NO];
+        if (!_isRemoteHUDActive) {
+            [self tapMainButton:_mainButton];
+        }
+    }
+}
 
-    [coordinator animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext>  _Nonnull context) {
-        [self reloadModeButtonState];
-    } completion:nil];
+- (void)toggleOffHUDAfterLaunch {
+    if ([RootViewController shouldToggleHUDAfterLaunch]) {
+        [RootViewController setShouldToggleHUDAfterLaunch:NO];
+        if (_isRemoteHUDActive) {
+            [self tapMainButton:_mainButton];
+        }
+    }
+}
+
+- (void)motionEnded:(UIEventSubtype)motion withEvent:(UIEvent *)event {
+    if (motion == UIEventSubtypeMotionShake) {
+        UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@"DarkPubg" message:@"Bạn có muốn đặt lại cài đặt không?" preferredStyle:UIAlertControllerStyleAlert];
+        [alertController addAction:[UIAlertAction actionWithTitle:@"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
+        [alertController addAction:[UIAlertAction actionWithTitle:@"Đặt lại" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [self resetUserDefaults];
+        }]];
+        [self presentViewController:alertController animated:YES completion:nil];
+    }
+}
+
+- (void)resetUserDefaults
+{
+    NSString *bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+    if (bundleIdentifier) {
+        [GetStandardUserDefaults() removePersistentDomainForName:bundleIdentifier];
+        [GetStandardUserDefaults() synchronize];
+    }
+    BOOL removed = [[NSFileManager defaultManager] removeItemAtPath:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH)) error:nil];
+    if (removed) {
+        [self setHUDEnabled:NO];
+        [[UIApplication sharedApplication] terminateWithSuccess];
+    }
+}
+
+- (void)loadUserDefaults:(BOOL)forceReload
+{
+    if (forceReload || !_userDefaults) {
+        _userDefaults = [[NSDictionary dictionaryWithContentsOfFile:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH))] mutableCopy] ?: [NSMutableDictionary dictionary];
+    }
+}
+
+- (void)saveUserDefaults
+{
+    if (![_userDefaults writeToFile:(JBROOT_PATH_NSSTRING(USER_DEFAULTS_PATH)) atomically:YES]) return;
+    notify_post(NOTIFY_RELOAD_HUD);
 }
 
 @end
