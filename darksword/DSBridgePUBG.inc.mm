@@ -2805,11 +2805,7 @@ static void ds_pubg_tick(void) {
                             memcpy(&outV.X, boneEntry + 0x10, 4);
                             memcpy(&outV.Y, boneEntry + 0x14, 4);
                             memcpy(&outV.Z, boneEntry + 0x18, 4);
-                            if (isnan(outV.X) || isinf(outV.X) || isnan(outV.Y) || isinf(outV.Y) || isnan(outV.Z) || isinf(outV.Z)) return false;
-                            // Reject uninitialized zero bones which otherwise project to feet/root causing ghost lines
-                            if (fabsf(outV.X) + fabsf(outV.Y) + fabsf(outV.Z) < 0.1f) return false;
-                            if (fabsf(outV.X) > 400.0f || fabsf(outV.Y) > 400.0f || fabsf(outV.Z) > 400.0f) return false;
-                            return true;
+                            return (!isnan(outV.X) && !isinf(outV.X) && !isnan(outV.Y) && !isinf(outV.Y) && !isnan(outV.Z) && !isinf(outV.Z));
                         };
 
                         auto dist3D = [](const DSPUBGVector &a, const DSPUBGVector &b) -> float {
@@ -2851,71 +2847,26 @@ static void ds_pubg_tick(void) {
                             // Player & Bot rig (67 bones - ShadowTrackerExtra)
                             bHead = 6; bNeck = 5; bPelvis = 1;
 
-                            // Right Arm (stable UE4 humanoid rig: UpperArm=12, LowerArm=14, Hand=16):
-                            bHandR = 16;
-                            DSPUBGVector vHandR = {};
-                            getBoneLocal(16, vHandR);
+                            // Right Arm (stable UE4 humanoid rig: UpperArm=13, LowerArm=15, Hand=16):
+                            bUprR = 13; bLwrR = 15; bHandR = 16;
 
-                            DSPUBGVector v14 = {}, v15 = {};
-                            bool ok14 = getBoneLocal(14, v14);
-                            bool ok15 = getBoneLocal(15, v15);
-                            bLwrR = ok14 ? 14 : (ok15 ? 15 : 14);
+                            // Left Arm (stable UE4 humanoid rig: UpperArm=34, LowerArm=36, Hand=37):
+                            bUprL = 34; bLwrL = 36; bHandL = 37;
 
-                            DSPUBGVector v12 = {}, v13 = {};
-                            bool ok12 = getBoneLocal(12, v12);
-                            bool ok13 = getBoneLocal(13, v13);
-                            bUprR = ok12 ? 12 : (ok13 ? 13 : 12);
-
-                            // Left Arm (stable UE4 humanoid rig: UpperArm=33, LowerArm=35, Hand=37):
-                            bHandL = 37;
-                            DSPUBGVector vHandL = {};
-                            getBoneLocal(37, vHandL);
-
-                            DSPUBGVector v35 = {}, v36 = {};
-                            bool ok35 = getBoneLocal(35, v35);
-                            bool ok36 = getBoneLocal(36, v36);
-                            bLwrL = ok35 ? 35 : (ok36 ? 36 : 35);
-
-                            DSPUBGVector v33 = {}, v34 = {};
-                            bool ok33 = getBoneLocal(33, v33);
-                            bool ok34 = getBoneLocal(34, v34);
-                            bUprL = ok33 ? 33 : (ok34 ? 34 : 33);
-
-                            // Dynamic Leg Selection with anatomical validation:
-                            // Candidate 1: Right={55, 56, 57}, Left={59, 60, 61}
-                            // Candidate 2: Right={57, 58, 59}, Left={53, 54, 55}
-                            bThighR = 55; bCalfR = 56; bFootR = 57;
-                            bThighL = 59; bCalfL = 60; bFootL = 61;
-
-                            DSPUBGVector rT1 = {}, rC1 = {}, rF1 = {};
-                            DSPUBGVector lT1 = {}, lC1 = {}, lF1 = {};
-                            bool okR1 = getBoneLocal(55, rT1) && getBoneLocal(56, rC1) && getBoneLocal(57, rF1);
-                            bool okL1 = getBoneLocal(59, lT1) && getBoneLocal(60, lC1) && getBoneLocal(61, lF1);
-
-                            DSPUBGVector rT2 = {}, rC2 = {}, rF2 = {};
-                            DSPUBGVector lT2 = {}, lC2 = {}, lF2 = {};
-                            bool okR2 = getBoneLocal(57, rT2) && getBoneLocal(58, rC2) && getBoneLocal(59, rF2);
-                            bool okL2 = getBoneLocal(53, lT2) && getBoneLocal(54, lC2) && getBoneLocal(55, lF2);
-
-                            int score1 = 0, score2 = 0;
-                            if (okR1) {
-                                float dt = dist3D(rT1, rC1), dc = dist3D(rC1, rF1);
-                                if (dt >= 20.0f && dt <= 75.0f && dc >= 20.0f && dc <= 75.0f) score1 += 2;
-                            }
-                            if (okL1) {
-                                float dt = dist3D(lT1, lC1), dc = dist3D(lC1, lF1);
-                                if (dt >= 20.0f && dt <= 75.0f && dc >= 20.0f && dc <= 75.0f) score1 += 2;
-                            }
-                            if (okR2) {
-                                float dt = dist3D(rT2, rC2), dc = dist3D(rC2, rF2);
-                                if (dt >= 20.0f && dt <= 75.0f && dc >= 20.0f && dc <= 75.0f) score2 += 2;
-                            }
-                            if (okL2) {
-                                float dt = dist3D(lT2, lC2), dc = dist3D(lC2, lF2);
-                                if (dt >= 20.0f && dt <= 75.0f && dc >= 20.0f && dc <= 75.0f) score2 += 2;
+                            // Dynamic Armed vs Unarmed Leg Selection:
+                            // Unarmed (tay không / gục ngã): Right={55, 56, 57}, Left={59, 60, 61}
+                            // Armed (cầm súng):             Right={57, 58, 59}, Left={53, 54, 55}
+                            bool isArmedPose = (p.weaponName[0] != '\0');
+                            if (!isArmedPose && !p.isKnocked) {
+                                DSPUBGVector pelvisLoc = {}, bone61Loc = {};
+                                if (getBoneLocal(1, pelvisLoc) && getBoneLocal(61, bone61Loc)) {
+                                    if (bone61Loc.Z >= pelvisLoc.Z - 35.0f) {
+                                        isArmedPose = true;
+                                    }
+                                }
                             }
 
-                            if (score2 > score1) {
+                            if (isArmedPose) {
                                 bThighR = 57; bCalfR = 58; bFootR = 59;
                                 bThighL = 53; bCalfL = 54; bFootL = 55;
                             } else {
@@ -2932,38 +2883,16 @@ static void ds_pubg_tick(void) {
                             bThighL, bCalfL, bFootL
                         };
 
-                        DSPUBGVector locals[15] = {};
-                        bool localsValid[15] = {};
-                        for (int i = 0; i < 15; i++) {
-                            localsValid[i] = getBoneLocal(jointIndices[i], locals[i]);
-                        }
-
-                        // Anatomical sanity checks before projecting:
-                        // Invalidate joints if bone lengths exceed anatomical limits, preventing ghost lines
-                        if (localsValid[1] && localsValid[3] && dist3D(locals[1], locals[3]) > 110.0f) localsValid[3] = false;
-                        if (localsValid[3] && localsValid[4] && dist3D(locals[3], locals[4]) > 100.0f) localsValid[4] = false;
-                        if (localsValid[4] && localsValid[5] && dist3D(locals[4], locals[5]) > 100.0f) localsValid[5] = false;
-
-                        if (localsValid[1] && localsValid[6] && dist3D(locals[1], locals[6]) > 110.0f) localsValid[6] = false;
-                        if (localsValid[6] && localsValid[7] && dist3D(locals[6], locals[7]) > 100.0f) localsValid[7] = false;
-                        if (localsValid[7] && localsValid[8] && dist3D(locals[7], locals[8]) > 100.0f) localsValid[8] = false;
-
-                        if (localsValid[2] && localsValid[9] && dist3D(locals[2], locals[9]) > 110.0f) localsValid[9] = false;
-                        if (localsValid[9] && localsValid[10] && dist3D(locals[9], locals[10]) > 120.0f) localsValid[10] = false;
-                        if (localsValid[10] && localsValid[11] && dist3D(locals[10], locals[11]) > 120.0f) localsValid[11] = false;
-
-                        if (localsValid[2] && localsValid[12] && dist3D(locals[2], locals[12]) > 110.0f) localsValid[12] = false;
-                        if (localsValid[12] && localsValid[13] && dist3D(locals[12], locals[13]) > 120.0f) localsValid[13] = false;
-                        if (localsValid[13] && localsValid[14] && dist3D(locals[13], locals[14]) > 120.0f) localsValid[14] = false;
-
                         uint8_t c2w[48] = {0};
                         ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);
 
                         int okBones = 0;
                         for (int i = 0; i < 15; i++) {
-                            if (localsValid[i]) {
+                            int bi = jointIndices[i];
+                            DSPUBGVector localTrans = {};
+                            if (getBoneLocal(bi, localTrans)) {
                                 DSPUBGVector world = {};
-                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &locals[i], &world);
+                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &localTrans, &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
                                 if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
@@ -2973,8 +2902,9 @@ static void ds_pubg_tick(void) {
                         }
 
                         // Project HeadTop for circle at vHead.Z += 7.0f (exact internal snippet logic)
-                        if (localsValid[0]) {
-                            DSPUBGVector headTopLocal = locals[0];
+                        DSPUBGVector headLocal = {};
+                        if (getBoneLocal(bHead, headLocal)) {
+                            DSPUBGVector headTopLocal = headLocal;
                             headTopLocal.Z += 7.0f;
                             DSPUBGVector worldHeadTop = {};
                             ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &headTopLocal, &worldHeadTop);
