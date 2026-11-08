@@ -2089,6 +2089,11 @@ static BOOL IsPUBGProcessRunning(void) {
     [self appendConsoleLog:@"AUTH" message:[NSString stringWithFormat:(isEN ? @"Validating key: %.8s..." : @"Đang kiểm tra key: %.8s..."), [trimmed UTF8String]] tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        auth::v_chk_0x33 = false;
+        auth::session_active = false;
+        auth::vnp_token = 0;
+        auth::api_instance.clear_license_state();
+
         auth::username = [trimmed UTF8String];
         auth::login();
 
@@ -2114,6 +2119,14 @@ static BOOL IsPUBGProcessRunning(void) {
                     [self dismissAuthGateOverlayWithAnimation:YES];
                 });
             } else {
+                auth::v_chk_0x33 = false;
+                auth::session_active = false;
+                auth::vnp_token = 0;
+                auth::api_instance.clear_license_state();
+                auth::save_key("");
+                self->_authCloseBtn.hidden = YES;
+                [self updateLicenseCardUI];
+
                 UINotificationFeedbackGenerator *fb = [[UINotificationFeedbackGenerator alloc] init];
                 [fb notificationOccurred:UINotificationFeedbackTypeError];
 
@@ -2160,7 +2173,16 @@ static BOOL IsPUBGProcessRunning(void) {
 - (void)changeKeyTapped:(UIButton *)sender
 {
     if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+    auth::v_chk_0x33 = false;
+    auth::session_active = false;
+    auth::vnp_token = 0;
+    auth::api_instance.clear_license_state();
+
+    _authKeyTextField.text = @"";
+    _authStatusLabel.text = @"";
+    [self updateLicenseCardUI];
     [self showAuthGateOverlayWithAnimation:YES];
+    _authCloseBtn.hidden = YES;
 }
 
 - (void)updateLicenseCardUI
@@ -2211,6 +2233,12 @@ static BOOL IsPUBGProcessRunning(void) {
                     [self appendConsoleLog:@"OK" message:[NSString stringWithFormat:(isEN ? @"License active! Valid until: %@" : @"Bản quyền hợp lệ! Hạn dùng: %@"), expStr] tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
                     [self updateLicenseCardUI];
                 } else {
+                    auth::v_chk_0x33 = false;
+                    auth::session_active = false;
+                    auth::vnp_token = 0;
+                    auth::api_instance.clear_license_state();
+                    auth::save_key("");
+                    [self updateLicenseCardUI];
                     [self appendConsoleLog:@"AUTH" message:(isEN ? @"Stored key failed validation. Please enter key." : @"Key đã lưu không hợp lệ. Vui lòng nhập lại key.") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
                     [self showAuthGateOverlayWithAnimation:YES];
                 }

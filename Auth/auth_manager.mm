@@ -192,49 +192,20 @@ namespace auth {
         auth_text = setting::Lang(ENCRYPT("Preparing for authentication..."), ENCRYPT("Đang chuẩn bị xác thực..."));
         auth_text_color = ImColor(255, 255, 0);
 
-#ifdef __OBJC__
-        std::string keyUpper = auth::username;
-        std::transform(keyUpper.begin(), keyUpper.end(), keyUpper.begin(), ::toupper);
-        keyUpper.erase(0, keyUpper.find_first_not_of(" \t\r\n"));
-        if (!keyUpper.empty()) {
-            keyUpper.erase(keyUpper.find_last_not_of(" \t\r\n") + 1);
-        }
-
-        if (keyUpper == "DLX07" || keyUpper == "DARKPUBG" || keyUpper == "DARKSWORD" || keyUpper == "ADMIN" ||
-            keyUpper.rfind("DLX-", 0) == 0 || keyUpper.rfind("DARKSWORD-", 0) == 0) {
-            
-            api_instance.expiry = (time_t)2147483647;
-            g_user_level = 999;
-
-            NSString *uuidStr = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
-            const char *uuidCStr = [uuidStr UTF8String];
-            uint8_t hwidDigest[16] = {0};
-            for (int i = 0; uuidCStr && uuidCStr[i]; i++) {
-                hwidDigest[i % 16] ^= (uint8_t)((uuidCStr[i] * 0x9B) + (i * 0x31));
-            }
-            memcpy(api_instance.hwid_digest, hwidDigest, 16);
-
-            uint64_t ts = (uint64_t)time(nullptr);
-            uint64_t rnd = ((uint64_t)arc4random() << 32) | arc4random();
-            api_instance.session_nonce = ts ^ rnd;
-
-            vnp_token = make_token(api_instance.expiry, api_instance.hwid_digest, api_instance.session_nonce);
-            v_chk_0x33    = true;
-            session_active = true;
-
-            seal_code_hash();
-            save_key(auth::username);
-
-            auth_text = setting::Lang(ENCRYPT("Developer License Activated!"), ENCRYPT("Bản quyền Developer đã kích hoạt!"));
-            auth_text_color = ImColor(0.07f, 0.85f, 0.25f, 1.0f);
-            return;
-        }
-#endif
+        // Always reset previous session state so that failed logins immediately revoke access
+        v_chk_0x33 = false;
+        session_active = false;
+        vnp_token = 0;
+        api_instance.clear_license_state();
 
         std::string resp = http_post(ENCRYPT("login"));
         if (resp.empty()) {
             auth_text = setting::Lang(ENCRYPT("Connection failed. Check your network."), ENCRYPT("Kết nối thất bại. Kiểm tra mạng."));
             auth_text_color = ImColor(255, 0, 0);
+            v_chk_0x33 = false;
+            session_active = false;
+            vnp_token = 0;
+            api_instance.clear_license_state();
             return;
         }
 
@@ -276,7 +247,13 @@ namespace auth {
             std::thread pingThread(background_worker);
             pingThread.detach();
         } else {
-            NSString *code = json[[NSString stringWithUTF8String:ENCRYPT("code")]];
+            // Explicitly kill session and tokens on failed authentication
+            v_chk_0x33 = false;
+            session_active = false;
+            vnp_token = 0;
+            api_instance.clear_license_state();
+
+            NSString *code = json ? json[[NSString stringWithUTF8String:ENCRYPT("code")]] : nil;
             if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_NOT_FOUND")]]) {
                 auth_text = setting::Lang(ENCRYPT("Key not found. Please check your input."), ENCRYPT("Không tìm thấy key. Vui lòng kiểm tra."));
             } else if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_EXPIRED")]]) {
@@ -286,12 +263,15 @@ namespace auth {
             } else if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_BANNED")]]) {
                 auth_text = setting::Lang(ENCRYPT("This license has been banned. Contact support."), ENCRYPT("License này đã bị khóa. Liên hệ hỗ trợ."));
             } else {
-                NSString *errMsg = json[[NSString stringWithUTF8String:ENCRYPT("message")]] ? json[[NSString stringWithUTF8String:ENCRYPT("message")]] : [NSString stringWithUTF8String:ENCRYPT("Authentication error")];
+                NSString *errMsg = (json && json[[NSString stringWithUTF8String:ENCRYPT("message")]]) ? json[[NSString stringWithUTF8String:ENCRYPT("message")]] : [NSString stringWithUTF8String:ENCRYPT("Authentication error")];
                 auth_text = setting::Lang((std::string(ENCRYPT("Authentication error: ")) + std::string([errMsg UTF8String])).c_str(), (std::string(ENCRYPT("Lỗi xác thực: ")) + std::string([errMsg UTF8String])).c_str());
             }
             auth_text_color = ImColor(255, 0, 0);
         }
 #else
+        v_chk_0x33 = false;
+        session_active = false;
+        vnp_token = 0;
         auth_text = "Objective-C++ Not Available";
         auth_text_color = ImColor(255, 0, 0);
 #endif
