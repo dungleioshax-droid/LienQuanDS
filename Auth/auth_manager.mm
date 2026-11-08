@@ -219,7 +219,41 @@ namespace auth {
 
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-            api_instance.expiry = [json[[NSString stringWithUTF8String:ENCRYPT("expires_unix")]] integerValue];
+            NSInteger expVal = 0;
+            if (json[[NSString stringWithUTF8String:ENCRYPT("expires_unix")]]) {
+                expVal = [json[[NSString stringWithUTF8String:ENCRYPT("expires_unix")]] integerValue];
+            } else if (json[[NSString stringWithUTF8String:ENCRYPT("expiry")]]) {
+                expVal = [json[[NSString stringWithUTF8String:ENCRYPT("expiry")]] integerValue];
+            } else if (json[[NSString stringWithUTF8String:ENCRYPT("expires")]]) {
+                expVal = [json[[NSString stringWithUTF8String:ENCRYPT("expires")]] integerValue];
+            } else if (json[[NSString stringWithUTF8String:ENCRYPT("expire")]]) {
+                expVal = [json[[NSString stringWithUTF8String:ENCRYPT("expire")]] integerValue];
+            }
+            
+            NSString *expStrJson = json[[NSString stringWithUTF8String:ENCRYPT("expires_date")]] ?: json[[NSString stringWithUTF8String:ENCRYPT("expires_at")]];
+            if (expVal <= 0 && expStrJson && expStrJson.length > 0) {
+                NSDateFormatter *df = [[NSDateFormatter alloc] init];
+                NSArray *formats = @[
+                    @"yyyy-MM-dd HH:mm:ss",
+                    @"yyyy-MM-dd'T'HH:mm:ss",
+                    @"yyyy-MM-dd",
+                    @"dd/MM/yyyy HH:mm:ss",
+                    @"dd/MM/yyyy HH:mm",
+                    @"dd/MM/yyyy"
+                ];
+                for (NSString *fmt in formats) {
+                    df.dateFormat = fmt;
+                    NSDate *d = [df dateFromString:expStrJson];
+                    if (d) {
+                        expVal = (NSInteger)[d timeIntervalSince1970];
+                        break;
+                    }
+                }
+            }
+
+            api_instance.expiry = (time_t)expVal;
+            std::string expDisp = expStrJson ? std::string([expStrJson UTF8String]) : "";
+            save_expiry(api_instance.expiry, expDisp);
             
             int level = [json[[NSString stringWithUTF8String:ENCRYPT("level")]] integerValue];
             g_user_level = level;
@@ -252,6 +286,7 @@ namespace auth {
             session_active = false;
             vnp_token = 0;
             api_instance.clear_license_state();
+            save_expiry(0, "");
 
             NSString *code = json ? json[[NSString stringWithUTF8String:ENCRYPT("code")]] : nil;
             if ([code isEqualToString:[NSString stringWithUTF8String:ENCRYPT("KEY_NOT_FOUND")]]) {

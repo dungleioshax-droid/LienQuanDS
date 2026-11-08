@@ -59,18 +59,70 @@ static BOOL IsEnglish(void) {
     return [CurrentLanguage() isEqualToString:@"en"];
 }
 
-static NSString *GetDeviceHWID(void) {
-    NSString *uuid = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
-    return uuid ?: @"00000000-0000-0000-0000-000000000000";
-}
-
 static NSString *GetFormattedExpiryString(time_t exp) {
+    if (exp <= 0) {
+        exp = auth::load_expiry();
+    }
+    std::string dispStr = auth::load_expiry_display();
+    if (exp <= 0 && !dispStr.empty()) {
+        return [NSString stringWithUTF8String:dispStr.c_str()];
+    }
     if (exp <= 0) return IsEnglish() ? @"Not Activated" : @"Chưa kích hoạt";
     if (exp >= 2000000000) return IsEnglish() ? @"Lifetime (VIP)" : @"Vĩnh viễn (Trọn đời)";
     NSDate *date = [NSDate dateWithTimeIntervalSince1970:(NSTimeInterval)exp];
     NSDateFormatter *df = [[NSDateFormatter alloc] init];
     df.dateFormat = @"dd/MM/yyyy HH:mm";
     return [df stringFromDate:date];
+}
+
+static NSString *GetFormattedRemainingString(time_t exp) {
+    if (exp <= 0) {
+        exp = auth::load_expiry();
+    }
+    if (exp <= 0) {
+        std::string dispStr = auth::load_expiry_display();
+        if (!dispStr.empty()) {
+            NSDateFormatter *df = [[NSDateFormatter alloc] init];
+            NSArray *formats = @[
+                @"yyyy-MM-dd HH:mm:ss",
+                @"yyyy-MM-dd'T'HH:mm:ss",
+                @"yyyy-MM-dd",
+                @"dd/MM/yyyy HH:mm:ss",
+                @"dd/MM/yyyy HH:mm",
+                @"dd/MM/yyyy"
+            ];
+            for (NSString *fmt in formats) {
+                df.dateFormat = fmt;
+                NSDate *d = [df dateFromString:[NSString stringWithUTF8String:dispStr.c_str()]];
+                if (d) {
+                    exp = (time_t)[d timeIntervalSince1970];
+                    break;
+                }
+            }
+        }
+    }
+    if (exp <= 0) return IsEnglish() ? @"Please enter key" : @"Vui lòng nhập key";
+    if (exp >= 2000000000) return IsEnglish() ? @"Lifetime (VIP)" : @"Vĩnh viễn (Trọn đời)";
+
+    time_t now = time(nullptr);
+    if (exp <= now) {
+        return IsEnglish() ? @"Expired" : @"Đã hết hạn";
+    }
+
+    long diff = (long)(exp - now);
+    long days = diff / 86400;
+    long hours = (diff % 86400) / 3600;
+    long minutes = (diff % 3600) / 60;
+
+    BOOL isEN = IsEnglish();
+    if (days > 0) {
+        return [NSString stringWithFormat:(isEN ? @"%ldd %ldh remaining" : @"Còn %ld ngày %ld giờ"), days, hours];
+    } else if (hours > 0) {
+        return [NSString stringWithFormat:(isEN ? @"%ldh %ldm remaining" : @"Còn %ld giờ %ld phút"), hours, minutes];
+    } else {
+        if (minutes < 1) minutes = 1;
+        return [NSString stringWithFormat:(isEN ? @"%ld minutes remaining" : @"Còn %ld phút"), minutes];
+    }
 }
 
 static NSString *GetMaskedKeyString(NSString *rawKey) {
@@ -282,8 +334,9 @@ static BOOL IsPUBGProcessRunning(void) {
     UILabel *_licenseKeyVal;
     UILabel *_licenseExpTitle;
     UILabel *_licenseExpVal;
+    UILabel *_licenseRemainTitle;
+    UILabel *_licenseRemainVal;
     UIButton *_changeKeyBtn;
-    UIButton *_settingCopyHwidBtn;
 
     BOOL _isRemoteHUDActive;
     UIImpactFeedbackGenerator *_impactFeedbackGenerator;
@@ -928,28 +981,34 @@ static BOOL IsPUBGProcessRunning(void) {
     _licenseExpVal.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     [expRow addSubview:_licenseExpVal];
 
-    // Action buttons inside License Card
+    // Row: Remaining Duration
+    UIView *remainRow = [[UIView alloc] init];
+    remainRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [_licenseCard addSubview:remainRow];
+
+    _licenseRemainTitle = [[UILabel alloc] init];
+    _licenseRemainTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseRemainTitle.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
+    _licenseRemainTitle.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    [remainRow addSubview:_licenseRemainTitle];
+
+    _licenseRemainVal = [[UILabel alloc] init];
+    _licenseRemainVal.translatesAutoresizingMaskIntoConstraints = NO;
+    _licenseRemainVal.textColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
+    _licenseRemainVal.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+    [remainRow addSubview:_licenseRemainVal];
+
+    // Action button inside License Card (Full Width Change Key)
     _changeKeyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     _changeKeyBtn.translatesAutoresizingMaskIntoConstraints = NO;
     _changeKeyBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.18];
     [_changeKeyBtn setTitleColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0] forState:UIControlStateNormal];
-    _changeKeyBtn.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
+    _changeKeyBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     _changeKeyBtn.layer.cornerRadius = 8.0f;
     _changeKeyBtn.layer.borderColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:0.4].CGColor;
     _changeKeyBtn.layer.borderWidth = 1.0f;
     [_changeKeyBtn addTarget:self action:@selector(changeKeyTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_licenseCard addSubview:_changeKeyBtn];
-
-    _settingCopyHwidBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    _settingCopyHwidBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    _settingCopyHwidBtn.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
-    [_settingCopyHwidBtn setTitleColor:[UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0] forState:UIControlStateNormal];
-    _settingCopyHwidBtn.titleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightBold];
-    _settingCopyHwidBtn.layer.cornerRadius = 8.0f;
-    _settingCopyHwidBtn.layer.borderColor = [UIColor colorWithRed:48/255.0 green:54/255.0 blue:61/255.0 alpha:1.0].CGColor;
-    _settingCopyHwidBtn.layer.borderWidth = 1.0f;
-    [_settingCopyHwidBtn addTarget:self action:@selector(copyHwidTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [_licenseCard addSubview:_settingCopyHwidBtn];
 
     [NSLayoutConstraint activateConstraints:@[
         [licIcon.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
@@ -988,17 +1047,21 @@ static BOOL IsPUBGProcessRunning(void) {
         [_licenseExpVal.trailingAnchor constraintEqualToAnchor:expRow.trailingAnchor],
         [_licenseExpVal.centerYAnchor constraintEqualToAnchor:expRow.centerYAnchor],
 
-        [_changeKeyBtn.topAnchor constraintEqualToAnchor:expRow.bottomAnchor constant:10.0f],
-        [_changeKeyBtn.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
-        [_changeKeyBtn.heightAnchor constraintEqualToConstant:30.0f],
-        [_changeKeyBtn.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-14.0f],
+        [remainRow.topAnchor constraintEqualToAnchor:expRow.bottomAnchor constant:4.0f],
+        [remainRow.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
+        [remainRow.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-16.0f],
+        [remainRow.heightAnchor constraintEqualToConstant:24.0f],
 
-        [_settingCopyHwidBtn.topAnchor constraintEqualToAnchor:expRow.bottomAnchor constant:10.0f],
-        [_settingCopyHwidBtn.leadingAnchor constraintEqualToAnchor:_changeKeyBtn.trailingAnchor constant:10.0f],
-        [_settingCopyHwidBtn.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-16.0f],
-        [_settingCopyHwidBtn.widthAnchor constraintEqualToAnchor:_changeKeyBtn.widthAnchor],
-        [_settingCopyHwidBtn.heightAnchor constraintEqualToConstant:30.0f],
-        [_settingCopyHwidBtn.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-14.0f],
+        [_licenseRemainTitle.leadingAnchor constraintEqualToAnchor:remainRow.leadingAnchor],
+        [_licenseRemainTitle.centerYAnchor constraintEqualToAnchor:remainRow.centerYAnchor],
+        [_licenseRemainVal.trailingAnchor constraintEqualToAnchor:remainRow.trailingAnchor],
+        [_licenseRemainVal.centerYAnchor constraintEqualToAnchor:remainRow.centerYAnchor],
+
+        [_changeKeyBtn.topAnchor constraintEqualToAnchor:remainRow.bottomAnchor constant:12.0f],
+        [_changeKeyBtn.leadingAnchor constraintEqualToAnchor:_licenseCard.leadingAnchor constant:16.0f],
+        [_changeKeyBtn.trailingAnchor constraintEqualToAnchor:_licenseCard.trailingAnchor constant:-16.0f],
+        [_changeKeyBtn.heightAnchor constraintEqualToConstant:34.0f],
+        [_changeKeyBtn.bottomAnchor constraintEqualToAnchor:_licenseCard.bottomAnchor constant:-14.0f],
     ]];
 
     // 3. Telegram Community Card
@@ -1648,11 +1711,11 @@ static BOOL IsPUBGProcessRunning(void) {
     if (_licenseExpTitle) {
         _licenseExpTitle.text = isEN ? @"Expiration:" : @"Hạn dùng:";
     }
+    if (_licenseRemainTitle) {
+        _licenseRemainTitle.text = isEN ? @"Remaining:" : @"Thời hạn còn:";
+    }
     if (_changeKeyBtn) {
         [_changeKeyBtn setTitle:isEN ? @"Change Key" : @"Đổi Key" forState:UIControlStateNormal];
-    }
-    if (_settingCopyHwidBtn) {
-        [_settingCopyHwidBtn setTitle:isEN ? @"Copy HWID" : @"Chép HWID" forState:UIControlStateNormal];
     }
     [self updateLicenseCardUI];
 
@@ -2143,24 +2206,6 @@ static BOOL IsPUBGProcessRunning(void) {
     });
 }
 
-- (void)copyHwidTapped:(UIButton *)sender
-{
-    UINotificationFeedbackGenerator *fb = [[UINotificationFeedbackGenerator alloc] init];
-    [fb notificationOccurred:UINotificationFeedbackTypeSuccess];
-
-    NSString *hwid = GetDeviceHWID();
-    [UIPasteboard generalPasteboard].string = hwid;
-
-    BOOL isEN = IsEnglish();
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Device HWID copied to clipboard" : @"Đã sao chép mã thiết bị (HWID) vào bộ nhớ tạm") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
-
-    NSString *origTitle = [sender titleForState:UIControlStateNormal];
-    [sender setTitle:(isEN ? @"Copied!" : @"Đã chép!") forState:UIControlStateNormal];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [sender setTitle:origTitle forState:UIControlStateNormal];
-    });
-}
-
 - (void)pasteKeyTapped:(UIButton *)sender
 {
     if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
@@ -2202,6 +2247,9 @@ static BOOL IsPUBGProcessRunning(void) {
 
         _licenseExpVal.text = GetFormattedExpiryString(auth::api_instance.expiry);
         _licenseExpVal.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+
+        _licenseRemainVal.text = GetFormattedRemainingString(auth::api_instance.expiry);
+        _licenseRemainVal.textColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0];
     } else {
         _licenseStatusBadge.backgroundColor = [UIColor colorWithRed:58/255.0 green:28/255.0 blue:28/255.0 alpha:1.0];
         _licenseBadgeLabel.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
@@ -2210,6 +2258,9 @@ static BOOL IsPUBGProcessRunning(void) {
         _licenseKeyVal.text = isEN ? @"No Key" : @"Chưa có key";
         _licenseExpVal.text = isEN ? @"Locked" : @"Đang khoá";
         _licenseExpVal.textColor = [UIColor colorWithRed:231/255.0 green:76/255.0 blue:60/255.0 alpha:1.0];
+
+        _licenseRemainVal.text = isEN ? @"Please enter key" : @"Vui lòng nhập key";
+        _licenseRemainVal.textColor = [UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0];
     }
 }
 
