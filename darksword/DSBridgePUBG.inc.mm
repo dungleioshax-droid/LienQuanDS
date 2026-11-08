@@ -1937,9 +1937,6 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
         return true;
     };
 
-    // 0. Test last resolved offset first for instant 1-read cache hit
-    if (g_dspubgLastBoneOff && testOffset(g_dspubgLastBoneOff)) return true;
-
     // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
     // Check CurrentRead index (0xA74 / 0xA78) per-mesh to ensure live pose (crouching/aiming) is never stale
     int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
@@ -2789,7 +2786,7 @@ static void ds_pubg_tick(void) {
 
             // Real Skeletal Bones (16 joints, 15 bone links)
             p.hasSkeleton = false;
-        if (g_pubgEspSkeleton && dist3D <= 160.0f) {
+        if (g_pubgEspSkeleton) {
             bool skeletonDone = false;
             uint64_t boneData = 0;
             if (meshComp && ds_pubg_valid(meshComp)) {
@@ -2798,8 +2795,8 @@ static void ds_pubg_tick(void) {
                 if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
                     g_dspubgLastBoneOff = resolvedOff;
 
-                    uint8_t boneBuf[64 * 48];
-                    uint32_t needReadCount = (bCount > 64) ? 64 : bCount;
+                    uint8_t boneBuf[68 * 48];
+                    uint32_t needReadCount = (bCount > 68) ? 68 : bCount;
                     size_t readSize = (size_t)needReadCount * 48;
                     if (ds_pubg_read(boneData, boneBuf, readSize)) {
                         auto getBoneLocal = [&](int idx, DSPUBGVector &outV) -> bool {
@@ -2854,35 +2851,35 @@ static void ds_pubg_tick(void) {
                             // Player & Bot rig (67 bones - ShadowTrackerExtra)
                             bHead = 6; bNeck = 5; bPelvis = 1;
 
-                            // Right Arm (stable UE4 humanoid rig: UpperArm=13, LowerArm=15, Hand=16):
+                            // Right Arm (stable UE4 humanoid rig: UpperArm=12, LowerArm=14, Hand=16):
                             bHandR = 16;
                             DSPUBGVector vHandR = {};
                             getBoneLocal(16, vHandR);
 
-                            DSPUBGVector v15 = {}, v14 = {};
-                            bool ok15 = getBoneLocal(15, v15);
+                            DSPUBGVector v14 = {}, v15 = {};
                             bool ok14 = getBoneLocal(14, v14);
-                            bLwrR = (ok15 && (v15.X != 0.0f || v15.Y != 0.0f || v15.Z != 0.0f)) ? 15 : (ok14 ? 14 : 15);
+                            bool ok15 = getBoneLocal(15, v15);
+                            bLwrR = ok14 ? 14 : (ok15 ? 15 : 14);
 
-                            DSPUBGVector v13 = {}, v12 = {};
-                            bool ok13 = getBoneLocal(13, v13);
+                            DSPUBGVector v12 = {}, v13 = {};
                             bool ok12 = getBoneLocal(12, v12);
-                            bUprR = (ok13 && (v13.X != 0.0f || v13.Y != 0.0f || v13.Z != 0.0f)) ? 13 : (ok12 ? 12 : 13);
+                            bool ok13 = getBoneLocal(13, v13);
+                            bUprR = ok12 ? 12 : (ok13 ? 13 : 12);
 
-                            // Left Arm (stable UE4 humanoid rig: UpperArm=34, LowerArm=36, Hand=37):
+                            // Left Arm (stable UE4 humanoid rig: UpperArm=33, LowerArm=35, Hand=37):
                             bHandL = 37;
                             DSPUBGVector vHandL = {};
                             getBoneLocal(37, vHandL);
 
-                            DSPUBGVector v36 = {}, v35 = {};
-                            bool ok36 = getBoneLocal(36, v36);
+                            DSPUBGVector v35 = {}, v36 = {};
                             bool ok35 = getBoneLocal(35, v35);
-                            bLwrL = (ok36 && (v36.X != 0.0f || v36.Y != 0.0f || v36.Z != 0.0f)) ? 36 : (ok35 ? 35 : 36);
+                            bool ok36 = getBoneLocal(36, v36);
+                            bLwrL = ok35 ? 35 : (ok36 ? 36 : 35);
 
-                            DSPUBGVector v34 = {}, v33 = {};
-                            bool ok34 = getBoneLocal(34, v34);
+                            DSPUBGVector v33 = {}, v34 = {};
                             bool ok33 = getBoneLocal(33, v33);
-                            bUprL = (ok34 && (v34.X != 0.0f || v34.Y != 0.0f || v34.Z != 0.0f)) ? 34 : (ok33 ? 33 : 34);
+                            bool ok34 = getBoneLocal(34, v34);
+                            bUprL = ok33 ? 33 : (ok34 ? 34 : 33);
 
                             // Dynamic Leg Selection with anatomical validation:
                             // Candidate 1: Right={55, 56, 57}, Left={59, 60, 61}
@@ -2943,21 +2940,21 @@ static void ds_pubg_tick(void) {
 
                         // Anatomical sanity checks before projecting:
                         // Invalidate joints if bone lengths exceed anatomical limits, preventing ghost lines
-                        if (localsValid[1] && localsValid[3] && dist3D(locals[1], locals[3]) > 75.0f) localsValid[3] = false;
-                        if (localsValid[3] && localsValid[4] && dist3D(locals[3], locals[4]) > 70.0f) localsValid[4] = false;
-                        if (localsValid[4] && localsValid[5] && dist3D(locals[4], locals[5]) > 70.0f) localsValid[5] = false;
+                        if (localsValid[1] && localsValid[3] && dist3D(locals[1], locals[3]) > 110.0f) localsValid[3] = false;
+                        if (localsValid[3] && localsValid[4] && dist3D(locals[3], locals[4]) > 100.0f) localsValid[4] = false;
+                        if (localsValid[4] && localsValid[5] && dist3D(locals[4], locals[5]) > 100.0f) localsValid[5] = false;
 
-                        if (localsValid[1] && localsValid[6] && dist3D(locals[1], locals[6]) > 75.0f) localsValid[6] = false;
-                        if (localsValid[6] && localsValid[7] && dist3D(locals[6], locals[7]) > 70.0f) localsValid[7] = false;
-                        if (localsValid[7] && localsValid[8] && dist3D(locals[7], locals[8]) > 70.0f) localsValid[8] = false;
+                        if (localsValid[1] && localsValid[6] && dist3D(locals[1], locals[6]) > 110.0f) localsValid[6] = false;
+                        if (localsValid[6] && localsValid[7] && dist3D(locals[6], locals[7]) > 100.0f) localsValid[7] = false;
+                        if (localsValid[7] && localsValid[8] && dist3D(locals[7], locals[8]) > 100.0f) localsValid[8] = false;
 
-                        if (localsValid[2] && localsValid[9] && dist3D(locals[2], locals[9]) > 75.0f) localsValid[9] = false;
-                        if (localsValid[9] && localsValid[10] && dist3D(locals[9], locals[10]) > 85.0f) localsValid[10] = false;
-                        if (localsValid[10] && localsValid[11] && dist3D(locals[10], locals[11]) > 85.0f) localsValid[11] = false;
+                        if (localsValid[2] && localsValid[9] && dist3D(locals[2], locals[9]) > 110.0f) localsValid[9] = false;
+                        if (localsValid[9] && localsValid[10] && dist3D(locals[9], locals[10]) > 120.0f) localsValid[10] = false;
+                        if (localsValid[10] && localsValid[11] && dist3D(locals[10], locals[11]) > 120.0f) localsValid[11] = false;
 
-                        if (localsValid[2] && localsValid[12] && dist3D(locals[2], locals[12]) > 75.0f) localsValid[12] = false;
-                        if (localsValid[12] && localsValid[13] && dist3D(locals[12], locals[13]) > 85.0f) localsValid[13] = false;
-                        if (localsValid[13] && localsValid[14] && dist3D(locals[13], locals[14]) > 85.0f) localsValid[14] = false;
+                        if (localsValid[2] && localsValid[12] && dist3D(locals[2], locals[12]) > 110.0f) localsValid[12] = false;
+                        if (localsValid[12] && localsValid[13] && dist3D(locals[12], locals[13]) > 120.0f) localsValid[13] = false;
+                        if (localsValid[13] && localsValid[14] && dist3D(locals[13], locals[14]) > 120.0f) localsValid[14] = false;
 
                         uint8_t c2w[48] = {0};
                         ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);

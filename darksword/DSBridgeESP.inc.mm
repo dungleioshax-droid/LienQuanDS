@@ -3903,9 +3903,10 @@ static void ds_hosted_apply_pubg(void) {
                             fabsf(ux) < 10000.0f && fabsf(uy) < 10000.0f &&
                             fabsf(vx) < 10000.0f && fabsf(vy) < 10000.0f) {
                             // Guard against wild phantom / stray lines across the screen:
-                            // A single bone segment can never exceed the character bounding box height!
+                            // A single bone segment cannot exceed the character bounding box dimension (with margin for prone/aiming)
+                            float maxDim = fmaxf(fmaxf(p.boxHeight, p.boxWidth), 35.0f);
                             float segLen = hypotf(ux - vx, uy - vy);
-                            if (segLen <= p.boxHeight * 1.2f) {
+                            if (segLen <= maxDim * 1.5f) {
                                 [skelPath moveToPoint:CGPointMake(ux, uy)];
                                 [skelPath addLineToPoint:CGPointMake(vx, vy)];
                                 drawnLines++;
