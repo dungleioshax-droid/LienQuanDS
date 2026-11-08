@@ -1855,65 +1855,32 @@ static BOOL IsPUBGProcessRunning(void) {
         @"com.vng.pubgmobile"
     ];
 
-    // Method 1: FrontBoardServices (FBSSystemService - launches app directly via SpringBoard)
-    void *fbs = dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices", RTLD_NOW);
-    if (fbs) {
-        Class fbsClass = NSClassFromString(@"FBSSystemService");
-        if (fbsClass) {
-            id service = [fbsClass performSelector:NSSelectorFromString(@"sharedService")];
-            SEL openSel = NSSelectorFromString(@"openApplication:options:withResult:");
-            if (service && [service respondsToSelector:openSel]) {
-                typedef void (*FBSOpenFunc)(id, SEL, NSString *, NSDictionary *, id);
-                FBSOpenFunc openFn = (FBSOpenFunc)[service methodForSelector:openSel];
-                if (openFn) {
+    // Method 1: LSApplicationWorkspace (CoreServices / MobileCoreServices) - TrollStore standard
+    dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
+    dlopen("/System/Library/PrivateFrameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
+    dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
+    @try {
+        Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
+        if (wsClass) {
+            id workspace = [wsClass performSelector:NSSelectorFromString(@"defaultWorkspace")];
+            SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
+            if (workspace && [workspace respondsToSelector:openSel]) {
+                typedef BOOL (*OpenFunc)(id, SEL, NSString *);
+                OpenFunc fn = (OpenFunc)[workspace methodForSelector:openSel];
+                if (fn) {
                     for (NSString *bid in bundleIDs) {
                         @try {
-                            openFn(service, openSel, bid, nil, nil);
+                            if (fn(workspace, openSel, bid)) {
+                                return YES;
+                            }
                         } @catch (__unused NSException *e) {}
                     }
                 }
             }
         }
-    }
+    } @catch (__unused NSException *e) {}
 
-    // Method 2: LSApplicationWorkspace (CoreServices / MobileCoreServices)
-    dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
-    dlopen("/System/Library/PrivateFrameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
-    dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
-    Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
-    if (wsClass) {
-        id workspace = [wsClass performSelector:NSSelectorFromString(@"defaultWorkspace")];
-        SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
-        if (workspace && [workspace respondsToSelector:openSel]) {
-            typedef BOOL (*OpenFunc)(id, SEL, NSString *);
-            OpenFunc fn = (OpenFunc)[workspace methodForSelector:openSel];
-            if (fn) {
-                for (NSString *bid in bundleIDs) {
-                    @try {
-                        if (fn(workspace, openSel, bid)) {
-                            return YES;
-                        }
-                    } @catch (__unused NSException *e) {}
-                }
-            }
-        }
-    }
-
-    // Method 3: SpringBoardServices private launch API
-    void *sbs = dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
-    if (sbs) {
-        typedef int (*SBSLaunchFunc)(CFStringRef, Boolean);
-        SBSLaunchFunc launchFunc = (SBSLaunchFunc)dlsym(sbs, "SBSLaunchApplicationWithIdentifier");
-        if (launchFunc) {
-            for (NSString *bid in bundleIDs) {
-                if (launchFunc((__bridge CFStringRef)bid, false) == 0) {
-                    return YES;
-                }
-            }
-        }
-    }
-
-    // Method 4: URL Schemes for PUBG Mobile VNG
+    // Method 2: URL Schemes for PUBG Mobile VNG
     NSArray<NSString *> *schemes = @[
         @"vn.vng.pubgmobile://",
         @"fb309539426210664://",
@@ -1926,61 +1893,77 @@ static BOOL IsPUBGProcessRunning(void) {
     UIApplication *app = [UIApplication sharedApplication];
     for (NSString *s in schemes) {
         NSURL *url = [NSURL URLWithString:s];
-        if ([app canOpenURL:url]) {
+        if (url && [app canOpenURL:url]) {
             [app openURL:url options:@{} completionHandler:nil];
             return YES;
         }
     }
 
-    // Fallback force-open PUBG VNG URL schemes
-    [app openURL:[NSURL URLWithString:@"vn.vng.pubgmobile://"] options:@{} completionHandler:nil];
-    [app openURL:[NSURL URLWithString:@"fb309539426210664://"] options:@{} completionHandler:nil];
-    [app openURL:[NSURL URLWithString:@"vngpubg://"] options:@{} completionHandler:nil];
+    // Fallback force-open PUBG VNG URL scheme
+    NSURL *vngUrl = [NSURL URLWithString:@"vn.vng.pubgmobile://"];
+    if (vngUrl) {
+        [app openURL:vngUrl options:@{} completionHandler:nil];
+    }
     return YES;
 }
 
 - (void)openPUBGAndAutoEnableHUD
 {
-    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
-    [self dismissWarningPopup];
+    @try {
+        if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+        [self dismissWarningPopup];
 
-    BOOL isEN = IsEnglish();
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile VNG..." : @"Đang mở PUBG Mobile VNG...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+        BOOL isEN = IsEnglish();
+        [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile VNG..." : @"Đang mở PUBG Mobile VNG...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
 
-    // 1. Immediately request background execution from iOS so this app NEVER gets frozen/suspended
-    __block UIBackgroundTaskIdentifier bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"PUBGAutoHUD" expirationHandler:^{
-        if (bgTask != UIBackgroundTaskInvalid) {
-            [[UIApplication sharedApplication] endBackgroundTask:bgTask];
-            bgTask = UIBackgroundTaskInvalid;
-        }
-    }];
-
-    // 2. Start audio keepalive immediately so iOS background audio permission keeps us running
-#if USE_DARKSWORD
-    DSBridgeStartKeepalive();
-#endif
-
-    // 3. Launch PUBG Mobile immediately to switch app
-    [self launchPUBGGameProcess];
-
-    // 4. Re-trigger launch after 0.4s to ensure foreground switch
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self launchPUBGGameProcess];
-    });
-
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Waiting 5s in background for game initialization then auto-enabling HUD..." : @"Chờ 5 giây trong nền để game khởi tạo rồi tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
-
-    // 5. Wait 5.0 seconds for game to load, then automatically activate HUD in the background
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self doEnableHUD];
-
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        // 1. Immediately request background execution from iOS so this app NEVER gets frozen/suspended
+        __block UIBackgroundTaskIdentifier bgTask = UIBackgroundTaskInvalid;
+        bgTask = [[UIApplication sharedApplication] beginBackgroundTaskWithName:@"PUBGAutoHUD" expirationHandler:^{
             if (bgTask != UIBackgroundTaskInvalid) {
                 [[UIApplication sharedApplication] endBackgroundTask:bgTask];
                 bgTask = UIBackgroundTaskInvalid;
             }
+        }];
+
+        // 2. Start audio keepalive immediately so iOS background audio permission keeps us running
+#if USE_DARKSWORD
+        @try {
+            DSBridgeStartKeepalive();
+        } @catch (NSException *ke) {
+            NSLog(@"[DarkPubg] Keepalive start error: %@", ke);
+        }
+#endif
+
+        // 3. Launch PUBG Mobile immediately to switch app
+        [self launchPUBGGameProcess];
+
+        // 4. Re-trigger launch after 0.4s to ensure foreground switch
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            @try {
+                [self launchPUBGGameProcess];
+            } @catch (__unused NSException *le) {}
         });
-    });
+
+        [self appendConsoleLog:@"SYS" message:(isEN ? @"Waiting 5s in background for game initialization then auto-enabling HUD..." : @"Chờ 5 giây trong nền để game khởi tạo rồi tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+
+        // 5. Wait 5.0 seconds for game to load, then automatically activate HUD in the background
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            @try {
+                [self doEnableHUD];
+            } @catch (NSException *he) {
+                NSLog(@"[DarkPubg] doEnableHUD error: %@", he);
+            }
+
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                if (bgTask != UIBackgroundTaskInvalid) {
+                    [[UIApplication sharedApplication] endBackgroundTask:bgTask];
+                    bgTask = UIBackgroundTaskInvalid;
+                }
+            });
+        });
+    } @catch (NSException *ex) {
+        NSLog(@"[DarkPubg] Exception in openPUBGAndAutoEnableHUD: %@", ex);
+    }
 }
 
 - (void)openPUBGGameApp

@@ -266,6 +266,14 @@ static CGFloat ds_pref_double(NSDictionary *preferences, HUDUserDefaultsKey key,
     return number ? number.doubleValue : fallback;
 }
 
+static void ds_dispatch_main_sync(dispatch_block_t block) {
+    if ([NSThread isMainThread]) {
+        block();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), block);
+    }
+}
+
 static UIInterfaceOrientation ds_interface_orientation(void) {
     // Aspect of the content space is the most reliable signal —
     // SBMainWorkspace's interfaceOrientation may lag or stay portrait.
@@ -280,7 +288,7 @@ static UIInterfaceOrientation ds_interface_orientation(void) {
         return remoteOrientation;
     }
     __block UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
-    dispatch_sync(dispatch_get_main_queue(), ^{
+    ds_dispatch_main_sync(^{
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if (![scene isKindOfClass:UIWindowScene.class]) continue;
             UIWindowScene *windowScene = (UIWindowScene *)scene;
@@ -295,7 +303,7 @@ static UIInterfaceOrientation ds_interface_orientation(void) {
 static void ds_screen_geometry(CGRect *bounds, UIEdgeInsets *safeInsets) {
     __block CGRect currentBounds = UIScreen.mainScreen.bounds;
     __block UIEdgeInsets currentInsets = UIEdgeInsetsZero;
-    dispatch_sync(dispatch_get_main_queue(), ^{
+    ds_dispatch_main_sync(^{
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if (![scene isKindOfClass:UIWindowScene.class]) continue;
             UIWindowScene *windowScene = (UIWindowScene *)scene;
@@ -1619,7 +1627,7 @@ static void ds_finish_enable(void) {
     // inside SpringBoard while the ESP runs (the long-run panic source).
     __block unsigned hostedContextId = 0;
     __block unsigned menuContextId = 0;
-    dispatch_sync(dispatch_get_main_queue(), ^{
+    ds_dispatch_main_sync(^{
         hostedContextId = ds_hosted_overlay_setup_on_main();
         menuContextId = ds_hosted_menu_setup_on_main();
     });
