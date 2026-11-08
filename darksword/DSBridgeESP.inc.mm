@@ -2842,6 +2842,7 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
                                               double timestamp,
                                               double targetTimestamp,
                                               double startedAt);
+static void ds_hosted_overlay_frame(void);
 
 static void ds_hosted_configure_display_link(CADisplayLink *displayLink) {
     if (!displayLink) return;
