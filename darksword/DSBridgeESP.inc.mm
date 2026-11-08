@@ -3931,8 +3931,8 @@ static void ds_hosted_apply_pubg(void) {
             default: break;
         }
 
-        float maxDist = (it.category == DSPUBGItemCategoryVehicle || it.category == DSPUBGItemCategoryCrate) ?
-                        (g_pubgItemMaxDistance * 1.5f) : g_pubgItemMaxDistance;
+        float maxDist = (it.category == DSPUBGItemCategoryVehicle) ? 450.0f :
+                        ((it.category == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
         if (!show || !it.isVisible || it.distanceMeters > maxDist) {
             if (!lbl.hidden) lbl.hidden = YES;
             continue;
