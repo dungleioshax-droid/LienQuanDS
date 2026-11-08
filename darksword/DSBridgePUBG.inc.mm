@@ -2515,7 +2515,7 @@ static void ds_pubg_tick(void) {
         uint32_t cSlot = ds_pubg_actor_cache_hash(pawn);
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
         if (cEntry.actor == pawn) {
-            if (cEntry.isScenery || cEntry.itemCat != DSPUBGItemCategoryNone) {
+            if (cEntry.isScenery) {
                 return false;
             }
         }
@@ -2615,9 +2615,11 @@ static void ds_pubg_tick(void) {
 
         // 6. Team filter:
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
-        if (teamId < 0 || teamId > 200000000) return false;
         if (localTeamId > 0 && teamId == localTeamId) {
             return false;
+        }
+        if (teamId < 0 || teamId > 200000000) {
+            teamId = -1;
         }
 
         seenPawns.push_back(pawn);
@@ -2976,6 +2978,10 @@ static void ds_pubg_tick(void) {
             staging[publishedCount++] = p;
             if (isAI) botCount++; else enemyCount++;
         }
+        cEntry.actor = pawn;
+        cEntry.isScenery = false;
+        cEntry.isPawn = true;
+        cEntry.itemCat = DSPUBGItemCategoryNone;
         return true;
     };
 
@@ -3059,7 +3065,9 @@ static void ds_pubg_tick(void) {
             if (cat != DSPUBGItemCategoryVehicle) {
                 uint8_t pickedUp = ds_pubg_read_u8(actor + 0x615ULL) & 1;
                 if (pickedUp) {
-                    cEntry.isScenery = true;
+                    cEntry.actor = 0;
+                    cEntry.isScenery = false;
+                    cEntry.isPawn = false;
                     cEntry.itemCat = DSPUBGItemCategoryNone;
                     return;
                 }
@@ -3067,10 +3075,7 @@ static void ds_pubg_tick(void) {
         } else {
             cat = ds_pubg_identify_item(actor, displayName, sizeof(displayName));
             if (cat == DSPUBGItemCategoryNone) {
-                cEntry.actor = actor;
-                cEntry.isScenery = true;
-                cEntry.isPawn = false;
-                cEntry.itemCat = DSPUBGItemCategoryNone;
+                // Non-item actors must not be cached as scenery
                 return;
             }
             cEntry.actor = actor;
@@ -3186,7 +3191,7 @@ static void ds_pubg_tick(void) {
 
         if (actorsData && actorsCount > 0) {
             g_dspubgLastActorsCount = (int)actorsCount;
-            if (actorsCount > 2048) actorsCount = 2048;
+            if (actorsCount > 8192) actorsCount = 8192;
             static std::vector<uint64_t> s_levelActors;
             if (s_levelActors.size() < actorsCount) s_levelActors.resize(actorsCount);
             if (ds_pubg_read(actorsData, s_levelActors.data(), actorsCount * sizeof(uint64_t))) {
