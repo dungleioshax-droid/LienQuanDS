@@ -8,6 +8,7 @@
 
 #import <notify.h>
 #import <sys/sysctl.h>
+#import <dlfcn.h>
 
 #include <string>
 #include <vector>
@@ -164,67 +165,142 @@ static BOOL CheckDarkSwordSupport(NSString **outVersionStr, NSString **outStatus
     return supported;
 }
 
-static BOOL IsPUBGProcessRunning(void) {
-    // 1. Primary check via proc_listallpids
-    int count = proc_listallpids(NULL, 0);
-    if (count > 0 && count < 100000) {
-        pid_t *pids = (pid_t *)malloc((size_t)count * sizeof(pid_t));
-        if (pids) {
-            int got = proc_listallpids(pids, count * (int)sizeof(pid_t));
-            if (got > 0) {
-                if (got > count) got = count;
-                char name[1024];
-                char path[1024];
-                for (int i = 0; i < got; i++) {
-                    pid_t p = pids[i];
-                    if (p <= 0) continue;
+static BOOL CheckPUBGViaSpringBoard(void) {
+    static pid_t (*sbsFunc)(CFStringRef) = NULL;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        void *sbs = dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
+        if (sbs) {
+            sbsFunc = (pid_t (*)(CFStringRef))dlsym(sbs, "SBSProcessIDForDisplayIdentifier");
+        }
+    });
 
-                    memset(name, 0, sizeof(name));
-                    if (proc_name(p, name, sizeof(name) - 1) > 0) {
-                        if (strcasestr(name, "ShadowTracker") != NULL ||
-                            strcasestr(name, "PUBG") != NULL) {
-                            free(pids);
-                            return YES;
-                        }
-                    }
+    NSArray<NSString *> *bundleIDs = @[
+        @"com.tencent.ig",
+        @"com.vng.pubgmobile",
+        @"com.pubg.krmobile",
+        @"com.rekoo.pubgm",
+        @"com.pubg.imobile",
+        @"com.tencent.iglite",
+        @"com.epicgames.ShadowTrackerExtra",
+        @"com.tencent.tmgp.pubgm",
+        @"com.tencent.tmgp.pubgmhd",
+        @"com.tencent.igce"
+    ];
 
-                    memset(path, 0, sizeof(path));
-                    if (proc_pidpath(p, path, sizeof(path) - 1) > 0) {
-                        if (strcasestr(path, "ShadowTracker") != NULL ||
-                            strcasestr(path, "PUBG") != NULL) {
-                            free(pids);
-                            return YES;
-                        }
-                    }
-                }
+    if (sbsFunc) {
+        for (NSString *bundleID in bundleIDs) {
+            pid_t pid = sbsFunc((__bridge CFStringRef)bundleID);
+            if (pid > 0) {
+                return YES;
             }
-            free(pids);
         }
     }
 
-    // 2. Secondary check with proc_listpids(PROC_ALL_PIDS)
-    int bytes = proc_listpids(1 /* PROC_ALL_PIDS */, 0, NULL, 0);
-    if (bytes > 0 && bytes < 400000) {
-        pid_t *pids = (pid_t *)malloc((size_t)bytes);
-        if (pids) {
-            int gotBytes = proc_listpids(1, 0, pids, bytes);
-            int got = gotBytes / (int)sizeof(pid_t);
-            char name[1024];
-            for (int i = 0; i < got; i++) {
-                pid_t p = pids[i];
-                if (p <= 0) continue;
-                memset(name, 0, sizeof(name));
-                if (proc_name(p, name, sizeof(name) - 1) > 0) {
-                    if (strcasestr(name, "ShadowTracker") != NULL ||
-                        strcasestr(name, "PUBG") != NULL) {
-                        free(pids);
+    Class bksClass = NSClassFromString(@"BKSApplicationStateMonitor");
+    if (!bksClass) {
+        void *bksLib = dlopen("/System/Library/PrivateFrameworks/AssertionServices.framework/AssertionServices", RTLD_NOW);
+        if (bksLib) {
+            bksClass = NSClassFromString(@"BKSApplicationStateMonitor");
+        }
+    }
+    if (bksClass) {
+        @try {
+            id monitor = [[bksClass alloc] init];
+            if ([monitor respondsToSelector:@selector(applicationStateForApplication:)]) {
+                for (NSString *bundleID in bundleIDs) {
+                    unsigned int state = (unsigned int)[monitor applicationStateForApplication:bundleID];
+                    if (state & (2 | 4 | 8)) {
                         return YES;
                     }
                 }
             }
-            free(pids);
+        } @catch (id ex) {}
+    }
+
+    return NO;
+}
+
+static BOOL CheckPUBGViaSysctl(void) {
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0 };
+    size_t size = 0;
+    if (sysctl(mib, 4, NULL, &size, NULL, 0) < 0 || size == 0) {
+        return NO;
+    }
+    struct kinfo_proc *procs = (struct kinfo_proc *)malloc(size);
+    if (!procs) return NO;
+    if (sysctl(mib, 4, procs, &size, NULL, 0) < 0) {
+        free(procs);
+        return NO;
+    }
+    int count = (int)(size / sizeof(struct kinfo_proc));
+    BOOL found = NO;
+    for (int i = 0; i < count; i++) {
+        const char *name = procs[i].kp_proc.p_comm;
+        if (!name || !name[0]) continue;
+        if (strcasestr(name, "ShadowTracker") != NULL ||
+            strcasestr(name, "Shadow") != NULL ||
+            strcasestr(name, "PUBG") != NULL) {
+            found = YES;
+            break;
         }
     }
+    free(procs);
+    return found;
+}
+
+static BOOL CheckPUBGViaLibProc(void) {
+    int count = proc_listallpids(NULL, 0);
+    if (count <= 0 || count > 100000) return NO;
+    pid_t *pids = (pid_t *)malloc((size_t)count * sizeof(pid_t));
+    if (!pids) return NO;
+    int got = proc_listallpids(pids, count * (int)sizeof(pid_t));
+    BOOL found = NO;
+    if (got > 0) {
+        if (got > count) got = count;
+        char name[1024];
+        char path[1024];
+        for (int i = 0; i < got; i++) {
+            pid_t p = pids[i];
+            if (p <= 0) continue;
+            memset(name, 0, sizeof(name));
+            if (proc_name(p, name, sizeof(name) - 1) > 0) {
+                if (strcasestr(name, "ShadowTracker") != NULL ||
+                    strcasestr(name, "Shadow") != NULL ||
+                    strcasestr(name, "PUBG") != NULL) {
+                    found = YES;
+                    break;
+                }
+            }
+            memset(path, 0, sizeof(path));
+            if (proc_pidpath(p, path, sizeof(path) - 1) > 0) {
+                if (strcasestr(path, "ShadowTracker") != NULL ||
+                    strcasestr(path, "Shadow") != NULL ||
+                    strcasestr(path, "PUBG") != NULL) {
+                    found = YES;
+                    break;
+                }
+            }
+        }
+    }
+    free(pids);
+    return found;
+}
+
+static BOOL IsPUBGProcessRunning(void) {
+    // 1. SpringBoardServices / AssertionServices check (Direct to SpringBoard on iOS)
+    if (CheckPUBGViaSpringBoard()) return YES;
+
+    // 2. Sysctl check (KERN_PROC_ALL)
+    if (CheckPUBGViaSysctl()) return YES;
+
+    // 3. Libproc check
+    if (CheckPUBGViaLibProc()) return YES;
+
+#if USE_DARKSWORD
+    // 4. DarkSword kernel check (if kernel is ready)
+    if (DSBridgeIsPUBGRunning()) return YES;
+#endif
 
     return NO;
 }
@@ -308,6 +384,8 @@ static BOOL IsPUBGProcessRunning(void) {
     UIView *_warningPopupOverlay;
     UILabel *_warningTitleLabel;
     UILabel *_warningSubLabel;
+    UIButton *_warningLaunchGameBtn;
+    UIButton *_warningProceedBtn;
     UIButton *_warningDismissBtn;
 
     // Auth Gate UI
@@ -1755,12 +1833,41 @@ static BOOL IsPUBGProcessRunning(void) {
             @"Please open PUBG Mobile before launching HUD." :
             @"Hãy mở PUBG Mobile trước khi bật HUD để hệ thống có thể kết nối vào game.";
     }
+    if (_warningLaunchGameBtn) {
+        [_warningLaunchGameBtn setTitle:isEN ? @"Launch PUBG Mobile" : @"Vào Game PUBG" forState:UIControlStateNormal];
+    }
+    if (_warningProceedBtn) {
+        [_warningProceedBtn setTitle:isEN ? @"Already In-Game (Enable HUD)" : @"Đã Trong Game (Bật HUD)" forState:UIControlStateNormal];
+    }
     if (_warningDismissBtn) {
-        [_warningDismissBtn setTitle:isEN ? @"OK" : @"Đã hiểu" forState:UIControlStateNormal];
+        [_warningDismissBtn setTitle:isEN ? @"Close" : @"Đóng" forState:UIControlStateNormal];
     }
 }
 
 #pragma mark - Red Warning Popup (Vui lòng vào game trước)
+
+- (void)openPUBGGameApp
+{
+    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
+    NSArray *schemes = @[@"pubgmobile://", @"shadowtracker://", @"vngpubg://", @"pubg://"];
+    UIApplication *app = [UIApplication sharedApplication];
+    for (NSString *s in schemes) {
+        NSURL *url = [NSURL URLWithString:s];
+        if ([app canOpenURL:url]) {
+            [app openURL:url options:@{} completionHandler:nil];
+            [self dismissWarningPopup];
+            return;
+        }
+    }
+    [app openURL:[NSURL URLWithString:@"pubgmobile://"] options:@{} completionHandler:nil];
+    [self dismissWarningPopup];
+}
+
+- (void)proceedEnableHUDTapped:(UIButton *)sender
+{
+    [self dismissWarningPopup];
+    [self doEnableHUD];
+}
 
 - (void)showGameNotRunningAlert
 {
@@ -1795,7 +1902,7 @@ static BOOL IsPUBGProcessRunning(void) {
         _warningTitleLabel = [[UILabel alloc] init];
         _warningTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _warningTitleLabel.textColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]; // Bright RED
-        _warningTitleLabel.font = [UIFont systemFontOfSize:20 weight:UIFontWeightHeavy];
+        _warningTitleLabel.font = [UIFont systemFontOfSize:19 weight:UIFontWeightHeavy];
         _warningTitleLabel.textAlignment = NSTextAlignmentCenter;
         _warningTitleLabel.numberOfLines = 0;
         [card addSubview:_warningTitleLabel];
@@ -1808,38 +1915,68 @@ static BOOL IsPUBGProcessRunning(void) {
         _warningSubLabel.numberOfLines = 0;
         [card addSubview:_warningSubLabel];
 
+        // Button 1: Launch game directly
+        _warningLaunchGameBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        _warningLaunchGameBtn.translatesAutoresizingMaskIntoConstraints = NO;
+        [_warningLaunchGameBtn setTitleColor:[UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0] forState:UIControlStateNormal];
+        _warningLaunchGameBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
+        _warningLaunchGameBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
+        _warningLaunchGameBtn.layer.cornerRadius = 12.0f;
+        [_warningLaunchGameBtn addTarget:self action:@selector(openPUBGGameApp) forControlEvents:UIControlEventTouchUpInside];
+        [card addSubview:_warningLaunchGameBtn];
+
+        // Button 2: Proceed anyway if user is already in game
+        _warningProceedBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+        _warningProceedBtn.translatesAutoresizingMaskIntoConstraints = NO;
+        [_warningProceedBtn setTitleColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] forState:UIControlStateNormal];
+        _warningProceedBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+        _warningProceedBtn.backgroundColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:0.15];
+        _warningProceedBtn.layer.cornerRadius = 12.0f;
+        _warningProceedBtn.layer.borderColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:0.45].CGColor;
+        _warningProceedBtn.layer.borderWidth = 1.0f;
+        [_warningProceedBtn addTarget:self action:@selector(proceedEnableHUDTapped:) forControlEvents:UIControlEventTouchUpInside];
+        [card addSubview:_warningProceedBtn];
+
+        // Button 3: Close
         _warningDismissBtn = [UIButton buttonWithType:UIButtonTypeSystem];
         _warningDismissBtn.translatesAutoresizingMaskIntoConstraints = NO;
-        [_warningDismissBtn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        _warningDismissBtn.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
-        _warningDismissBtn.backgroundColor = [UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0];
-        _warningDismissBtn.layer.cornerRadius = 20.0f;
+        [_warningDismissBtn setTitleColor:[UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0] forState:UIControlStateNormal];
+        _warningDismissBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
         [_warningDismissBtn addTarget:self action:@selector(dismissWarningPopup) forControlEvents:UIControlEventTouchUpInside];
         [card addSubview:_warningDismissBtn];
 
         [NSLayoutConstraint activateConstraints:@[
             [card.centerXAnchor constraintEqualToAnchor:_warningPopupOverlay.centerXAnchor],
             [card.centerYAnchor constraintEqualToAnchor:_warningPopupOverlay.centerYAnchor],
-            [card.widthAnchor constraintEqualToConstant:300.0f],
+            [card.widthAnchor constraintEqualToConstant:310.0f],
 
-            [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0f],
+            [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:20.0f],
             [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
-            [icon.widthAnchor constraintEqualToConstant:44.0f],
-            [icon.heightAnchor constraintEqualToConstant:44.0f],
+            [icon.widthAnchor constraintEqualToConstant:40.0f],
+            [icon.heightAnchor constraintEqualToConstant:40.0f],
 
-            [_warningTitleLabel.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:14.0f],
-            [_warningTitleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
-            [_warningTitleLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
+            [_warningTitleLabel.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:12.0f],
+            [_warningTitleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16.0f],
+            [_warningTitleLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-16.0f],
 
-            [_warningSubLabel.topAnchor constraintEqualToAnchor:_warningTitleLabel.bottomAnchor constant:10.0f],
-            [_warningSubLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0f],
-            [_warningSubLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0f],
+            [_warningSubLabel.topAnchor constraintEqualToAnchor:_warningTitleLabel.bottomAnchor constant:8.0f],
+            [_warningSubLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
+            [_warningSubLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
 
-            [_warningDismissBtn.topAnchor constraintEqualToAnchor:_warningSubLabel.bottomAnchor constant:20.0f],
+            [_warningLaunchGameBtn.topAnchor constraintEqualToAnchor:_warningSubLabel.bottomAnchor constant:18.0f],
+            [_warningLaunchGameBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0f],
+            [_warningLaunchGameBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0f],
+            [_warningLaunchGameBtn.heightAnchor constraintEqualToConstant:40.0f],
+
+            [_warningProceedBtn.topAnchor constraintEqualToAnchor:_warningLaunchGameBtn.bottomAnchor constant:10.0f],
+            [_warningProceedBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0f],
+            [_warningProceedBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0f],
+            [_warningProceedBtn.heightAnchor constraintEqualToConstant:38.0f],
+
+            [_warningDismissBtn.topAnchor constraintEqualToAnchor:_warningProceedBtn.bottomAnchor constant:6.0f],
             [_warningDismissBtn.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
-            [_warningDismissBtn.widthAnchor constraintEqualToConstant:140.0f],
-            [_warningDismissBtn.heightAnchor constraintEqualToConstant:40.0f],
-            [_warningDismissBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20.0f],
+            [_warningDismissBtn.heightAnchor constraintEqualToConstant:32.0f],
+            [_warningDismissBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-14.0f],
         ]];
     }
 
@@ -2402,78 +2539,94 @@ static BOOL IsPUBGProcessRunning(void) {
     });
 }
 
+- (void)doEnableHUD
+{
+    BOOL isNowEnabled = [self isHUDEnabled];
+    if (isNowEnabled) return;
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"KERN" message:(isEN ? @"Attaching DarkSword kernel hooks..." : @"Đang nạp bộ nhớ qua DarkSword Kernel...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+
+    [self setHUDEnabled:YES];
+
+#if USE_DARKSWORD
+    [self showDSProgressOverlay];
+#endif
+    [_impactFeedbackGenerator prepare];
+    int anyToken;
+    __weak typeof(self) weakSelf = self;
+    notify_register_dispatch(NOTIFY_LAUNCHED_HUD, &anyToken, dispatch_get_main_queue(), ^(int token) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        notify_cancel(token);
+#if USE_DARKSWORD
+        [strongSelf hideDSProgressOverlay];
+#endif
+        [strongSelf->_impactFeedbackGenerator impactOccurred];
+        [strongSelf reloadMainButtonState];
+        [strongSelf.backgroundView setUserInteractionEnabled:YES];
+
+        BOOL isEN = IsEnglish();
+        [strongSelf appendConsoleLog:@"OK" message:(isEN ? @"ESP Overlay successfully launched in-game!" : @"Menu ESP đã kích hoạt thành công trong game!") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+    });
+
+    [self.backgroundView setUserInteractionEnabled:NO];
+}
+
+- (void)doDisableHUD
+{
+    BOOL isNowEnabled = [self isHUDEnabled];
+    if (!isNowEnabled) return;
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"INFO" message:(isEN ? @"User requested HUD stop" : @"Yêu cầu tắt HUD từ người dùng") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"KERN" message:(isEN ? @"Detaching DarkSword kernel hooks..." : @"Đang ngắt liên kết DarkSword Kernel...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+
+    [self setHUDEnabled:NO];
+
+#if USE_DARKSWORD
+    [self hideDSProgressOverlay];
+#endif
+    [self.backgroundView setUserInteractionEnabled:NO];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self reloadMainButtonState];
+            [self.backgroundView setUserInteractionEnabled:YES];
+            [self appendConsoleLog:@"SYS" message:(isEN ? @"HUD stopped. Standby mode active." : @"Đã tắt HUD. Chế độ chờ sẵn sàng.") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
+        });
+    });
+}
+
 - (void)tapMainButton:(UIButton *)sender
 {
     BOOL isNowEnabled = [self isHUDEnabled];
 
-    // If HUD is currently OFF and user taps to OPEN HUD:
-    if (!isNowEnabled) {
-        // License authentication gate
-        if (!authguard::session_looks_active() || !authguard::menu_access_ok(auth::api_instance)) {
-            BOOL isEN = IsEnglish();
-            [self appendConsoleLog:@"AUTH" message:(isEN ? @"Access denied: License key required to open HUD." : @"Từ chối: Cần kích hoạt bản quyền để mở HUD.") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
-            [self showAuthGateOverlayWithAnimation:YES];
-            return;
-        }
+    // If HUD is currently ON, turn it OFF:
+    if (isNowEnabled) {
+        [self doDisableHUD];
+        return;
+    }
 
-        // Check if PUBG Mobile is running
-        if (!IsPUBGProcessRunning()) {
-            BOOL isEN = IsEnglish();
-            [self appendConsoleLog:@"WARN" message:(isEN ? @"Target process NOT running: ShadowTrackerExtra" : @"Tiến trình PUBG Mobile chưa khởi chạy!") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
-            [self appendConsoleLog:@"SYS" message:(isEN ? @"Launch aborted: Please open PUBG Mobile first." : @"Huỷ bật HUD: Vui lòng vào game trước.") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
-            [self showGameNotRunningAlert];
-            return;
-        }
-
+    // If HUD is currently OFF:
+    // 1. License authentication gate
+    if (!authguard::session_looks_active() || !authguard::menu_access_ok(auth::api_instance)) {
         BOOL isEN = IsEnglish();
-        [self appendConsoleLog:@"OK" message:(isEN ? @"Target process found: ShadowTrackerExtra" : @"Đã kết nối tiến trình: ShadowTrackerExtra") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
-        [self appendConsoleLog:@"KERN" message:(isEN ? @"Attaching DarkSword kernel hooks..." : @"Đang nạp bộ nhớ qua DarkSword Kernel...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
+        [self appendConsoleLog:@"AUTH" message:(isEN ? @"Access denied: License key required to open HUD." : @"Từ chối: Cần kích hoạt bản quyền để mở HUD.") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+        [self showAuthGateOverlayWithAnimation:YES];
+        return;
     }
 
-    [self setHUDEnabled:!isNowEnabled];
-    isNowEnabled = !isNowEnabled;
-
-    if (isNowEnabled)
-    {
-#if USE_DARKSWORD
-        [self showDSProgressOverlay];
-#endif
-        [_impactFeedbackGenerator prepare];
-        int anyToken;
-        __weak typeof(self) weakSelf = self;
-        notify_register_dispatch(NOTIFY_LAUNCHED_HUD, &anyToken, dispatch_get_main_queue(), ^(int token) {
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            notify_cancel(token);
-#if USE_DARKSWORD
-            [strongSelf hideDSProgressOverlay];
-#endif
-            [strongSelf->_impactFeedbackGenerator impactOccurred];
-            [strongSelf reloadMainButtonState];
-            [strongSelf.backgroundView setUserInteractionEnabled:YES];
-
-            BOOL isEN = IsEnglish();
-            [strongSelf appendConsoleLog:@"OK" message:(isEN ? @"ESP Overlay successfully launched in-game!" : @"Menu ESP đã kích hoạt thành công trong game!") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
-        });
-
-        [self.backgroundView setUserInteractionEnabled:NO];
-    }
-    else
-    {
+    // 2. Check if PUBG Mobile is running
+    if (!IsPUBGProcessRunning()) {
         BOOL isEN = IsEnglish();
-        [self appendConsoleLog:@"INFO" message:(isEN ? @"User requested HUD stop" : @"Yêu cầu tắt HUD từ người dùng") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
-        [self appendConsoleLog:@"KERN" message:(isEN ? @"Detaching DarkSword kernel hooks..." : @"Đang ngắt liên kết DarkSword Kernel...") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
-#if USE_DARKSWORD
-        [self hideDSProgressOverlay];
-#endif
-        [self.backgroundView setUserInteractionEnabled:NO];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self reloadMainButtonState];
-                [self.backgroundView setUserInteractionEnabled:YES];
-                [self appendConsoleLog:@"SYS" message:(isEN ? @"HUD stopped. Standby mode active." : @"Đã tắt HUD. Chế độ chờ sẵn sàng.") tagColor:[UIColor colorWithRed:88/255.0 green:166/255.0 blue:255/255.0 alpha:1.0]];
-            });
-        });
+        [self appendConsoleLog:@"WARN" message:(isEN ? @"Target process NOT running: ShadowTrackerExtra" : @"Tiến trình PUBG Mobile chưa khởi chạy!") tagColor:[UIColor colorWithRed:255/255.0 green:59/255.0 blue:48/255.0 alpha:1.0]];
+        [self showGameNotRunningAlert];
+        return;
     }
+
+    BOOL isEN = IsEnglish();
+    [self appendConsoleLog:@"OK" message:(isEN ? @"Target process found: ShadowTrackerExtra" : @"Đã kết nối tiến trình: ShadowTrackerExtra") tagColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0]];
+
+    [self doEnableHUD];
 }
 
 #pragma mark - DarkSword Progress Overlay

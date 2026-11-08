@@ -1759,3 +1759,14 @@ void DSBridgeSetActiveGame(int game) {
         ds_lq_overlay_reset();
     }
 }
+
+BOOL DSBridgeIsPUBGRunning(void) {
+#if USE_DARKSWORD
+    if (DSBridgeIsReady()) {
+        pid_t pid = 0;
+        uint64_t proc = ds_pubg_find_proc(&pid);
+        return (proc != 0 && pid > 0);
+    }
+#endif
+    return NO;
+}

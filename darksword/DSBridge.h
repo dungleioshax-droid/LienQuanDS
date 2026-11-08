@@ -57,6 +57,9 @@ OBJC_EXTERN BOOL DSBridgeIsRunning(void);
 OBJC_EXTERN int DSBridgeActiveGame(void);
 OBJC_EXTERN void DSBridgeSetActiveGame(int game);
 
+/// Check if PUBG Mobile process is actively attached or detected in kernel.
+OBJC_EXTERN BOOL DSBridgeIsPUBGRunning(void);
+
 /// Posted on any DS progress / state change (observe on main queue).
 OBJC_EXTERN NSString * const DSBridgeProgressNotification;
 
