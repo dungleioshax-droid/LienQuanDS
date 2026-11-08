@@ -3951,9 +3951,20 @@ static void ds_hosted_apply_pubg(void) {
             color = [UIColor colorWithRed:255/255.0 green:75/255.0 blue:75/255.0 alpha:0.95]; // Red
         }
 
-        NSString *str = [NSString stringWithFormat:@"%s [%.0fm]", it.name, it.distanceMeters];
-        CGFloat strW = 120.0f;
-        CGFloat strH = 16.0f;
+        NSString *nameStr = [NSString stringWithUTF8String:it.name];
+        if (!nameStr) {
+            nameStr = [NSString stringWithCString:it.name encoding:NSUTF8StringEncoding];
+        }
+        if (!nameStr) {
+            nameStr = [NSString stringWithCString:it.name encoding:NSISOLatin1StringEncoding];
+        }
+        if (!nameStr || nameStr.length == 0) {
+            nameStr = @"Vật Phẩm";
+        }
+
+        NSString *str = [NSString stringWithFormat:@"%@ [%.0fm]", nameStr, it.distanceMeters];
+        CGFloat strW = 130.0f;
+        CGFloat strH = 18.0f;
         lbl.frame = CGRectMake(it.screenX - strW * 0.5f, it.screenY - strH * 0.5f, strW, strH);
         lbl.fontSize = 10.0f;
         lbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];

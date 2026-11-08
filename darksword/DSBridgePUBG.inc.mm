@@ -501,233 +501,263 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
     }
 
     // 1. Vehicles
-    bool isWrapper = (strstr(name, "Wrapper") != nullptr) || (strstr(name, "PickUpList") != nullptr);
-    if (!isWrapper) {
+    bool isNonVehicle = (strstr(name, "Wrapper") != nullptr) ||
+                        (strstr(name, "PickUpList") != nullptr) ||
+                        (strstr(name, "Wheel") != nullptr) ||
+                        (strstr(name, "Tire") != nullptr) ||
+                        (strstr(name, "Door") != nullptr) ||
+                        (strstr(name, "Seat") != nullptr) ||
+                        (strstr(name, "Glass") != nullptr) ||
+                        (strstr(name, "Part") != nullptr) ||
+                        (strstr(name, "Collision") != nullptr) ||
+                        (strstr(name, "Spawner") != nullptr) ||
+                        (strstr(name, "Spawn") != nullptr) ||
+                        (strstr(name, "Camera") != nullptr) ||
+                        (strstr(name, "Audio") != nullptr) ||
+                        (strstr(name, "Sound") != nullptr) ||
+                        (strstr(name, "Effect") != nullptr) ||
+                        (strstr(name, "Particle") != nullptr) ||
+                        (strstr(name, "Decal") != nullptr) ||
+                        (strstr(name, "Weapon") != nullptr) ||
+                        (strstr(name, "UI") != nullptr);
+    if (!isNonVehicle) {
+        if (strstr(name, "Jeep") || strstr(name, "UAZ")) {
+            snprintf(outDisplay, outCap, "Xe UAZ");
+            return DSPUBGItemCategoryVehicle;
+        }
+        if (strstr(name, "Sedan") || strstr(name, "Dacia")) {
+            snprintf(outDisplay, outCap, "Xe Dacia");
+            return DSPUBGItemCategoryVehicle;
+        }
         if (strstr(name, "Buggy")) {
-            snprintf(outDisplay, outCap, "🏎️ Buggy");
+            snprintf(outDisplay, outCap, "Xe Buggy");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strstr(name, "UAZ")) {
-            snprintf(outDisplay, outCap, "🚙 UAZ");
+        if (strstr(name, "PickUp") || strstr(name, "Pickup") || strstr(name, "Rony")) {
+            snprintf(outDisplay, outCap, "Xe Bán Tải");
             return DSPUBGItemCategoryVehicle;
         }
-        if (strstr(name, "Dacia")) {
-            snprintf(outDisplay, outCap, "🚗 Dacia");
-            return DSPUBGItemCategoryVehicle;
-        }
-        if (strstr(name, "PickUp") || strstr(name, "Pickup") || strstr(name, "Truck") || strstr(name, "Rony")) {
-            snprintf(outDisplay, outCap, "🛻 Bán Tải");
-            return DSPUBGItemCategoryVehicle;
-        }
-        if (strstr(name, "Motorcycle") || strstr(name, "Bike") || strstr(name, "Motorbike")) {
-            snprintf(outDisplay, outCap, "🏍️ Xe Máy");
+        if (strstr(name, "Motorcycle") || strstr(name, "Motorbike") || strstr(name, "Motor") || strstr(name, "Bike")) {
+            snprintf(outDisplay, outCap, "Xe Máy");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "Scooter")) {
-            snprintf(outDisplay, outCap, "🛵 Scooter");
+            snprintf(outDisplay, outCap, "Xe Scooter");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "Tuk") || strstr(name, "TukTuk")) {
-            snprintf(outDisplay, outCap, "🛺 TukTuk");
+            snprintf(outDisplay, outCap, "Xe TukTuk");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "MiniBus") || strstr(name, "Bus")) {
-            snprintf(outDisplay, outCap, "🚐 MiniBus");
+            snprintf(outDisplay, outCap, "Xe MiniBus");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "PG117") || strstr(name, "Boat")) {
-            snprintf(outDisplay, outCap, "🚤 Thuyền Cano");
+            snprintf(outDisplay, outCap, "Thuyền Cano");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "AquaRail") || strstr(name, "JetSki")) {
-            snprintf(outDisplay, outCap, "🚤 Moto Nước");
+            snprintf(outDisplay, outCap, "Moto Nước");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "BRDM")) {
-            snprintf(outDisplay, outCap, "🛡️ BRDM Thiết Giáp");
+            snprintf(outDisplay, outCap, "Xe BRDM");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "CoupeRB") || strstr(name, "Coupe")) {
-            snprintf(outDisplay, outCap, "🏎️ Coupe RB");
+            snprintf(outDisplay, outCap, "Xe Coupe RB");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "MonsterTruck") || strstr(name, "BigFoot")) {
-            snprintf(outDisplay, outCap, "🚙 Xe Quái Thú");
+            snprintf(outDisplay, outCap, "Xe Quái Thú");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "Mirado")) {
-            snprintf(outDisplay, outCap, "🏎️ Mirado");
+            snprintf(outDisplay, outCap, "Xe Mirado");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "Lada")) {
-            snprintf(outDisplay, outCap, "🚗 Lada Niva");
+            snprintf(outDisplay, outCap, "Xe Lada Niva");
+            return DSPUBGItemCategoryVehicle;
+        }
+        if (strstr(name, "Snowmobile") || strstr(name, "Snowbike")) {
+            snprintf(outDisplay, outCap, "Xe Tuyết");
+            return DSPUBGItemCategoryVehicle;
+        }
+        if (strstr(name, "Bicycle")) {
+            snprintf(outDisplay, outCap, "Xe Đạp");
             return DSPUBGItemCategoryVehicle;
         }
         if (strstr(name, "Tank")) {
-            snprintf(outDisplay, outCap, "🚜 Xe Tăng");
+            snprintf(outDisplay, outCap, "Xe Tăng");
             return DSPUBGItemCategoryVehicle;
         }
-        if ((strstr(name, "VH_") || strstr(name, "Vehicle")) && !strstr(name, "Weapon") && !strstr(name, "UI")) {
-            snprintf(outDisplay, outCap, "🚗 Phương Tiện");
+        if (strstr(name, "Helicopter") || strstr(name, "DirectFly")) {
+            snprintf(outDisplay, outCap, "Trực Thăng");
+            return DSPUBGItemCategoryVehicle;
+        }
+        if ((strstr(name, "VH_") || strstr(name, "Vehicle"))) {
+            snprintf(outDisplay, outCap, "Xe Ô Tô");
             return DSPUBGItemCategoryVehicle;
         }
     }
 
     // 2. Scopes
     if (strstr(name, "8X") || strstr(name, "8x")) {
-        snprintf(outDisplay, outCap, "🔭 Scope 8x");
+        snprintf(outDisplay, outCap, "Scope 8x");
         return DSPUBGItemCategoryScope;
     }
     if (strstr(name, "6X") || strstr(name, "6x")) {
-        snprintf(outDisplay, outCap, "🔭 Scope 6x");
+        snprintf(outDisplay, outCap, "Scope 6x");
         return DSPUBGItemCategoryScope;
     }
     if (strstr(name, "4X") || strstr(name, "4x")) {
-        snprintf(outDisplay, outCap, "🔭 Scope 4x");
+        snprintf(outDisplay, outCap, "Scope 4x");
         return DSPUBGItemCategoryScope;
     }
     if (strstr(name, "3X") || strstr(name, "3x")) {
-        snprintf(outDisplay, outCap, "🔭 Scope 3x");
+        snprintf(outDisplay, outCap, "Scope 3x");
         return DSPUBGItemCategoryScope;
     }
     if (strstr(name, "2X") || strstr(name, "2x")) {
-        snprintf(outDisplay, outCap, "🔭 Scope 2x");
+        snprintf(outDisplay, outCap, "Scope 2x");
         return DSPUBGItemCategoryScope;
     }
     if (strstr(name, "HD") || strstr(name, "RedDot")) {
-        snprintf(outDisplay, outCap, "🔴 Red Dot");
+        snprintf(outDisplay, outCap, "Red Dot");
         return DSPUBGItemCategoryScope;
     }
     if (strstr(name, "MZJ_QX") || strstr(name, "Holo")) {
-        snprintf(outDisplay, outCap, "🔘 Holo");
+        snprintf(outDisplay, outCap, "Holo");
         return DSPUBGItemCategoryScope;
     }
 
     // 3. Armor & Helmets
     if (strstr(name, "Armor_Lv3") || strstr(name, "Armor3")) {
-        snprintf(outDisplay, outCap, "🛡️ Giáp 3");
+        snprintf(outDisplay, outCap, "Giáp 3");
         return DSPUBGItemCategoryArmor;
     }
     if (strstr(name, "Armor_Lv2") || strstr(name, "Armor2")) {
-        snprintf(outDisplay, outCap, "🛡️ Giáp 2");
+        snprintf(outDisplay, outCap, "Giáp 2");
         return DSPUBGItemCategoryArmor;
     }
     if (strstr(name, "Head_Lv3") || strstr(name, "Helmet_Lv3")) {
-        snprintf(outDisplay, outCap, "🪖 Mũ 3");
+        snprintf(outDisplay, outCap, "Mũ 3");
         return DSPUBGItemCategoryArmor;
     }
     if (strstr(name, "Head_Lv2") || strstr(name, "Helmet_Lv2")) {
-        snprintf(outDisplay, outCap, "🪖 Mũ 2");
+        snprintf(outDisplay, outCap, "Mũ 2");
         return DSPUBGItemCategoryArmor;
     }
 
     // 4. Backpacks
     if (strstr(name, "Bag_Lv3")) {
-        snprintf(outDisplay, outCap, "🎒 Balo 3");
+        snprintf(outDisplay, outCap, "Balo 3");
         return DSPUBGItemCategoryBag;
     }
     if (strstr(name, "Bag_Lv2")) {
-        snprintf(outDisplay, outCap, "🎒 Balo 2");
+        snprintf(outDisplay, outCap, "Balo 2");
         return DSPUBGItemCategoryBag;
     }
 
     // 5. High-Value Weapons
     if (strstr(name, "Flare")) {
-        snprintf(outDisplay, outCap, "✨ Flare Gun");
+        snprintf(outDisplay, outCap, "Flare Gun");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "AWM")) {
-        snprintf(outDisplay, outCap, "🔫 AWM");
+        snprintf(outDisplay, outCap, "AWM");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "M416")) {
-        snprintf(outDisplay, outCap, "🔫 M416");
+        snprintf(outDisplay, outCap, "M416");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "AKM")) {
-        snprintf(outDisplay, outCap, "🔫 AKM");
+        snprintf(outDisplay, outCap, "AKM");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "M24")) {
-        snprintf(outDisplay, outCap, "🔫 M24");
+        snprintf(outDisplay, outCap, "M24");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "Kar98")) {
-        snprintf(outDisplay, outCap, "🔫 Kar98k");
+        snprintf(outDisplay, outCap, "Kar98k");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "Groza")) {
-        snprintf(outDisplay, outCap, "🔫 Groza");
+        snprintf(outDisplay, outCap, "Groza");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "AUG")) {
-        snprintf(outDisplay, outCap, "🔫 AUG");
+        snprintf(outDisplay, outCap, "AUG");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "M762")) {
-        snprintf(outDisplay, outCap, "🔫 M762");
+        snprintf(outDisplay, outCap, "M762");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "Mk14")) {
-        snprintf(outDisplay, outCap, "🔫 Mk14");
+        snprintf(outDisplay, outCap, "Mk14");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "SLR")) {
-        snprintf(outDisplay, outCap, "🔫 SLR");
+        snprintf(outDisplay, outCap, "SLR");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "SKS")) {
-        snprintf(outDisplay, outCap, "🔫 SKS");
+        snprintf(outDisplay, outCap, "SKS");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "Mini14")) {
-        snprintf(outDisplay, outCap, "🔫 Mini14");
+        snprintf(outDisplay, outCap, "Mini14");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "AMR")) {
-        snprintf(outDisplay, outCap, "🔫 Lynx AMR");
+        snprintf(outDisplay, outCap, "Lynx AMR");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "MG3")) {
-        snprintf(outDisplay, outCap, "🔫 MG3");
+        snprintf(outDisplay, outCap, "MG3");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "M249")) {
-        snprintf(outDisplay, outCap, "🔫 M249");
+        snprintf(outDisplay, outCap, "M249");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "DP28") || strstr(name, "DP-28")) {
-        snprintf(outDisplay, outCap, "🔫 DP-28");
+        snprintf(outDisplay, outCap, "DP-28");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "P90")) {
-        snprintf(outDisplay, outCap, "🔫 P90");
+        snprintf(outDisplay, outCap, "P90");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "Vector")) {
-        snprintf(outDisplay, outCap, "🔫 Vector");
+        snprintf(outDisplay, outCap, "Vector");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "UMP")) {
-        snprintf(outDisplay, outCap, "🔫 UMP45");
+        snprintf(outDisplay, outCap, "UMP45");
         return DSPUBGItemCategoryWeapon;
     }
     if (strstr(name, "DBS")) {
-        snprintf(outDisplay, outCap, "🔫 DBS");
+        snprintf(outDisplay, outCap, "DBS");
         return DSPUBGItemCategoryWeapon;
     }
 
     // 6. Crates & AirDrops
     if (strstr(name, "AirDrop")) {
-        snprintf(outDisplay, outCap, "📦 HÒM THÍNH");
+        snprintf(outDisplay, outCap, "HÒM THÍNH");
         return DSPUBGItemCategoryCrate;
     }
     if (strstr(name, "DeadBox") || strstr(name, "PlayerDeadInventoryBox")) {
-        snprintf(outDisplay, outCap, "⚰️ Hòm Xác");
+        snprintf(outDisplay, outCap, "Hòm Xác");
         return DSPUBGItemCategoryCrate;
     }
     if (strstr(name, "PickUpListWrapper")) {
-        snprintf(outDisplay, outCap, "📦 Đồ Rơi");
+        snprintf(outDisplay, outCap, "Đồ Rơi");
         return DSPUBGItemCategoryCrate;
     }
 
@@ -740,139 +770,139 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
 
     switch (itemId) {
         // --- Assault Rifles (AR) ---
-        case 101001: snprintf(outDisplay, outCap, "🔫 AKM"); return DSPUBGItemCategoryWeapon;
-        case 101002: snprintf(outDisplay, outCap, "🔫 M16A4"); return DSPUBGItemCategoryWeapon;
-        case 101003: snprintf(outDisplay, outCap, "🔫 SCAR-L"); return DSPUBGItemCategoryWeapon;
-        case 101004: snprintf(outDisplay, outCap, "🔫 M416"); return DSPUBGItemCategoryWeapon;
-        case 101005: snprintf(outDisplay, outCap, "🔫 Groza"); return DSPUBGItemCategoryWeapon;
-        case 101006: snprintf(outDisplay, outCap, "🔫 AUG"); return DSPUBGItemCategoryWeapon;
-        case 101007: snprintf(outDisplay, outCap, "🔫 QBZ"); return DSPUBGItemCategoryWeapon;
-        case 101008: snprintf(outDisplay, outCap, "🔫 M762"); return DSPUBGItemCategoryWeapon;
-        case 101009: snprintf(outDisplay, outCap, "🔫 Mk47"); return DSPUBGItemCategoryWeapon;
-        case 101010: snprintf(outDisplay, outCap, "🔫 G36C"); return DSPUBGItemCategoryWeapon;
-        case 101011: snprintf(outDisplay, outCap, "🔫 HoneyBadger"); return DSPUBGItemCategoryWeapon;
-        case 101012: snprintf(outDisplay, outCap, "🔫 ACE32"); return DSPUBGItemCategoryWeapon;
+        case 101001: snprintf(outDisplay, outCap, "AKM"); return DSPUBGItemCategoryWeapon;
+        case 101002: snprintf(outDisplay, outCap, "M16A4"); return DSPUBGItemCategoryWeapon;
+        case 101003: snprintf(outDisplay, outCap, "SCAR-L"); return DSPUBGItemCategoryWeapon;
+        case 101004: snprintf(outDisplay, outCap, "M416"); return DSPUBGItemCategoryWeapon;
+        case 101005: snprintf(outDisplay, outCap, "Groza"); return DSPUBGItemCategoryWeapon;
+        case 101006: snprintf(outDisplay, outCap, "AUG"); return DSPUBGItemCategoryWeapon;
+        case 101007: snprintf(outDisplay, outCap, "QBZ"); return DSPUBGItemCategoryWeapon;
+        case 101008: snprintf(outDisplay, outCap, "M762"); return DSPUBGItemCategoryWeapon;
+        case 101009: snprintf(outDisplay, outCap, "Mk47"); return DSPUBGItemCategoryWeapon;
+        case 101010: snprintf(outDisplay, outCap, "G36C"); return DSPUBGItemCategoryWeapon;
+        case 101011: snprintf(outDisplay, outCap, "HoneyBadger"); return DSPUBGItemCategoryWeapon;
+        case 101012: snprintf(outDisplay, outCap, "ACE32"); return DSPUBGItemCategoryWeapon;
 
         // --- Submachine Guns (SMG) ---
-        case 102001: snprintf(outDisplay, outCap, "🔫 UZI"); return DSPUBGItemCategoryWeapon;
-        case 102002: snprintf(outDisplay, outCap, "🔫 UMP45"); return DSPUBGItemCategoryWeapon;
-        case 102003: snprintf(outDisplay, outCap, "🔫 Vector"); return DSPUBGItemCategoryWeapon;
-        case 102004: snprintf(outDisplay, outCap, "🔫 Tommy Gun"); return DSPUBGItemCategoryWeapon;
-        case 102005: snprintf(outDisplay, outCap, "🔫 Bizon PP-19"); return DSPUBGItemCategoryWeapon;
-        case 102007: snprintf(outDisplay, outCap, "🔫 MP5K"); return DSPUBGItemCategoryWeapon;
-        case 102008: snprintf(outDisplay, outCap, "🔫 P90"); return DSPUBGItemCategoryWeapon;
+        case 102001: snprintf(outDisplay, outCap, "UZI"); return DSPUBGItemCategoryWeapon;
+        case 102002: snprintf(outDisplay, outCap, "UMP45"); return DSPUBGItemCategoryWeapon;
+        case 102003: snprintf(outDisplay, outCap, "Vector"); return DSPUBGItemCategoryWeapon;
+        case 102004: snprintf(outDisplay, outCap, "Tommy Gun"); return DSPUBGItemCategoryWeapon;
+        case 102005: snprintf(outDisplay, outCap, "Bizon PP-19"); return DSPUBGItemCategoryWeapon;
+        case 102007: snprintf(outDisplay, outCap, "MP5K"); return DSPUBGItemCategoryWeapon;
+        case 102008: snprintf(outDisplay, outCap, "P90"); return DSPUBGItemCategoryWeapon;
 
         // --- Sniper Rifles (SR) & DMR ---
-        case 103001: snprintf(outDisplay, outCap, "🔫 Kar98k"); return DSPUBGItemCategoryWeapon;
-        case 103002: snprintf(outDisplay, outCap, "🔫 M24"); return DSPUBGItemCategoryWeapon;
-        case 103003: snprintf(outDisplay, outCap, "🔫 AWM"); return DSPUBGItemCategoryWeapon;
-        case 103004: snprintf(outDisplay, outCap, "🔫 SKS"); return DSPUBGItemCategoryWeapon;
-        case 103005: snprintf(outDisplay, outCap, "🔫 VSS"); return DSPUBGItemCategoryWeapon;
-        case 103006: snprintf(outDisplay, outCap, "🔫 Mini14"); return DSPUBGItemCategoryWeapon;
-        case 103007: snprintf(outDisplay, outCap, "🔫 Mk14"); return DSPUBGItemCategoryWeapon;
-        case 103008: snprintf(outDisplay, outCap, "🔫 Win94"); return DSPUBGItemCategoryWeapon;
-        case 103009: snprintf(outDisplay, outCap, "🔫 SLR"); return DSPUBGItemCategoryWeapon;
-        case 103010: snprintf(outDisplay, outCap, "🔫 QBU"); return DSPUBGItemCategoryWeapon;
-        case 103011: snprintf(outDisplay, outCap, "🔫 Mosin"); return DSPUBGItemCategoryWeapon;
-        case 103012: snprintf(outDisplay, outCap, "🔫 Lynx AMR"); return DSPUBGItemCategoryWeapon;
-        case 103013: snprintf(outDisplay, outCap, "🔫 AMR"); return DSPUBGItemCategoryWeapon;
+        case 103001: snprintf(outDisplay, outCap, "Kar98k"); return DSPUBGItemCategoryWeapon;
+        case 103002: snprintf(outDisplay, outCap, "M24"); return DSPUBGItemCategoryWeapon;
+        case 103003: snprintf(outDisplay, outCap, "AWM"); return DSPUBGItemCategoryWeapon;
+        case 103004: snprintf(outDisplay, outCap, "SKS"); return DSPUBGItemCategoryWeapon;
+        case 103005: snprintf(outDisplay, outCap, "VSS"); return DSPUBGItemCategoryWeapon;
+        case 103006: snprintf(outDisplay, outCap, "Mini14"); return DSPUBGItemCategoryWeapon;
+        case 103007: snprintf(outDisplay, outCap, "Mk14"); return DSPUBGItemCategoryWeapon;
+        case 103008: snprintf(outDisplay, outCap, "Win94"); return DSPUBGItemCategoryWeapon;
+        case 103009: snprintf(outDisplay, outCap, "SLR"); return DSPUBGItemCategoryWeapon;
+        case 103010: snprintf(outDisplay, outCap, "QBU"); return DSPUBGItemCategoryWeapon;
+        case 103011: snprintf(outDisplay, outCap, "Mosin"); return DSPUBGItemCategoryWeapon;
+        case 103012: snprintf(outDisplay, outCap, "Lynx AMR"); return DSPUBGItemCategoryWeapon;
+        case 103013: snprintf(outDisplay, outCap, "AMR"); return DSPUBGItemCategoryWeapon;
 
         // --- Shotguns (SG) ---
-        case 104001: snprintf(outDisplay, outCap, "🔫 S686"); return DSPUBGItemCategoryWeapon;
-        case 104002: snprintf(outDisplay, outCap, "🔫 S1897"); return DSPUBGItemCategoryWeapon;
-        case 104003: snprintf(outDisplay, outCap, "🔫 S12K"); return DSPUBGItemCategoryWeapon;
-        case 104004: snprintf(outDisplay, outCap, "🔫 DBS"); return DSPUBGItemCategoryWeapon;
-        case 104005: snprintf(outDisplay, outCap, "🔫 M1014"); return DSPUBGItemCategoryWeapon;
+        case 104001: snprintf(outDisplay, outCap, "S686"); return DSPUBGItemCategoryWeapon;
+        case 104002: snprintf(outDisplay, outCap, "S1897"); return DSPUBGItemCategoryWeapon;
+        case 104003: snprintf(outDisplay, outCap, "S12K"); return DSPUBGItemCategoryWeapon;
+        case 104004: snprintf(outDisplay, outCap, "DBS"); return DSPUBGItemCategoryWeapon;
+        case 104005: snprintf(outDisplay, outCap, "M1014"); return DSPUBGItemCategoryWeapon;
 
         // --- Light Machine Guns (LMG) ---
-        case 105001: snprintf(outDisplay, outCap, "🔫 M249"); return DSPUBGItemCategoryWeapon;
-        case 105002: snprintf(outDisplay, outCap, "🔫 DP-28"); return DSPUBGItemCategoryWeapon;
-        case 105003: snprintf(outDisplay, outCap, "🔫 MG3"); return DSPUBGItemCategoryWeapon;
+        case 105001: snprintf(outDisplay, outCap, "M249"); return DSPUBGItemCategoryWeapon;
+        case 105002: snprintf(outDisplay, outCap, "DP-28"); return DSPUBGItemCategoryWeapon;
+        case 105003: snprintf(outDisplay, outCap, "MG3"); return DSPUBGItemCategoryWeapon;
 
         // --- Pistols & Special ---
-        case 106001: snprintf(outDisplay, outCap, "🔫 P92"); return DSPUBGItemCategoryWeapon;
-        case 106002: snprintf(outDisplay, outCap, "🔫 P1911"); return DSPUBGItemCategoryWeapon;
-        case 106003: snprintf(outDisplay, outCap, "🔫 R1895"); return DSPUBGItemCategoryWeapon;
-        case 106004: snprintf(outDisplay, outCap, "🔫 P18C"); return DSPUBGItemCategoryWeapon;
-        case 106005: snprintf(outDisplay, outCap, "🔫 R45"); return DSPUBGItemCategoryWeapon;
-        case 106006: snprintf(outDisplay, outCap, "🔫 Sawed-Off"); return DSPUBGItemCategoryWeapon;
-        case 106007: snprintf(outDisplay, outCap, "✨ Flare Gun"); return DSPUBGItemCategoryWeapon;
-        case 106008: snprintf(outDisplay, outCap, "🔫 Skorpion"); return DSPUBGItemCategoryWeapon;
-        case 106010: snprintf(outDisplay, outCap, "🔫 Deagle"); return DSPUBGItemCategoryWeapon;
-        case 107001: snprintf(outDisplay, outCap, "🏹 Nỏ"); return DSPUBGItemCategoryWeapon;
-        case 108001: snprintf(outDisplay, outCap, "🍳 Chảo"); return DSPUBGItemCategoryWeapon;
+        case 106001: snprintf(outDisplay, outCap, "P92"); return DSPUBGItemCategoryWeapon;
+        case 106002: snprintf(outDisplay, outCap, "P1911"); return DSPUBGItemCategoryWeapon;
+        case 106003: snprintf(outDisplay, outCap, "R1895"); return DSPUBGItemCategoryWeapon;
+        case 106004: snprintf(outDisplay, outCap, "P18C"); return DSPUBGItemCategoryWeapon;
+        case 106005: snprintf(outDisplay, outCap, "R45"); return DSPUBGItemCategoryWeapon;
+        case 106006: snprintf(outDisplay, outCap, "Sawed-Off"); return DSPUBGItemCategoryWeapon;
+        case 106007: snprintf(outDisplay, outCap, "Flare Gun"); return DSPUBGItemCategoryWeapon;
+        case 106008: snprintf(outDisplay, outCap, "Skorpion"); return DSPUBGItemCategoryWeapon;
+        case 106010: snprintf(outDisplay, outCap, "Deagle"); return DSPUBGItemCategoryWeapon;
+        case 107001: snprintf(outDisplay, outCap, "Nỏ"); return DSPUBGItemCategoryWeapon;
+        case 108001: snprintf(outDisplay, outCap, "Chảo"); return DSPUBGItemCategoryWeapon;
 
         // --- Scopes & Sights ---
-        case 201001: snprintf(outDisplay, outCap, "🔴 Red Dot"); return DSPUBGItemCategoryScope;
-        case 201002: snprintf(outDisplay, outCap, "🔘 Holo"); return DSPUBGItemCategoryScope;
-        case 201003: snprintf(outDisplay, outCap, "🔭 Scope 2x"); return DSPUBGItemCategoryScope;
-        case 201004: snprintf(outDisplay, outCap, "🔭 Scope 4x"); return DSPUBGItemCategoryScope;
-        case 201005: snprintf(outDisplay, outCap, "🔭 Scope 8x"); return DSPUBGItemCategoryScope;
-        case 201009: snprintf(outDisplay, outCap, "🔭 Scope 3x"); return DSPUBGItemCategoryScope;
-        case 201010: snprintf(outDisplay, outCap, "🔭 Scope 6x"); return DSPUBGItemCategoryScope;
-        case 201011: snprintf(outDisplay, outCap, "🔭 Canted Sight"); return DSPUBGItemCategoryScope;
-        case 201012: snprintf(outDisplay, outCap, "🔭 Scope 15x"); return DSPUBGItemCategoryScope;
+        case 201001: snprintf(outDisplay, outCap, "Red Dot"); return DSPUBGItemCategoryScope;
+        case 201002: snprintf(outDisplay, outCap, "Holo"); return DSPUBGItemCategoryScope;
+        case 201003: snprintf(outDisplay, outCap, "Scope 2x"); return DSPUBGItemCategoryScope;
+        case 201004: snprintf(outDisplay, outCap, "Scope 4x"); return DSPUBGItemCategoryScope;
+        case 201005: snprintf(outDisplay, outCap, "Scope 8x"); return DSPUBGItemCategoryScope;
+        case 201009: snprintf(outDisplay, outCap, "Scope 3x"); return DSPUBGItemCategoryScope;
+        case 201010: snprintf(outDisplay, outCap, "Scope 6x"); return DSPUBGItemCategoryScope;
+        case 201011: snprintf(outDisplay, outCap, "Canted Sight"); return DSPUBGItemCategoryScope;
+        case 201012: snprintf(outDisplay, outCap, "Scope 15x"); return DSPUBGItemCategoryScope;
 
         // --- Armor & Helmets ---
-        case 501001: case 501004: snprintf(outDisplay, outCap, "🛡️ Giáp 1"); return DSPUBGItemCategoryArmor;
-        case 501002: case 501005: snprintf(outDisplay, outCap, "🛡️ Giáp 2"); return DSPUBGItemCategoryArmor;
-        case 501003: case 501006: snprintf(outDisplay, outCap, "🛡️ Giáp 3"); return DSPUBGItemCategoryArmor;
+        case 501001: case 501004: snprintf(outDisplay, outCap, "Giáp 1"); return DSPUBGItemCategoryArmor;
+        case 501002: case 501005: snprintf(outDisplay, outCap, "Giáp 2"); return DSPUBGItemCategoryArmor;
+        case 501003: case 501006: snprintf(outDisplay, outCap, "Giáp 3"); return DSPUBGItemCategoryArmor;
 
-        case 502001: snprintf(outDisplay, outCap, "🪖 Mũ 1"); return DSPUBGItemCategoryArmor;
-        case 502002: snprintf(outDisplay, outCap, "🪖 Mũ 2"); return DSPUBGItemCategoryArmor;
-        case 502003: snprintf(outDisplay, outCap, "🪖 Mũ 3"); return DSPUBGItemCategoryArmor;
+        case 502001: snprintf(outDisplay, outCap, "Mũ 1"); return DSPUBGItemCategoryArmor;
+        case 502002: snprintf(outDisplay, outCap, "Mũ 2"); return DSPUBGItemCategoryArmor;
+        case 502003: snprintf(outDisplay, outCap, "Mũ 3"); return DSPUBGItemCategoryArmor;
 
         // --- Backpacks ---
-        case 503001: snprintf(outDisplay, outCap, "🎒 Balo 1"); return DSPUBGItemCategoryBag;
-        case 503002: snprintf(outDisplay, outCap, "🎒 Balo 2"); return DSPUBGItemCategoryBag;
-        case 503003: snprintf(outDisplay, outCap, "🎒 Balo 3"); return DSPUBGItemCategoryBag;
+        case 503001: snprintf(outDisplay, outCap, "Balo 1"); return DSPUBGItemCategoryBag;
+        case 503002: snprintf(outDisplay, outCap, "Balo 2"); return DSPUBGItemCategoryBag;
+        case 503003: snprintf(outDisplay, outCap, "Balo 3"); return DSPUBGItemCategoryBag;
 
         // --- Medical / Boosters ---
-        case 601001: snprintf(outDisplay, outCap, "🩹 Băng Gạc"); return DSPUBGItemCategoryCrate;
-        case 601002: snprintf(outDisplay, outCap, "💉 First Aid"); return DSPUBGItemCategoryCrate;
-        case 601003: snprintf(outDisplay, outCap, "💊 Med Kit"); return DSPUBGItemCategoryCrate;
-        case 601004: snprintf(outDisplay, outCap, "⚡ Nước Tăng Lực"); return DSPUBGItemCategoryCrate;
-        case 601005: snprintf(outDisplay, outCap, "💊 Giảm Đau"); return DSPUBGItemCategoryCrate;
-        case 601006: snprintf(outDisplay, outCap, "💉 Adrenaline"); return DSPUBGItemCategoryCrate;
+        case 601001: snprintf(outDisplay, outCap, "Băng Gạc"); return DSPUBGItemCategoryCrate;
+        case 601002: snprintf(outDisplay, outCap, "First Aid"); return DSPUBGItemCategoryCrate;
+        case 601003: snprintf(outDisplay, outCap, "Med Kit"); return DSPUBGItemCategoryCrate;
+        case 601004: snprintf(outDisplay, outCap, "Nước Tăng Lực"); return DSPUBGItemCategoryCrate;
+        case 601005: snprintf(outDisplay, outCap, "Giảm Đau"); return DSPUBGItemCategoryCrate;
+        case 601006: snprintf(outDisplay, outCap, "Adrenaline"); return DSPUBGItemCategoryCrate;
 
         // --- Throwables ---
-        case 602001: snprintf(outDisplay, outCap, "💣 Lựu Đạn"); return DSPUBGItemCategoryWeapon;
-        case 602002: snprintf(outDisplay, outCap, "💨 Bom Khói"); return DSPUBGItemCategoryWeapon;
-        case 602003: snprintf(outDisplay, outCap, "🔥 Bom Xăng"); return DSPUBGItemCategoryWeapon;
-        case 602004: snprintf(outDisplay, outCap, "⚡ Choáng"); return DSPUBGItemCategoryWeapon;
+        case 602001: snprintf(outDisplay, outCap, "Lựu Đạn"); return DSPUBGItemCategoryWeapon;
+        case 602002: snprintf(outDisplay, outCap, "Bom Khói"); return DSPUBGItemCategoryWeapon;
+        case 602003: snprintf(outDisplay, outCap, "Bom Xăng"); return DSPUBGItemCategoryWeapon;
+        case 602004: snprintf(outDisplay, outCap, "Choáng"); return DSPUBGItemCategoryWeapon;
 
         // --- Ammo ---
-        case 301001: snprintf(outDisplay, outCap, "📦 Đạn 9mm"); return DSPUBGItemCategoryCrate;
-        case 302001: snprintf(outDisplay, outCap, "📦 Đạn 7.62"); return DSPUBGItemCategoryCrate;
-        case 303001: snprintf(outDisplay, outCap, "📦 Đạn 5.56"); return DSPUBGItemCategoryCrate;
-        case 304001: snprintf(outDisplay, outCap, "📦 Đạn 12G"); return DSPUBGItemCategoryCrate;
-        case 305001: snprintf(outDisplay, outCap, "📦 Đạn .300"); return DSPUBGItemCategoryCrate;
-        case 306001: snprintf(outDisplay, outCap, "✨ Đạn Flare"); return DSPUBGItemCategoryWeapon;
-        case 307001: snprintf(outDisplay, outCap, "📦 Đạn .45"); return DSPUBGItemCategoryCrate;
-        case 308001: snprintf(outDisplay, outCap, "📦 Đạn 5.7"); return DSPUBGItemCategoryCrate;
+        case 301001: snprintf(outDisplay, outCap, "Đạn 9mm"); return DSPUBGItemCategoryCrate;
+        case 302001: snprintf(outDisplay, outCap, "Đạn 7.62"); return DSPUBGItemCategoryCrate;
+        case 303001: snprintf(outDisplay, outCap, "Đạn 5.56"); return DSPUBGItemCategoryCrate;
+        case 304001: snprintf(outDisplay, outCap, "Đạn 12G"); return DSPUBGItemCategoryCrate;
+        case 305001: snprintf(outDisplay, outCap, "Đạn .300"); return DSPUBGItemCategoryCrate;
+        case 306001: snprintf(outDisplay, outCap, "Đạn Flare"); return DSPUBGItemCategoryWeapon;
+        case 307001: snprintf(outDisplay, outCap, "Đạn .45"); return DSPUBGItemCategoryCrate;
+        case 308001: snprintf(outDisplay, outCap, "Đạn 5.7"); return DSPUBGItemCategoryCrate;
 
         default:
             break;
     }
 
     if (itemId >= 101000 && itemId < 109000) {
-        snprintf(outDisplay, outCap, "🔫 Súng (#%d)", itemId % 1000);
+        snprintf(outDisplay, outCap, "Súng (#%d)", itemId % 1000);
         return DSPUBGItemCategoryWeapon;
     }
     if (itemId >= 201000 && itemId < 202000) {
-        snprintf(outDisplay, outCap, "🔭 Scope (#%d)", itemId % 1000);
+        snprintf(outDisplay, outCap, "Scope (#%d)", itemId % 1000);
         return DSPUBGItemCategoryScope;
     }
     if (itemId >= 501000 && itemId < 502000) {
-        snprintf(outDisplay, outCap, "🛡️ Giáp (#%d)", itemId % 10);
+        snprintf(outDisplay, outCap, "Giáp (#%d)", itemId % 10);
         return DSPUBGItemCategoryArmor;
     }
     if (itemId >= 502000 && itemId < 503000) {
-        snprintf(outDisplay, outCap, "🪖 Mũ (#%d)", itemId % 10);
+        snprintf(outDisplay, outCap, "Mũ (#%d)", itemId % 10);
         return DSPUBGItemCategoryArmor;
     }
     if (itemId >= 503000 && itemId < 504000) {
-        snprintf(outDisplay, outCap, "🎒 Balo (#%d)", itemId % 10);
+        snprintf(outDisplay, outCap, "Balo (#%d)", itemId % 10);
         return DSPUBGItemCategoryBag;
     }
 
@@ -885,98 +915,98 @@ static DSPUBGItemCategory ds_pubg_classify_vehicle_shape(uint8_t shape, char *ou
 
     switch (shape) {
         case 1: case 2: case 28:
-            snprintf(outDisplay, outCap, "🏍️ Xe Máy");
+            snprintf(outDisplay, outCap, "Xe Máy");
             return DSPUBGItemCategoryVehicle;
         case 3: case 54:
-            snprintf(outDisplay, outCap, "🚗 Dacia");
+            snprintf(outDisplay, outCap, "Xe Dacia");
             return DSPUBGItemCategoryVehicle;
         case 4:
-            snprintf(outDisplay, outCap, "🚐 MiniBus");
+            snprintf(outDisplay, outCap, "Xe MiniBus");
             return DSPUBGItemCategoryVehicle;
         case 5: case 6: case 55:
-            snprintf(outDisplay, outCap, "🛻 Bán Tải");
+            snprintf(outDisplay, outCap, "Xe Bán Tải");
             return DSPUBGItemCategoryVehicle;
         case 7: case 56:
-            snprintf(outDisplay, outCap, "🏎️ Buggy");
+            snprintf(outDisplay, outCap, "Xe Buggy");
             return DSPUBGItemCategoryVehicle;
         case 8: case 9: case 10: case 13: case 33: case 57:
-            snprintf(outDisplay, outCap, "🚙 UAZ");
+            snprintf(outDisplay, outCap, "Xe UAZ");
             return DSPUBGItemCategoryVehicle;
         case 11:
-            snprintf(outDisplay, outCap, "🚤 Thuyền PG117");
+            snprintf(outDisplay, outCap, "Thuyền Cano");
             return DSPUBGItemCategoryVehicle;
         case 12:
-            snprintf(outDisplay, outCap, "🚤 Moto Nước");
+            snprintf(outDisplay, outCap, "Moto Nước");
             return DSPUBGItemCategoryVehicle;
         case 14: case 15: case 52:
-            snprintf(outDisplay, outCap, "🏎️ Mirado");
+            snprintf(outDisplay, outCap, "Xe Mirado");
             return DSPUBGItemCategoryVehicle;
         case 16:
-            snprintf(outDisplay, outCap, "🛻 Rony");
+            snprintf(outDisplay, outCap, "Xe Bán Tải");
             return DSPUBGItemCategoryVehicle;
         case 17:
-            snprintf(outDisplay, outCap, "🛵 Scooter");
+            snprintf(outDisplay, outCap, "Xe Scooter");
             return DSPUBGItemCategoryVehicle;
         case 18: case 20:
-            snprintf(outDisplay, outCap, "❄️ Xe Tuyết");
+            snprintf(outDisplay, outCap, "Xe Tuyết");
             return DSPUBGItemCategoryVehicle;
         case 19:
-            snprintf(outDisplay, outCap, "🛺 TukTuk");
+            snprintf(outDisplay, outCap, "Xe TukTuk");
             return DSPUBGItemCategoryVehicle;
         case 23: case 58:
-            snprintf(outDisplay, outCap, "🚁 Trực Thăng");
+            snprintf(outDisplay, outCap, "Trực Thăng");
             return DSPUBGItemCategoryVehicle;
         case 24: case 88:
-            snprintf(outDisplay, outCap, "🛡️ BRDM Thiết Giáp");
+            snprintf(outDisplay, outCap, "Xe BRDM");
             return DSPUBGItemCategoryVehicle;
         case 25:
-            snprintf(outDisplay, outCap, "🚗 Lada Niva");
+            snprintf(outDisplay, outCap, "Xe Lada Niva");
             return DSPUBGItemCategoryVehicle;
         case 27:
-            snprintf(outDisplay, outCap, "🚚 Loot Truck");
+            snprintf(outDisplay, outCap, "Xe Loot Truck");
             return DSPUBGItemCategoryVehicle;
         case 29:
-            snprintf(outDisplay, outCap, "⚡ Xe Model Y");
+            snprintf(outDisplay, outCap, "Xe Model Y");
             return DSPUBGItemCategoryVehicle;
         case 30:
-            snprintf(outDisplay, outCap, "🏎️ ATV");
+            snprintf(outDisplay, outCap, "Xe ATV");
             return DSPUBGItemCategoryVehicle;
         case 50: case 51:
-            snprintf(outDisplay, outCap, "🏎️ Lamborghini");
+            snprintf(outDisplay, outCap, "Xe Lamborghini");
             return DSPUBGItemCategoryVehicle;
         case 53:
-            snprintf(outDisplay, outCap, "🚙 Xe Quái Thú");
+            snprintf(outDisplay, outCap, "Xe Quái Thú");
             return DSPUBGItemCategoryVehicle;
         case 60:
-            snprintf(outDisplay, outCap, "✈️ Tàu Bay Lượn");
+            snprintf(outDisplay, outCap, "Tàu Bay Lượn");
             return DSPUBGItemCategoryVehicle;
         case 61:
-            snprintf(outDisplay, outCap, "🏎️ Coupe RB");
+            snprintf(outDisplay, outCap, "Xe Coupe RB");
             return DSPUBGItemCategoryVehicle;
         case 63: case 68: case 69: case 114:
-            snprintf(outDisplay, outCap, "🚜 Xe Tăng");
+            snprintf(outDisplay, outCap, "Xe Tăng");
             return DSPUBGItemCategoryVehicle;
         case 65: case 67:
-            snprintf(outDisplay, outCap, "🚲 Xe Đạp");
+            snprintf(outDisplay, outCap, "Xe Đạp");
             return DSPUBGItemCategoryVehicle;
         case 66:
-            snprintf(outDisplay, outCap, "🏎️ UTV");
+            snprintf(outDisplay, outCap, "Xe UTV");
             return DSPUBGItemCategoryVehicle;
         case 70: case 71: case 72:
-            snprintf(outDisplay, outCap, "🦖 Khủng Long");
+            snprintf(outDisplay, outCap, "Khủng Long");
             return DSPUBGItemCategoryVehicle;
         case 78: case 79: case 82:
-            snprintf(outDisplay, outCap, "🤖 Robot Mecha");
+            snprintf(outDisplay, outCap, "Robot Mecha");
             return DSPUBGItemCategoryVehicle;
         case 87: case 89: case 90:
-            snprintf(outDisplay, outCap, "🐎 Chiến Mã");
+            snprintf(outDisplay, outCap, "Chiến Mã");
             return DSPUBGItemCategoryVehicle;
         case 112:
-            snprintf(outDisplay, outCap, "🚓 Xe Cảnh Sát");
+            snprintf(outDisplay, outCap, "Xe Cảnh Sát");
             return DSPUBGItemCategoryVehicle;
         default:
             if (shape > 0 && shape <= 125) {
-                snprintf(outDisplay, outCap, "🚗 Phương Tiện");
+                snprintf(outDisplay, outCap, "Xe Ô Tô");
                 return DSPUBGItemCategoryVehicle;
             }
             break;
@@ -1010,95 +1040,105 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
 
     // 1. Check if Actor is a Vehicle (ASTExtraVehicleBase)
     if (hasName) {
-        bool isWrapper = (strstr(actorName, "Wrapper") != nullptr) || (strstr(actorName, "PickUpList") != nullptr);
-        if (!isWrapper) {
+        bool isNonVehicle = (strstr(actorName, "Wrapper") != nullptr) ||
+                            (strstr(actorName, "PickUpList") != nullptr) ||
+                            (strstr(actorName, "Wheel") != nullptr) ||
+                            (strstr(actorName, "Tire") != nullptr) ||
+                            (strstr(actorName, "Door") != nullptr) ||
+                            (strstr(actorName, "Seat") != nullptr) ||
+                            (strstr(actorName, "Glass") != nullptr) ||
+                            (strstr(actorName, "Part") != nullptr) ||
+                            (strstr(actorName, "Collision") != nullptr) ||
+                            (strstr(actorName, "Spawner") != nullptr) ||
+                            (strstr(actorName, "Spawn") != nullptr) ||
+                            (strstr(actorName, "Camera") != nullptr) ||
+                            (strstr(actorName, "Audio") != nullptr) ||
+                            (strstr(actorName, "Sound") != nullptr) ||
+                            (strstr(actorName, "Effect") != nullptr) ||
+                            (strstr(actorName, "Particle") != nullptr) ||
+                            (strstr(actorName, "Decal") != nullptr) ||
+                            (strstr(actorName, "Weapon") != nullptr) ||
+                            (strstr(actorName, "UI") != nullptr);
+        if (!isNonVehicle) {
+            if (strstr(actorName, "Jeep") || strstr(actorName, "UAZ")) {
+                snprintf(outDisplay, outCap, "Xe UAZ");
+                return DSPUBGItemCategoryVehicle;
+            }
+            if (strstr(actorName, "Sedan") || strstr(actorName, "Dacia")) {
+                snprintf(outDisplay, outCap, "Xe Dacia");
+                return DSPUBGItemCategoryVehicle;
+            }
             if (strstr(actorName, "Buggy")) {
-                snprintf(outDisplay, outCap, "🏎️ Buggy");
-                return DSPUBGItemCategoryVehicle;
-            }
-            if (strstr(actorName, "UAZ")) {
-                snprintf(outDisplay, outCap, "🚙 UAZ");
-                return DSPUBGItemCategoryVehicle;
-            }
-            if (strstr(actorName, "Dacia")) {
-                snprintf(outDisplay, outCap, "🚗 Dacia");
+                snprintf(outDisplay, outCap, "Xe Buggy");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "PickUp") || strstr(actorName, "Pickup") || strstr(actorName, "Rony")) {
-                snprintf(outDisplay, outCap, "🛻 Bán Tải");
+                snprintf(outDisplay, outCap, "Xe Bán Tải");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strstr(actorName, "Motorcycle") || strstr(actorName, "Bike") || strstr(actorName, "Motorbike")) {
-                snprintf(outDisplay, outCap, "🏍️ Xe Máy");
+            if (strstr(actorName, "Motorcycle") || strstr(actorName, "Motorbike") || strstr(actorName, "Motor") || strstr(actorName, "Bike")) {
+                snprintf(outDisplay, outCap, "Xe Máy");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "Scooter")) {
-                snprintf(outDisplay, outCap, "🛵 Scooter");
+                snprintf(outDisplay, outCap, "Xe Scooter");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "Tuk") || strstr(actorName, "TukTuk")) {
-                snprintf(outDisplay, outCap, "🛺 TukTuk");
+                snprintf(outDisplay, outCap, "Xe TukTuk");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "MiniBus") || strstr(actorName, "Bus")) {
-                snprintf(outDisplay, outCap, "🚐 MiniBus");
+                snprintf(outDisplay, outCap, "Xe MiniBus");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "PG117") || strstr(actorName, "Boat")) {
-                snprintf(outDisplay, outCap, "🚤 Thuyền Cano");
+                snprintf(outDisplay, outCap, "Thuyền Cano");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "AquaRail") || strstr(actorName, "JetSki")) {
-                snprintf(outDisplay, outCap, "🚤 Moto Nước");
+                snprintf(outDisplay, outCap, "Moto Nước");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "BRDM")) {
-                snprintf(outDisplay, outCap, "🛡️ BRDM Thiết Giáp");
+                snprintf(outDisplay, outCap, "Xe BRDM");
                 return DSPUBGItemCategoryVehicle;
             }
-            if (strstr(actorName, "Coupe")) {
-                snprintf(outDisplay, outCap, "🏎️ Coupe RB");
+            if (strstr(actorName, "Coupe") || strstr(actorName, "CoupeRB")) {
+                snprintf(outDisplay, outCap, "Xe Coupe RB");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "Mirado")) {
-                snprintf(outDisplay, outCap, "🏎️ Mirado");
+                snprintf(outDisplay, outCap, "Xe Mirado");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "MonsterTruck") || strstr(actorName, "BigFoot")) {
-                snprintf(outDisplay, outCap, "🚙 Xe Quái Thú");
+                snprintf(outDisplay, outCap, "Xe Quái Thú");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "Lada")) {
-                snprintf(outDisplay, outCap, "🚗 Lada Niva");
+                snprintf(outDisplay, outCap, "Xe Lada Niva");
+                return DSPUBGItemCategoryVehicle;
+            }
+            if (strstr(actorName, "Snowmobile") || strstr(actorName, "Snowbike")) {
+                snprintf(outDisplay, outCap, "Xe Tuyết");
+                return DSPUBGItemCategoryVehicle;
+            }
+            if (strstr(actorName, "Bicycle")) {
+                snprintf(outDisplay, outCap, "Xe Đạp");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "Tank")) {
-                snprintf(outDisplay, outCap, "🚜 Xe Tăng");
+                snprintf(outDisplay, outCap, "Xe Tăng");
                 return DSPUBGItemCategoryVehicle;
             }
             if (strstr(actorName, "Helicopter") || strstr(actorName, "DirectFly")) {
-                snprintf(outDisplay, outCap, "🚁 Trực Thăng");
+                snprintf(outDisplay, outCap, "Trực Thăng");
                 return DSPUBGItemCategoryVehicle;
             }
-            if ((strstr(actorName, "VH_") || strstr(actorName, "Vehicle")) && !strstr(actorName, "Weapon") && !strstr(actorName, "UI")) {
-                uint8_t shape = ds_pubg_read_u8(actor + 0x70DULL);
-                if (shape > 0 && shape <= 125) {
-                    DSPUBGItemCategory cat = ds_pubg_classify_vehicle_shape(shape, outDisplay, outCap);
-                    if (cat != DSPUBGItemCategoryNone) return cat;
-                }
-                snprintf(outDisplay, outCap, "🚗 Phương Tiện");
+            if (strstr(actorName, "VH_") || strstr(actorName, "Vehicle")) {
+                snprintf(outDisplay, outCap, "Xe Ô Tô");
                 return DSPUBGItemCategoryVehicle;
-            }
-        }
-    } else {
-        // Fallback when GNames not resolved: verify vehicle component first
-        uint64_t vCommon = ds_pubg_read_ptr(actor + 0x6F8ULL);
-        if (!vCommon) vCommon = ds_pubg_read_ptr(actor + 0x700ULL);
-        if (vCommon && ds_pubg_valid(vCommon)) {
-            uint8_t shape = ds_pubg_read_u8(actor + 0x70DULL);
-            if (shape > 0 && shape <= 125) {
-                DSPUBGItemCategory cat = ds_pubg_classify_vehicle_shape(shape, outDisplay, outCap);
-                if (cat != DSPUBGItemCategoryNone) return cat;
             }
         }
     }
@@ -1110,28 +1150,28 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
         uint8_t isEmpty = ds_pubg_read_u8(actor + 0x729ULL) & 1;
         if (isEmpty) return DSPUBGItemCategoryNone;
         if (isSuper) {
-            snprintf(outDisplay, outCap, "📦 THÍNH ĐỎ (Super)");
+            snprintf(outDisplay, outCap, "THÍNH ĐỎ");
         } else {
-            snprintf(outDisplay, outCap, "📦 HÒM THÍNH");
+            snprintf(outDisplay, outCap, "HÒM THÍNH");
         }
         return DSPUBGItemCategoryCrate;
     }
 
     // 3. Check if Actor is PlayerTombBox (Death box)
     if (hasName && (strstr(actorName, "TombBox") || strstr(actorName, "DeadBox") || strstr(actorName, "PlayerDeadInventoryBox"))) {
-        snprintf(outDisplay, outCap, "⚰️ Hòm Xác");
+        snprintf(outDisplay, outCap, "Hòm Xác");
         return DSPUBGItemCategoryCrate;
     }
     uint8_t boxType = ds_pubg_read_u8(actor + 0x641ULL);
     uint32_t tombOwner = ds_pubg_read_u32(actor + 0x660ULL);
     if (boxType > 0 && boxType < 10 && tombOwner > 0) {
-        snprintf(outDisplay, outCap, "⚰️ Hòm Xác");
+        snprintf(outDisplay, outCap, "Hòm Xác");
         return DSPUBGItemCategoryCrate;
     }
     // Also check APickUpListWrapperActor (BoxType at 0x988)
     uint8_t listWrapperBoxType = ds_pubg_read_u8(actor + 0x988ULL);
     if ((listWrapperBoxType > 0 && listWrapperBoxType < 10) || (hasName && strstr(actorName, "PickUpListWrapper"))) {
-        snprintf(outDisplay, outCap, "📦 Đồ Rơi");
+        snprintf(outDisplay, outCap, "Đồ Rơi");
         return DSPUBGItemCategoryCrate;
     }
 
