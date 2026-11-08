@@ -264,9 +264,6 @@ static BOOL IsPUBGProcessRunning(void) {
     UITextField *_authKeyTextField;
     UILabel *_authTitleLabel;
     UILabel *_authSubTitleLabel;
-    UILabel *_authHwidTitleLabel;
-    UILabel *_authHwidValueLabel;
-    UIButton *_authCopyHwidButton;
     UILabel *_authKeyInputTitleLabel;
     UIButton *_authPasteKeyButton;
     UILabel *_authStatusLabel;
@@ -1668,12 +1665,6 @@ static BOOL IsPUBGProcessRunning(void) {
             @"Enter your license key to unlock DarkPubg." :
             @"Nhập mã bản quyền để mở khoá ứng dụng DarkPubg.";
     }
-    if (_authHwidTitleLabel) {
-        _authHwidTitleLabel.text = isEN ? @"DEVICE HWID" : @"MÃ THIẾT BỊ (HWID)";
-    }
-    if (_authCopyHwidButton) {
-        [_authCopyHwidButton setTitle:isEN ? @"Copy" : @"Chép" forState:UIControlStateNormal];
-    }
     if (_authKeyTextField) {
         _authKeyTextField.placeholder = isEN ? @"Enter license key..." : @"Nhập mã key của bạn...";
     }
@@ -1874,38 +1865,6 @@ static BOOL IsPUBGProcessRunning(void) {
     _authSubTitleLabel.numberOfLines = 2;
     [_authCardView addSubview:_authSubTitleLabel];
 
-    // HWID Container
-    UIView *hwidBox = [[UIView alloc] init];
-    hwidBox.translatesAutoresizingMaskIntoConstraints = NO;
-    hwidBox.backgroundColor = [UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0];
-    hwidBox.layer.cornerRadius = 10.0f;
-    hwidBox.layer.borderColor = [UIColor colorWithRed:48/255.0 green:54/255.0 blue:61/255.0 alpha:1.0].CGColor;
-    hwidBox.layer.borderWidth = 1.0f;
-    [_authCardView addSubview:hwidBox];
-
-    _authHwidTitleLabel = [[UILabel alloc] init];
-    _authHwidTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _authHwidTitleLabel.textColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
-    _authHwidTitleLabel.font = [UIFont systemFontOfSize:10 weight:UIFontWeightBold];
-    [hwidBox addSubview:_authHwidTitleLabel];
-
-    _authHwidValueLabel = [[UILabel alloc] init];
-    _authHwidValueLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _authHwidValueLabel.text = GetDeviceHWID();
-    _authHwidValueLabel.textColor = UIColor.whiteColor;
-    _authHwidValueLabel.font = [UIFont fontWithName:@"Menlo" size:10] ?: [UIFont monospacedSystemFontOfSize:10 weight:UIFontWeightRegular];
-    _authHwidValueLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    [hwidBox addSubview:_authHwidValueLabel];
-
-    _authCopyHwidButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _authCopyHwidButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _authCopyHwidButton.backgroundColor = [UIColor colorWithRed:31/255.0 green:38/255.0 blue:48/255.0 alpha:1.0];
-    [_authCopyHwidButton setTitleColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0] forState:UIControlStateNormal];
-    _authCopyHwidButton.titleLabel.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
-    _authCopyHwidButton.layer.cornerRadius = 6.0f;
-    [_authCopyHwidButton addTarget:self action:@selector(copyHwidTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [hwidBox addSubview:_authCopyHwidButton];
-
     // Key Input Container
     UIView *keyBox = [[UIView alloc] init];
     keyBox.translatesAutoresizingMaskIntoConstraints = NO;
@@ -2006,24 +1965,7 @@ static BOOL IsPUBGProcessRunning(void) {
         [_authSubTitleLabel.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
         [_authSubTitleLabel.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
 
-        [hwidBox.topAnchor constraintEqualToAnchor:_authSubTitleLabel.bottomAnchor constant:14.0f],
-        [hwidBox.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
-        [hwidBox.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
-        [hwidBox.heightAnchor constraintEqualToConstant:46.0f],
-
-        [_authHwidTitleLabel.topAnchor constraintEqualToAnchor:hwidBox.topAnchor constant:6.0f],
-        [_authHwidTitleLabel.leadingAnchor constraintEqualToAnchor:hwidBox.leadingAnchor constant:12.0f],
-
-        [_authHwidValueLabel.bottomAnchor constraintEqualToAnchor:hwidBox.bottomAnchor constant:-6.0f],
-        [_authHwidValueLabel.leadingAnchor constraintEqualToAnchor:hwidBox.leadingAnchor constant:12.0f],
-        [_authHwidValueLabel.trailingAnchor constraintEqualToAnchor:_authCopyHwidButton.leadingAnchor constant:-8.0f],
-
-        [_authCopyHwidButton.trailingAnchor constraintEqualToAnchor:hwidBox.trailingAnchor constant:-8.0f],
-        [_authCopyHwidButton.centerYAnchor constraintEqualToAnchor:hwidBox.centerYAnchor],
-        [_authCopyHwidButton.widthAnchor constraintEqualToConstant:64.0f],
-        [_authCopyHwidButton.heightAnchor constraintEqualToConstant:28.0f],
-
-        [keyBox.topAnchor constraintEqualToAnchor:hwidBox.bottomAnchor constant:12.0f],
+        [keyBox.topAnchor constraintEqualToAnchor:_authSubTitleLabel.bottomAnchor constant:16.0f],
         [keyBox.leadingAnchor constraintEqualToAnchor:_authCardView.leadingAnchor constant:16.0f],
         [keyBox.trailingAnchor constraintEqualToAnchor:_authCardView.trailingAnchor constant:-16.0f],
         [keyBox.heightAnchor constraintEqualToConstant:46.0f],
@@ -2079,7 +2021,6 @@ static BOOL IsPUBGProcessRunning(void) {
         _authKeyTextField.text = [NSString stringWithUTF8String:saved.c_str()];
     }
 
-    _authHwidValueLabel.text = GetDeviceHWID();
     [self applyLanguageTexts];
 
     _authGateOverlay.hidden = NO;
