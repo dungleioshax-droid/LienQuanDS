@@ -1863,8 +1863,8 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w,
     if (isnan(sz) || isinf(sz) || sz < 0.01f || sz > 100.0f) sz = 1.0f;
 
     // Translation validation & anchoring:
-    // In UE4 ACharacter, USkeletalMeshComponent origin is placed at the character feet:
-    // (rootLoc.Z - halfH). Bone Z=0 is feet, Z≈85 is Pelvis, Z≈165 is Head.
+    // If c2w translation is valid, use it directly (exact UE4 mesh world transform).
+    // Only fallback to rootLoc if c2w translation is uninitialized/corrupt.
     float meshOriginZ = rootLoc.Z - halfH;
     float dX = tx - rootLoc.X;
     float dY = ty - rootLoc.Y;
@@ -1874,12 +1874,6 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w,
         tx = rootLoc.X;
         ty = rootLoc.Y;
         tz = meshOriginZ;
-    } else {
-        // If c2w translation Z is floating at waist (rootLoc.Z) rather than ground level (meshOriginZ),
-        // adjust it down to meshOriginZ so bones don't float above enemy
-        if (fabsf(tz - rootLoc.Z) < 30.0f && fabsf(tz - meshOriginZ) > 30.0f) {
-            tz = meshOriginZ;
-        }
     }
 
     // Rotation quaternion validation & fallback:
@@ -2436,19 +2430,28 @@ static void ds_pubg_tick(void) {
     float camAspect = 0.0f;
 
     if (cameraManager) {
-        // ViewTarget.POV (0x10A0 + 0x10 = 0x10B0)
-        uint64_t pov = cameraManager + kDSPUBGCameraViewTargetOffset + kDSPUBGViewTargetPOVOffset;
-        ds_pubg_read(pov + kDSPUBGPOVLocationOffset, &camLoc, sizeof(camLoc));
-        ds_pubg_read(pov + kDSPUBGPOVRotationOffset, &camRot, sizeof(camRot));
-        ds_pubg_read(pov + kDSPUBGPOVFOVOffset, &camFOV, sizeof(camFOV));
-        ds_pubg_read(pov + kDSPUBGPOVAspectOffset, &camAspect, sizeof(camAspect));
-
-        // CameraCache.POV fallback (0x520 + 0x10 = 0x530)
-        if (fabsf(camLoc.X) < 1.0f && fabsf(camLoc.Y) < 1.0f && fabsf(camLoc.Z) < 1.0f) {
-            uint64_t cachePov = cameraManager + 0x520ULL + 0x10ULL;
-            ds_pubg_read(cachePov + kDSPUBGPOVLocationOffset, &camLoc, sizeof(camLoc));
-            ds_pubg_read(cachePov + kDSPUBGPOVRotationOffset, &camRot, sizeof(camRot));
-            ds_pubg_read(cachePov + kDSPUBGPOVFOVOffset, &camFOV, sizeof(camFOV));
+        // 1. Primary: CameraCache.POV (0x520 + 0x10 = 0x530)
+        // CameraCache contains the post-update, post-modifier camera transform directly used
+        // by the GPU render pass every frame. It tracks camera rotation with zero latency!
+        uint64_t cachePov = cameraManager + 0x520ULL + 0x10ULL;
+        DSPUBGVector cLoc = {};
+        DSPUBGRotator cRot = {};
+        float cFOV = 0.0f;
+        if (ds_pubg_read(cachePov + kDSPUBGPOVLocationOffset, &cLoc, sizeof(cLoc)) &&
+            ds_pubg_read(cachePov + kDSPUBGPOVRotationOffset, &cRot, sizeof(cRot)) &&
+            ds_pubg_read(cachePov + kDSPUBGPOVFOVOffset, &cFOV, sizeof(cFOV)) &&
+            !isnan(cLoc.X) && !isinf(cLoc.X) && (fabsf(cLoc.X) > 1.0f || fabsf(cLoc.Y) > 1.0f) &&
+            !isnan(cRot.Pitch) && !isnan(cRot.Yaw) && cFOV >= 20.0f && cFOV <= 160.0f) {
+            camLoc = cLoc;
+            camRot = cRot;
+            camFOV = cFOV;
+        } else {
+            // 2. Secondary fallback: ViewTarget.POV (0x10A0 + 0x10 = 0x10B0)
+            uint64_t pov = cameraManager + kDSPUBGCameraViewTargetOffset + kDSPUBGViewTargetPOVOffset;
+            ds_pubg_read(pov + kDSPUBGPOVLocationOffset, &camLoc, sizeof(camLoc));
+            ds_pubg_read(pov + kDSPUBGPOVRotationOffset, &camRot, sizeof(camRot));
+            ds_pubg_read(pov + kDSPUBGPOVFOVOffset, &camFOV, sizeof(camFOV));
+            ds_pubg_read(pov + kDSPUBGPOVAspectOffset, &camAspect, sizeof(camAspect));
         }
     }
 

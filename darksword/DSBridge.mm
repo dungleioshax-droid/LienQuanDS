@@ -227,7 +227,9 @@ static dispatch_queue_t ds_bridge_queue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.huami.darkpubg.darksword", DISPATCH_QUEUE_SERIAL);
+        dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(
+            DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INTERACTIVE, 0);
+        queue = dispatch_queue_create("com.huami.darkpubg.darksword", attr);
     });
     return queue;
 }

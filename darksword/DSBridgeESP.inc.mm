@@ -2846,13 +2846,13 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
 static void ds_hosted_configure_display_link(CADisplayLink *displayLink) {
     if (!displayLink) return;
     NSInteger maximum = MAX((NSInteger)UIScreen.mainScreen.maximumFramesPerSecond,
-                            (NSInteger)30);
+                            (NSInteger)60);
     g_hostedMaximumFrameRate.store((uint32_t)maximum,
                                    std::memory_order_release);
     displayLink.preferredFramesPerSecond = maximum;
     if (@available(iOS 15.0, *)) {
         displayLink.preferredFrameRateRange =
-            CAFrameRateRangeMake(30.0, (float)maximum, (float)maximum);
+            CAFrameRateRangeMake(60.0, (float)maximum, (float)maximum);
     }
 }
 
@@ -2869,6 +2869,16 @@ static void ds_hosted_configure_display_link(CADisplayLink *displayLink) {
                                       displayLink.targetTimestamp, startedAt);
     g_hostedLastDisplayLinkTick.store(CACurrentMediaTime(),
                                       std::memory_order_relaxed);
+
+    // Phase-locked frame trigger: Immediately dispatch next memory sample & projection
+    // so the next snapshot is ready with zero frame latency when the display link fires next!
+    static std::atomic<bool> s_pubgFramePending(false);
+    if (!s_pubgFramePending.exchange(true, std::memory_order_acq_rel)) {
+        dispatch_async(ds_bridge_queue(), ^{
+            s_pubgFramePending.store(false, std::memory_order_release);
+            ds_hosted_overlay_frame();
+        });
+    }
 }
 @end
 
