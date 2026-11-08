@@ -1676,6 +1676,7 @@ static BOOL IsPUBGProcessRunning(void) {
     [self appendConsoleLog:@"KERN" message:(isEN ? @"DarkSword kernel driver: Direct R/W active" : @"DarkSword Kernel driver: Kích hoạt bộ nhớ R/W") tagColor:[UIColor colorWithRed:241/255.0 green:196/255.0 blue:15/255.0 alpha:1.0]];
     [self appendConsoleLog:@"ESP" message:(isEN ? @"Metal 120 FPS rendering pipeline ready" : @"Engine hiển thị đồ hoạ Metal 120 FPS sẵn sàng") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
     [self appendConsoleLog:@"PUBG" message:(isEN ? @"Target binary: ShadowTrackerExtra" : @"Mục tiêu gắn kết: ShadowTrackerExtra") tagColor:[UIColor colorWithRed:255/255.0 green:159/255.0 blue:67/255.0 alpha:1.0]];
+    [self appendConsoleLog:@"AIM" message:(isEN ? @"PUBG Aim Assist module ready (FOV circle, Target lock, Bone selection)" : @"Hỗ trợ ngắm PUBG Mobile sẵn sàng (Vòng FOV, Khóa tâm, Chọn vị trí Đầu/Ngực)") tagColor:[UIColor colorWithRed:255/255.0 green:69/255.0 blue:58/255.0 alpha:1.0]];
     [self appendConsoleLog:@"INFO" message:(isEN ? @"Ready. Tap OPEN HUD to attach." : @"Hệ thống sẵn sàng. Nhấn OPEN HUD để bắt đầu.") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
 }
 

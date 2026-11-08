@@ -1759,7 +1759,9 @@ NSString *DSBridgeStage(void) {
 }
 
 int DSBridgeActiveGame(void) {
-    return (int)[NSUserDefaults.standardUserDefaults integerForKey:@"DSActiveGame"];
+    id val = [NSUserDefaults.standardUserDefaults objectForKey:@"DSActiveGame"];
+    if (!val) return 1;
+    return (int)[val integerValue];
 }
 
 void DSBridgeSetActiveGame(int game) {
