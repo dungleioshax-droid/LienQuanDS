@@ -625,8 +625,8 @@ static const int kESPBoneMapG[15] = {
     6, 5, 1,          // Head, Neck, Pelvis
     13, 15, 16,       // UprR, LwrR, HandR
     34, 36, 37,       // UprL, LwrL, HandL
-    55, 56, 57,       // ThighR, CalfR, FootR
-    59, 60, 61        // ThighL, CalfL, FootL
+    57, 58, 59,       // ThighR, CalfR, FootR (verified: 57=thigh_r, 58=calf_r, 59=foot_r)
+    53, 54, 55        // ThighL, CalfL, FootL (verified: 53=thigh_l, 54=calf_l, 55=foot_l)
 };
 
 static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
@@ -776,8 +776,6 @@ static void ds_pubg_bone_world_from_local(const uint8_t *c2w,
 static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32_t *outCount, uint32_t *outOffset) {
     if (!meshComp || !ds_pubg_valid(meshComp)) return false;
 
-    static uint32_t s_cachedBoneOffset = 0;
-
     auto testOffset = [&](uint32_t off) -> bool {
         uint8_t hdr[16] = {0};
         if (!ds_pubg_read(meshComp + (uint64_t)off, hdr, sizeof(hdr))) return false;
@@ -795,30 +793,26 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
         return true;
     };
 
-    // 0. Test last working offset first
-    if (s_cachedBoneOffset != 0 && testOffset(s_cachedBoneOffset)) {
-        return true;
-    }
-
     // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
+    // Check CurrentRead index (0xA74 / 0xA78) per-mesh to ensure live pose (crouching/aiming) is never stale
     int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
     if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA78ULL);
     uint32_t first = (rd == 1) ? 0xA40 : 0xA30;
     uint32_t second = (rd == 1) ? 0xA30 : 0xA40;
 
-    if (testOffset(first)) { s_cachedBoneOffset = first; return true; }
-    if (testOffset(second)) { s_cachedBoneOffset = second; return true; }
+    if (testOffset(first)) return true;
+    if (testOffset(second)) return true;
 
     // 2. Live transforms eval-context (0xE18 / 0xE28)
-    if (testOffset(0xE18)) { s_cachedBoneOffset = 0xE18; return true; }
-    if (testOffset(0xE28)) { s_cachedBoneOffset = 0xE28; return true; }
+    if (testOffset(0xE18)) return true;
+    if (testOffset(0xE28)) return true;
 
     // 3. CachedComponentSpaceTransforms (0xCE0) & CachedBoneSpaceTransforms (0xCD0)
-    if (testOffset(0xCE0)) { s_cachedBoneOffset = 0xCE0; return true; }
-    if (testOffset(0xCD0)) { s_cachedBoneOffset = 0xCD0; return true; }
+    if (testOffset(0xCE0)) return true;
+    if (testOffset(0xCD0)) return true;
 
     // 4. BoneSpaceTransforms (0xC98)
-    if (testOffset(0xC98)) { s_cachedBoneOffset = 0xC98; return true; }
+    if (testOffset(0xC98)) return true;
 
     return false;
 }
@@ -1383,15 +1377,19 @@ static void ds_pubg_tick(void) {
                                 bUprL = 13; bLwrL = 15; bHandL = 16;
                             }
 
+                            // Verified PUBG Mobile 67-bone leg chains:
+                            // Right leg: thigh_r (57), calf_r (58), foot_r (59)
+                            // Left leg:  thigh_l (53), calf_l (54), foot_l (55)
+                            // (Note: bone 61 is ik_hand_root, bone 56/60 are ball/toe joints)
                             DSPUBGVector legA = {}, legB = {};
-                            getBoneLocal(55, legA);
-                            getBoneLocal(59, legB);
+                            getBoneLocal(57, legA);
+                            getBoneLocal(53, legB);
                             if (legA.Y >= legB.Y) {
-                                bThighR = 55; bCalfR = 56; bFootR = 57;
-                                bThighL = 59; bCalfL = 60; bFootL = 61;
+                                bThighR = 57; bCalfR = 58; bFootR = 59;
+                                bThighL = 53; bCalfL = 54; bFootL = 55;
                             } else {
-                                bThighR = 59; bCalfR = 60; bFootR = 61;
-                                bThighL = 55; bCalfL = 56; bFootL = 57;
+                                bThighR = 53; bCalfR = 54; bFootR = 55;
+                                bThighL = 57; bCalfL = 58; bFootL = 59;
                             }
                         }
 
