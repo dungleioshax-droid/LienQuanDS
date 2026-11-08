@@ -918,6 +918,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UIButton *_minimapYPlusButton;
     UILabel *_minimapYValueLabel;
     UIButton *_resetButton;
+    // Modern UI Containers
+    UIView *_masterCard;
+    UIView *_pubgCards[7];
+    UIView *_scanCard;
     // PUBG ESP controls
     UILabel *_pubgBoxLabel;
     UISwitch *_pubgBoxSwitch;
@@ -927,8 +931,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UISwitch *_pubgLineSwitch;
     UILabel *_pubgHealthLabel;
     UISwitch *_pubgHealthSwitch;
-    UILabel *_pubgHeadDotLabel;
-    UISwitch *_pubgHeadDotSwitch;
     UILabel *_pubgNameLabel;
     UISwitch *_pubgNameSwitch;
     UILabel *_pubgDistLabel;
@@ -958,17 +960,45 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [self.view addSubview:_contentView];
 
     _panelView = [[UIView alloc] initWithFrame:CGRectZero];
-    _panelView.backgroundColor = [UIColor colorWithRed:18/255.0 green:22/255.0 blue:30/255.0 alpha:0.92];
-    _panelView.layer.cornerRadius = 14.0;
-    _panelView.layer.borderWidth = 1.0;
-    _panelView.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.12].CGColor;
-    _panelView.layer.masksToBounds = YES;
+    _panelView.backgroundColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.96];
+    _panelView.layer.cornerRadius = 16.0;
+    _panelView.layer.borderWidth = 1.2;
+    _panelView.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.35].CGColor;
+    _panelView.layer.shadowColor = UIColor.blackColor.CGColor;
+    _panelView.layer.shadowRadius = 18.0;
+    _panelView.layer.shadowOffset = CGSizeMake(0, 6);
+    _panelView.layer.shadowOpacity = 0.75;
+    _panelView.layer.masksToBounds = NO;
     [_contentView addSubview:_panelView];
 
+    _masterCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _masterCard.backgroundColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.08];
+    _masterCard.layer.cornerRadius = 9.0;
+    _masterCard.layer.borderWidth = 0.9;
+    _masterCard.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.25].CGColor;
+    [_panelView addSubview:_masterCard];
+
+    for (int ci = 0; ci < 7; ci++) {
+        UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
+        card.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+        card.layer.cornerRadius = 8.0;
+        card.layer.borderWidth = 0.8;
+        card.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+        [_panelView addSubview:card];
+        _pubgCards[ci] = card;
+    }
+
+    _scanCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _scanCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+    _scanCard.layer.cornerRadius = 9.0;
+    _scanCard.layer.borderWidth = 0.8;
+    _scanCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+    [_panelView addSubview:_scanCard];
+
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.text = @"⚡ DARKTOOLS";
-    _titleLabel.textColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-    _titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold];
+    _titleLabel.text = @"⚡ DARKPUBG";
+    _titleLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    _titleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightHeavy];
     _titleLabel.userInteractionEnabled = YES;
     UIPanGestureRecognizer *titlePan = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(dsMenuPanelPanned:)];
@@ -1158,8 +1188,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
     auto pubgCreateSwitch = ^(SEL sel) {
         UISwitch *s = [[UISwitch alloc] initWithFrame:CGRectZero];
-        s.onTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-        s.transform = CGAffineTransformMakeScale(0.68, 0.68);
+        s.onTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        s.transform = CGAffineTransformMakeScale(0.62, 0.62);
         [s addTarget:self action:sel forControlEvents:UIControlEventValueChanged];
         [_panelView addSubview:s];
         return s;
@@ -1167,47 +1197,51 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     auto pubgCreateLabel = ^(NSString *text) {
         UILabel *l = [[UILabel alloc] initWithFrame:CGRectZero];
         l.text = text;
-        l.textColor = [UIColor colorWithWhite:1.0 alpha:0.92];
-        l.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightMedium];
+        l.textColor = [UIColor colorWithWhite:0.95 alpha:1.0];
+        l.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
         [_panelView addSubview:l];
         return l;
     };
 
-    _pubgBoxLabel = pubgCreateLabel(@"Box");
+    _pubgBoxLabel = pubgCreateLabel(@"📦 Box 2D");
     _pubgBoxSwitch = pubgCreateSwitch(@selector(dsPubgBoxChanged:));
-    _pubgSkeletonLabel = pubgCreateLabel(@"Xương");
+    _pubgSkeletonLabel = pubgCreateLabel(@"🦴 Xương");
     _pubgSkeletonSwitch = pubgCreateSwitch(@selector(dsPubgSkeletonChanged:));
 
-    _pubgLineLabel = pubgCreateLabel(@"Line");
+    _pubgLineLabel = pubgCreateLabel(@"📏 Tia Line");
     _pubgLineSwitch = pubgCreateSwitch(@selector(dsPubgLineChanged:));
-    _pubgHeadDotLabel = pubgCreateLabel(@"Head");
-    _pubgHeadDotSwitch = pubgCreateSwitch(@selector(dsPubgHeadDotChanged:));
 
-    _pubgHealthLabel = pubgCreateLabel(@"HP Ngang");
+    _pubgHealthLabel = pubgCreateLabel(@"❤️ Thanh Máu");
     _pubgHealthSwitch = pubgCreateSwitch(@selector(dsPubgHealthChanged:));
-    _pubgNameLabel = pubgCreateLabel(@"Tên");
+    _pubgNameLabel = pubgCreateLabel(@"🏷️ Tên Địch");
     _pubgNameSwitch = pubgCreateSwitch(@selector(dsPubgNameChanged:));
 
-    _pubgDistLabel = pubgCreateLabel(@"Khoảng cách");
+    _pubgDistLabel = pubgCreateLabel(@"📍 Khoảng Cách");
     _pubgDistSwitch = pubgCreateSwitch(@selector(dsPubgDistChanged:));
-    _pubgBotLabel = pubgCreateLabel(@"Hiện Bot");
+    _pubgBotLabel = pubgCreateLabel(@"🤖 Hiện Bot AI");
     _pubgBotSwitch = pubgCreateSwitch(@selector(dsPubgBotChanged:));
 
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
 
     _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _toggleButton.backgroundColor = [UIColor colorWithWhite:0.04 alpha:0.76];
-    _toggleButton.tintColor = UIColor.whiteColor;
-    _toggleButton.layer.cornerRadius = 3.0;
-    _toggleButton.layer.masksToBounds = YES;
+    _toggleButton.backgroundColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.92];
+    _toggleButton.tintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    _toggleButton.layer.cornerRadius = kDSHostedMenuButtonSize * 0.5;
+    _toggleButton.layer.borderWidth = 1.4;
+    _toggleButton.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.8].CGColor;
+    _toggleButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.5].CGColor;
+    _toggleButton.layer.shadowRadius = 8.0;
+    _toggleButton.layer.shadowOpacity = 0.8;
+    _toggleButton.layer.shadowOffset = CGSizeZero;
+    _toggleButton.layer.masksToBounds = NO;
     UIImage *image = ds_hosted_menu_toggle_image();
     if (image) {
         [_toggleButton setImage:image forState:UIControlStateNormal];
     } else {
-        [_toggleButton setTitle:@"CAM" forState:UIControlStateNormal];
-        [_toggleButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        _toggleButton.titleLabel.font = [UIFont systemFontOfSize:4.0 weight:UIFontWeightBold];
+        [_toggleButton setTitle:@"⚡" forState:UIControlStateNormal];
+        [_toggleButton setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
+        _toggleButton.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold];
     }
     [_toggleButton addTarget:self action:@selector(dsToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
     UIPanGestureRecognizer *menuPan = [[UIPanGestureRecognizer alloc]
@@ -1247,8 +1281,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         }
     }
     if (ds_active_game() == 1) {
-        _titleLabel.text = @"PUBG Tools";
-        _zoomLabel.text = @"Scan";
+        _titleLabel.text = @"⚡ DARKPUBG";
+        _zoomLabel.text = @"🎯 QUÉT TỐI ĐA";
         _zoomSlider.minimumValue = 50.0f;
         _zoomSlider.maximumValue = 500.0f;
         _zoomSlider.value = g_dspubgMaxDistance;
@@ -1260,8 +1294,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgLineSwitch.on = g_pubgEspLine;
         if ([defaults objectForKey:@"pubg_health"] != nil) g_pubgEspHealth = [defaults boolForKey:@"pubg_health"];
         _pubgHealthSwitch.on = g_pubgEspHealth;
-        if ([defaults objectForKey:@"pubg_head_dot"] != nil) g_pubgEspHeadDot = [defaults boolForKey:@"pubg_head_dot"];
-        _pubgHeadDotSwitch.on = g_pubgEspHeadDot;
         if ([defaults objectForKey:@"pubg_name"] != nil) g_pubgEspName = [defaults boolForKey:@"pubg_name"];
         _pubgNameSwitch.on = g_pubgEspName;
         if ([defaults objectForKey:@"pubg_dist"] != nil) g_pubgEspDist = [defaults boolForKey:@"pubg_dist"];
@@ -1313,8 +1345,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsLayoutMenu {
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
-    CGFloat panelW = MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 230.0 : 311.0;
+    CGFloat panelW = (ds_active_game() == 1) ? 300.0 : MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
+    CGFloat panelH = (ds_active_game() == 1) ? 298.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1351,15 +1383,13 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGFloat panelY = panelAnchor.y - panelH * 0.5;
     _panelView.frame = CGRectMake(panelX, panelY, panelW, panelH);
     CGRect panelBounds = _panelView.bounds;
-    _titleLabel.frame = CGRectMake(14.0, 8.0,
-                                    CGRectGetWidth(panelBounds) - 58.0, 26.0);
-    _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 34.0, 8.0,
+    _titleLabel.frame = CGRectMake(16.0, 10.0,
+                                    CGRectGetWidth(panelBounds) - 60.0, 24.0);
+    _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 36.0, 9.0,
                                     26.0, 26.0);
-    _espLabel.frame = CGRectMake(14.0, 40.0, 90.0, 20.0);
-    _espSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 35.0, 51.0, 31.0);
 
     if (ds_active_game() == 1) {
-        _titleLabel.text = @"⚡ PUBG Tools";
+        _titleLabel.text = @"⚡ DARKPUBG";
         _enableLabel.hidden = YES;
         _enableSwitch.hidden = YES;
         _autoSmiteLabel.hidden = YES;
@@ -1378,6 +1408,16 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _minimapYValueLabel.hidden = YES;
         _resetButton.hidden = YES;
 
+        _masterCard.hidden = NO;
+        _masterCard.frame = CGRectMake(12.0, 39.0, panelW - 24.0, 36.0);
+        _espLabel.hidden = NO;
+        _espLabel.text = @"⚡ ESP MASTER";
+        _espLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        _espLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
+        _espLabel.frame = CGRectMake(22.0, 47.0, 150.0, 20.0);
+        _espSwitch.hidden = NO;
+        _espSwitch.frame = CGRectMake(panelW - 68.0, 41.5, 51.0, 31.0);
+
         _pubgBoxLabel.hidden = NO;
         _pubgBoxSwitch.hidden = NO;
         _pubgSkeletonLabel.hidden = NO;
@@ -1386,8 +1426,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgLineSwitch.hidden = NO;
         _pubgHealthLabel.hidden = NO;
         _pubgHealthSwitch.hidden = NO;
-        _pubgHeadDotLabel.hidden = NO;
-        _pubgHeadDotSwitch.hidden = NO;
         _pubgNameLabel.hidden = NO;
         _pubgNameSwitch.hidden = NO;
         _pubgDistLabel.hidden = NO;
@@ -1397,50 +1435,80 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgVehicleLabel.hidden = YES;
         _pubgVehicleSwitch.hidden = YES;
 
-        CGFloat col1LX = 14.0;
-        CGFloat col1SX = 88.0;
-        CGFloat col2LX = 162.0;
-        CGFloat col2SX = 236.0;
-        CGFloat lblW = 72.0;
+        CGFloat cardW = (panelW - 32.0) * 0.5;
+        CGFloat cardH = 32.0;
+        CGFloat col1X = 12.0;
+        CGFloat col2X = 12.0 + cardW + 8.0;
 
-        // Row 1: Box & Xương
-        CGFloat y0 = 68.0;
-        _pubgBoxLabel.frame = CGRectMake(col1LX, y0 + 5.0, lblW, 18.0);
-        _pubgBoxSwitch.frame = CGRectMake(col1SX, y0, 51.0, 31.0);
-        _pubgSkeletonLabel.frame = CGRectMake(col2LX, y0 + 5.0, lblW, 18.0);
-        _pubgSkeletonSwitch.frame = CGRectMake(col2SX, y0, 51.0, 31.0);
+        // Row 1: Box 2D & Xương
+        CGFloat y0 = 81.0;
+        _pubgCards[0].frame = CGRectMake(col1X, y0, cardW, cardH);
+        _pubgCards[0].hidden = NO;
+        _pubgBoxLabel.frame = CGRectMake(col1X + 8.0, y0 + 6.0, cardW - 54.0, 20.0);
+        _pubgBoxSwitch.frame = CGRectMake(col1X + cardW - 46.0, y0 + 0.5, 42.0, 31.0);
 
-        // Row 2: Line & Head Dot
-        CGFloat y1 = 98.0;
-        _pubgLineLabel.frame = CGRectMake(col1LX, y1 + 5.0, lblW, 18.0);
-        _pubgLineSwitch.frame = CGRectMake(col1SX, y1, 51.0, 31.0);
-        _pubgHeadDotLabel.frame = CGRectMake(col2LX, y1 + 5.0, lblW, 18.0);
-        _pubgHeadDotSwitch.frame = CGRectMake(col2SX, y1, 51.0, 31.0);
+        _pubgCards[1].frame = CGRectMake(col2X, y0, cardW, cardH);
+        _pubgCards[1].hidden = NO;
+        _pubgSkeletonLabel.frame = CGRectMake(col2X + 8.0, y0 + 6.0, cardW - 54.0, 20.0);
+        _pubgSkeletonSwitch.frame = CGRectMake(col2X + cardW - 46.0, y0 + 0.5, 42.0, 31.0);
 
-        // Row 3: HP Ngang & Tên
-        CGFloat y2 = 128.0;
-        _pubgHealthLabel.frame = CGRectMake(col1LX, y2 + 5.0, lblW, 18.0);
-        _pubgHealthSwitch.frame = CGRectMake(col1SX, y2, 51.0, 31.0);
-        _pubgNameLabel.frame = CGRectMake(col2LX, y2 + 5.0, lblW, 18.0);
-        _pubgNameSwitch.frame = CGRectMake(col2SX, y2, 51.0, 31.0);
+        // Row 2: Tia Line & Thanh Máu
+        CGFloat y1 = 118.0;
+        _pubgCards[2].frame = CGRectMake(col1X, y1, cardW, cardH);
+        _pubgCards[2].hidden = NO;
+        _pubgLineLabel.frame = CGRectMake(col1X + 8.0, y1 + 6.0, cardW - 54.0, 20.0);
+        _pubgLineSwitch.frame = CGRectMake(col1X + cardW - 46.0, y1 + 0.5, 42.0, 31.0);
 
-        // Row 4: Khoảng cách & Hiện Bot
-        CGFloat y3 = 158.0;
-        _pubgDistLabel.frame = CGRectMake(col1LX, y3 + 5.0, lblW, 18.0);
-        _pubgDistSwitch.frame = CGRectMake(col1SX, y3, 51.0, 31.0);
-        _pubgBotLabel.frame = CGRectMake(col2LX, y3 + 5.0, lblW, 18.0);
-        _pubgBotSwitch.frame = CGRectMake(col2SX, y3, 51.0, 31.0);
+        _pubgCards[3].frame = CGRectMake(col2X, y1, cardW, cardH);
+        _pubgCards[3].hidden = NO;
+        _pubgHealthLabel.frame = CGRectMake(col2X + 8.0, y1 + 6.0, cardW - 54.0, 20.0);
+        _pubgHealthSwitch.frame = CGRectMake(col2X + cardW - 46.0, y1 + 0.5, 42.0, 31.0);
 
-        // Row 5: Scan Distance Slider
-        CGFloat y4 = 190.0;
-        _zoomLabel.text = @"Scan";
+        // Row 3: Tên Địch & Khoảng Cách
+        CGFloat y2 = 155.0;
+        _pubgCards[4].frame = CGRectMake(col1X, y2, cardW, cardH);
+        _pubgCards[4].hidden = NO;
+        _pubgNameLabel.frame = CGRectMake(col1X + 8.0, y2 + 6.0, cardW - 54.0, 20.0);
+        _pubgNameSwitch.frame = CGRectMake(col1X + cardW - 46.0, y2 + 0.5, 42.0, 31.0);
+
+        _pubgCards[5].frame = CGRectMake(col2X, y2, cardW, cardH);
+        _pubgCards[5].hidden = NO;
+        _pubgDistLabel.frame = CGRectMake(col2X + 8.0, y2 + 6.0, cardW - 54.0, 20.0);
+        _pubgDistSwitch.frame = CGRectMake(col2X + cardW - 46.0, y2 + 0.5, 42.0, 31.0);
+
+        // Row 4: Hiện Bot AI (Full width card)
+        CGFloat y3 = 192.0;
+        _pubgCards[6].frame = CGRectMake(col1X, y3, panelW - 24.0, cardH);
+        _pubgCards[6].hidden = NO;
+        _pubgBotLabel.frame = CGRectMake(col1X + 10.0, y3 + 6.0, panelW - 84.0, 20.0);
+        _pubgBotSwitch.frame = CGRectMake(panelW - 68.0, y3 + 0.5, 42.0, 31.0);
+
+        // Row 5: Scan Distance Card
+        CGFloat y4 = 229.0;
+        _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 57.0);
+        _scanCard.hidden = NO;
+        _zoomLabel.text = @"🎯 QUÉT TỐI ĐA";
+        _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+        _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
         _zoomLabel.hidden = NO;
+        _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightBold];
         _zoomValueLabel.hidden = NO;
         _zoomSlider.hidden = NO;
-        _zoomLabel.frame = CGRectMake(14.0, y4 + 3.0, 42.0, 20.0);
-        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, y4 + 3.0, 46.0, 20.0);
-        _zoomSlider.frame = CGRectMake(58.0, y4, CGRectGetWidth(panelBounds) - 120.0, 26.0);
+        _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+        _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 6.0, 130.0, 18.0);
+        _zoomValueLabel.frame = CGRectMake(panelW - 84.0, y4 + 6.0, 64.0, 18.0);
+        _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 27.0, panelW - 40.0, 24.0);
     } else {
+        _masterCard.hidden = YES;
+        for (int ci = 0; ci < 7; ci++) _pubgCards[ci].hidden = YES;
+        _scanCard.hidden = YES;
+        _espLabel.text = @"ESP";
+        _espLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
+        _espLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+        _espLabel.frame = CGRectMake(14.0, 40.0, 90.0, 20.0);
+        _espSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 35.0, 51.0, 31.0);
+
         _pubgBoxLabel.hidden = YES;
         _pubgBoxSwitch.hidden = YES;
         _pubgSkeletonLabel.hidden = YES;
@@ -1449,8 +1517,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgLineSwitch.hidden = YES;
         _pubgHealthLabel.hidden = YES;
         _pubgHealthSwitch.hidden = YES;
-        _pubgHeadDotLabel.hidden = YES;
-        _pubgHeadDotSwitch.hidden = YES;
         _pubgNameLabel.hidden = YES;
         _pubgNameSwitch.hidden = YES;
         _pubgDistLabel.hidden = YES;
@@ -1645,11 +1711,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsPubgHealthChanged:(UISwitch *)sender {
     g_pubgEspHealth = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_health"];
-}
-
-- (void)dsPubgHeadDotChanged:(UISwitch *)sender {
-    g_pubgEspHeadDot = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_head_dot"];
 }
 
 - (void)dsPubgNameChanged:(UISwitch *)sender {
@@ -2945,11 +3006,11 @@ static void ds_hosted_apply_lq(void) {
 static CAShapeLayer *g_hostedPUBGBoxLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGSkeletonLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGLineLayers[kDSPUBGMaxPlayers] = {};
-static CAShapeLayer *g_hostedPUBGHeadDotLayers[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGAIMarkLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGInfoLabels[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBgLayers[kDSPUBGMaxPlayers] = {};
 static CALayer *g_hostedPUBGHealthBarLayers[kDSPUBGMaxPlayers] = {};
+static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
 static void ds_hosted_pubg_hide_all(void) {
@@ -2957,12 +3018,12 @@ static void ds_hosted_pubg_hide_all(void) {
         if (g_hostedPUBGBoxLayers[i] && !g_hostedPUBGBoxLayers[i].hidden) g_hostedPUBGBoxLayers[i].hidden = YES;
         if (g_hostedPUBGSkeletonLayers[i] && !g_hostedPUBGSkeletonLayers[i].hidden) g_hostedPUBGSkeletonLayers[i].hidden = YES;
         if (g_hostedPUBGLineLayers[i] && !g_hostedPUBGLineLayers[i].hidden) g_hostedPUBGLineLayers[i].hidden = YES;
-        if (g_hostedPUBGHeadDotLayers[i] && !g_hostedPUBGHeadDotLayers[i].hidden) g_hostedPUBGHeadDotLayers[i].hidden = YES;
         if (g_hostedPUBGAIMarkLayers[i] && !g_hostedPUBGAIMarkLayers[i].hidden) g_hostedPUBGAIMarkLayers[i].hidden = YES;
         if (g_hostedPUBGInfoLabels[i] && !g_hostedPUBGInfoLabels[i].hidden) g_hostedPUBGInfoLabels[i].hidden = YES;
         if (g_hostedPUBGHealthBgLayers[i] && !g_hostedPUBGHealthBgLayers[i].hidden) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i] && !g_hostedPUBGHealthBarLayers[i].hidden) g_hostedPUBGHealthBarLayers[i].hidden = YES;
     }
+    if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
 }
 
@@ -2995,7 +3056,6 @@ static void ds_hosted_apply_pubg(void) {
         CAShapeLayer *box = g_hostedPUBGBoxLayers[i];
         CAShapeLayer *skel = g_hostedPUBGSkeletonLayers[i];
         CAShapeLayer *line = g_hostedPUBGLineLayers[i];
-        CAShapeLayer *headDot = g_hostedPUBGHeadDotLayers[i];
         CAShapeLayer *aiMark = g_hostedPUBGAIMarkLayers[i];
         CATextLayer *info = g_hostedPUBGInfoLabels[i];
         CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
@@ -3007,7 +3067,6 @@ static void ds_hosted_apply_pubg(void) {
             box.hidden = YES;
             if (skel) skel.hidden = YES;
             line.hidden = YES;
-            if (headDot) headDot.hidden = YES;
             if (aiMark) aiMark.hidden = YES;
             info.hidden = YES;
             if (hpBg) hpBg.hidden = YES;
@@ -3022,7 +3081,6 @@ static void ds_hosted_apply_pubg(void) {
             box.hidden = YES;
             if (skel) skel.hidden = YES;
             line.hidden = YES;
-            if (headDot) headDot.hidden = YES;
             if (aiMark) aiMark.hidden = YES;
             info.hidden = YES;
             if (hpBg) hpBg.hidden = YES;
@@ -3068,19 +3126,6 @@ static void ds_hosted_apply_pubg(void) {
             line.hidden = NO;
         } else {
             line.hidden = YES;
-        }
-
-        // 3. Head Dot:
-        if (g_pubgEspHeadDot && headDot) {
-            CGFloat headDotX = (p.headX > 0.0f) ? p.headX : centerX;
-            CGFloat headDotY = (p.headY > 0.0f) ? p.headY : (topY + p.boxHeight * 0.08f);
-            CGRect dotRect = CGRectMake(headDotX - 3.0f, headDotY - 3.0f, 6.0f, 6.0f);
-            headDot.path = [UIBezierPath bezierPathWithOvalInRect:dotRect].CGPath;
-            headDot.fillColor = mainColor;
-            headDot.strokeColor = UIColor.clearColor.CGColor;
-            headDot.hidden = NO;
-        } else if (headDot) {
-            headDot.hidden = YES;
         }
 
         // 4. AI Mark: inverted yellow triangle on top of box for AI only
@@ -3211,16 +3256,26 @@ static void ds_hosted_apply_pubg(void) {
                     }
                 }
 
-                // Head Circle (vHead.Z += 7.0f, radius = boxHeight / 15.0f)
-                if (p.skeleton[15].valid) {
-                    float hx = p.skeleton[15].x, hy = p.skeleton[15].y;
-                    if (!isnan(hx) && !isinf(hx) && !isnan(hy) && !isinf(hy) &&
-                        fabsf(hx) < 10000.0f && fabsf(hy) < 10000.0f) {
-                        float r = p.boxHeight / 15.0f;
-                        if (r < 3.0f) r = 3.0f;
-                        if (r > 30.0f) r = 30.0f;
-                        [skelPath moveToPoint:CGPointMake(hx + r, hy)];
-                        [skelPath addArcWithCenter:CGPointMake(hx, hy)
+                // Head Circle (scaled with 3D perspective projection distance)
+                if (p.skeleton[15].valid || p.skeleton[0].valid) {
+                    float cx = p.skeleton[15].valid ? p.skeleton[15].x : p.skeleton[0].x;
+                    float cy = p.skeleton[15].valid ? p.skeleton[15].y : p.skeleton[0].y;
+                    if (!isnan(cx) && !isinf(cx) && !isnan(cy) && !isinf(cy) &&
+                        fabsf(cx) < 10000.0f && fabsf(cy) < 10000.0f) {
+                        float r = 0.0f;
+                        if (p.skeleton[15].valid && p.skeleton[0].valid) {
+                            float dx = p.skeleton[15].x - p.skeleton[0].x;
+                            float dy = p.skeleton[15].y - p.skeleton[0].y;
+                            r = hypotf(dx, dy) * 1.15f;
+                        }
+                        if (r < 0.8f || r > 32.0f) {
+                            r = p.boxHeight / 16.0f;
+                        }
+                        if (r < 0.8f) r = 0.8f;
+                        if (r > 28.0f) r = 28.0f;
+
+                        [skelPath moveToPoint:CGPointMake(cx + r, cy)];
+                        [skelPath addArcWithCenter:CGPointMake(cx, cy)
                                             radius:r
                                         startAngle:0
                                           endAngle:2.0f * (float)M_PI
@@ -3249,28 +3304,59 @@ static void ds_hosted_apply_pubg(void) {
         if (g_hostedPUBGBoxLayers[i]) g_hostedPUBGBoxLayers[i].hidden = YES;
         if (g_hostedPUBGSkeletonLayers[i]) g_hostedPUBGSkeletonLayers[i].hidden = YES;
         if (g_hostedPUBGLineLayers[i]) g_hostedPUBGLineLayers[i].hidden = YES;
-        if (g_hostedPUBGHeadDotLayers[i]) g_hostedPUBGHeadDotLayers[i].hidden = YES;
         if (g_hostedPUBGAIMarkLayers[i]) g_hostedPUBGAIMarkLayers[i].hidden = YES;
         if (g_hostedPUBGInfoLabels[i]) g_hostedPUBGInfoLabels[i].hidden = YES;
         if (g_hostedPUBGHealthBgLayers[i]) g_hostedPUBGHealthBgLayers[i].hidden = YES;
         if (g_hostedPUBGHealthBarLayers[i]) g_hostedPUBGHealthBarLayers[i].hidden = YES;
     }
 
-    if (g_hostedPUBGTopCountLabel) {
+    if (g_hostedPUBGTopCountLabel && g_hostedPUBGTopCountBgLayer) {
         if (activeEnemyCount > 0 || activeBotCount > 0) {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 260.0) * 0.5, 10.0, 260.0, 20.0);
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PUBG: %d Enemies | %d Bots",
-                                                activeEnemyCount, activeBotCount];
+            CGFloat bannerW = (activeBotCount > 0) ? 220.0 : 160.0;
+            CGFloat bannerH = 28.0;
+            CGFloat bannerX = (width - bannerW) * 0.5;
+            CGFloat bannerY = 12.0;
+            CGRect bannerRect = CGRectMake(bannerX, bannerY, bannerW, bannerH);
+
+            BOOL hasRealEnemies = (activeEnemyCount > 0);
+            CGColorRef borderColor = hasRealEnemies
+                ? [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.9].CGColor
+                : [UIColor colorWithRed:255.0/255.0 green:208.0/255.0 blue:64.0/255.0 alpha:0.9].CGColor;
+            CGColorRef textColor = hasRealEnemies
+                ? [UIColor colorWithRed:255.0/255.0 green:80.0/255.0 blue:70.0/255.0 alpha:1.0].CGColor
+                : [UIColor colorWithRed:255.0/255.0 green:215.0/255.0 blue:80.0/255.0 alpha:1.0].CGColor;
+
+            g_hostedPUBGTopCountBgLayer.path = [UIBezierPath bezierPathWithRoundedRect:bannerRect cornerRadius:14.0].CGPath;
+            g_hostedPUBGTopCountBgLayer.strokeColor = borderColor;
+            g_hostedPUBGTopCountBgLayer.hidden = NO;
+
+            g_hostedPUBGTopCountLabel.frame = CGRectMake(bannerX, bannerY + 5.0, bannerW, 18.0);
+            if (activeBotCount > 0) {
+                g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES   |   🤖 %d BOTS",
+                                                    activeEnemyCount, activeBotCount];
+            } else {
+                g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"⚠️ %d ENEMIES", activeEnemyCount];
+            }
+            g_hostedPUBGTopCountLabel.foregroundColor = textColor;
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else if (ds_pubg_has_render_source()) {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 340.0) * 0.5, 10.0, 340.0, 20.0);
-            const char *dbgStatus = ds_pubg_get_debug_status();
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithUTF8String:(dbgStatus ? dbgStatus : "PUBG: Attached (Waiting for Players)")];
+            CGFloat bannerW = 210.0;
+            CGFloat bannerH = 28.0;
+            CGFloat bannerX = (width - bannerW) * 0.5;
+            CGFloat bannerY = 12.0;
+            CGRect bannerRect = CGRectMake(bannerX, bannerY, bannerW, bannerH);
+
+            g_hostedPUBGTopCountBgLayer.path = [UIBezierPath bezierPathWithRoundedRect:bannerRect cornerRadius:14.0].CGPath;
+            g_hostedPUBGTopCountBgLayer.strokeColor = [UIColor colorWithRed:48.0/255.0 green:209.0/255.0 blue:88.0/255.0 alpha:0.75].CGColor;
+            g_hostedPUBGTopCountBgLayer.hidden = NO;
+
+            g_hostedPUBGTopCountLabel.frame = CGRectMake(bannerX, bannerY + 5.0, bannerW, 18.0);
+            g_hostedPUBGTopCountLabel.string = @"🛡️ 0 ENEMIES   •   SAFE";
+            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor;
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
-            g_hostedPUBGTopCountLabel.frame = CGRectMake((width - 280.0) * 0.5, 10.0, 280.0, 20.0);
-            g_hostedPUBGTopCountLabel.string = @"PUBG: Waiting for game process...";
-            g_hostedPUBGTopCountLabel.hidden = NO;
+            g_hostedPUBGTopCountBgLayer.hidden = YES;
+            g_hostedPUBGTopCountLabel.hidden = YES;
         }
     }
 }
@@ -3615,13 +3701,6 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [g_hostedLayer addSublayer:line];
                 g_hostedPUBGLineLayers[i] = line;
 
-                CAShapeLayer *headDot = [CAShapeLayer layer];
-                headDot.actions = noAnim;
-                headDot.contentsScale = scale;
-                headDot.hidden = YES;
-                [g_hostedLayer addSublayer:headDot];
-                g_hostedPUBGHeadDotLayers[i] = headDot;
-
                 CAShapeLayer *aiMark = [CAShapeLayer layer];
                 aiMark.actions = noAnim;
                 aiMark.contentsScale = scale;
@@ -3658,15 +3737,23 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 g_hostedPUBGHealthBarLayers[i] = hpBar;
             }
 
+            CAShapeLayer *topBg = [CAShapeLayer layer];
+            topBg.actions = noAnim;
+            topBg.contentsScale = scale;
+            topBg.fillColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.88].CGColor;
+            topBg.lineWidth = 1.2;
+            topBg.hidden = YES;
+            [g_hostedLayer addSublayer:topBg];
+            g_hostedPUBGTopCountBgLayer = topBg;
+
             CATextLayer *topLabel = [CATextLayer layer];
             topLabel.actions = noAnim;
             topLabel.contentsScale = scale;
             topLabel.alignmentMode = kCAAlignmentCenter;
-            topLabel.fontSize = 13.0;
-            topLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:13.0 weight:UIFontWeightBold];
-            topLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:1.0].CGColor;
-            topLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.55].CGColor;
-            topLabel.cornerRadius = 4.0;
+            topLabel.fontSize = 12.0;
+            topLabel.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:12.0 weight:UIFontWeightHeavy];
+            topLabel.foregroundColor = UIColor.whiteColor.CGColor;
+            topLabel.backgroundColor = UIColor.clearColor.CGColor;
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
             g_hostedPUBGTopCountLabel = topLabel;
