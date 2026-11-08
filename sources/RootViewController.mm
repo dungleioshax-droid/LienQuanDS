@@ -9,6 +9,7 @@
 #import <notify.h>
 #import <sys/sysctl.h>
 #import <dlfcn.h>
+#import <objc/runtime.h>
 
 #include <string>
 #include <vector>
@@ -1866,7 +1867,7 @@ static BOOL IsPUBGProcessRunning(void) {
     ];
 
     // Method 1: LSApplicationWorkspace (direct Bundle ID launch)
-    Class wsClass = objc_getClass("LSApplicationWorkspace");
+    Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
     if (wsClass) {
         id workspace = [wsClass performSelector:@selector(defaultWorkspace)];
         SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
