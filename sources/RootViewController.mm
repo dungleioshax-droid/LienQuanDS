@@ -177,16 +177,9 @@ static BOOL CheckPUBGViaSpringBoard(void) {
     });
 
     NSArray<NSString *> *bundleIDs = @[
-        @"com.tencent.ig",
+        @"vn.vng.pubgmobile",
         @"com.vng.pubgmobile",
-        @"com.pubg.krmobile",
-        @"com.rekoo.pubgm",
-        @"com.pubg.imobile",
-        @"com.tencent.iglite",
-        @"com.epicgames.ShadowTrackerExtra",
-        @"com.tencent.tmgp.pubgm",
-        @"com.tencent.tmgp.pubgmhd",
-        @"com.tencent.igce"
+        @"com.epicgames.ShadowTrackerExtra"
     ];
 
     if (sbsFunc) {
@@ -246,7 +239,9 @@ static BOOL CheckPUBGViaSysctl(void) {
         if (!name || !name[0]) continue;
         if (strcasestr(name, "ShadowTracker") != NULL ||
             strcasestr(name, "Shadow") != NULL ||
-            strcasestr(name, "PUBG") != NULL) {
+            strcasestr(name, "PUBG") != NULL ||
+            strcasestr(name, "pubgmobile") != NULL ||
+            strcasestr(name, "vn.vng") != NULL) {
             found = YES;
             break;
         }
@@ -273,7 +268,9 @@ static BOOL CheckPUBGViaLibProc(void) {
             if (proc_name(p, name, sizeof(name) - 1) > 0) {
                 if (strcasestr(name, "ShadowTracker") != NULL ||
                     strcasestr(name, "Shadow") != NULL ||
-                    strcasestr(name, "PUBG") != NULL) {
+                    strcasestr(name, "PUBG") != NULL ||
+                    strcasestr(name, "pubgmobile") != NULL ||
+                    strcasestr(name, "vn.vng") != NULL) {
                     found = YES;
                     break;
                 }
@@ -282,7 +279,9 @@ static BOOL CheckPUBGViaLibProc(void) {
             if (proc_pidpath(p, path, sizeof(path) - 1) > 0) {
                 if (strcasestr(path, "ShadowTracker") != NULL ||
                     strcasestr(path, "Shadow") != NULL ||
-                    strcasestr(path, "PUBG") != NULL) {
+                    strcasestr(path, "PUBG") != NULL ||
+                    strcasestr(path, "pubgmobile") != NULL ||
+                    strcasestr(path, "vn.vng") != NULL) {
                     found = YES;
                     break;
                 }
@@ -1851,15 +1850,8 @@ static BOOL IsPUBGProcessRunning(void) {
 - (BOOL)launchPUBGGameProcess
 {
     NSArray<NSString *> *bundleIDs = @[
-        @"com.vng.pubgmobile",
-        @"com.tencent.ig",
-        @"com.pubg.krmobile",
-        @"com.rekoo.pubgm",
-        @"com.pubg.imobile",
-        @"com.tencent.iglite",
-        @"com.epicgames.ShadowTrackerExtra",
-        @"com.tencent.tmgp.pubgm",
-        @"com.tencent.tmgp.pubgmhd"
+        @"vn.vng.pubgmobile",
+        @"com.vng.pubgmobile"
     ];
 
     // Method 1: FrontBoardServices (FBSSystemService - launches app directly via SpringBoard)
@@ -1920,19 +1912,13 @@ static BOOL IsPUBGProcessRunning(void) {
         }
     }
 
-    // Method 4: URL Schemes (both direct app schemes and SDK schemes)
+    // Method 4: URL Schemes for PUBG Mobile VNG
     NSArray<NSString *> *schemes = @[
-        @"com.vng.pubgmobile://",
-        @"com.tencent.ig://",
-        @"com.pubg.krmobile://",
-        @"com.pubg.imobile://",
-        @"com.rekoo.pubgm://",
+        @"vn.vng.pubgmobile://",
         @"fb309539426210664://",
-        @"fb177278079603038://",
-        @"tencent1106467070://",
-        @"wx488e0e5889c0d59d://",
         @"vngpubg://",
         @"pubgmobile://",
+        @"com.vng.pubgmobile://",
         @"shadowtracker://",
         @"shadowtrackerextra://"
     ];
@@ -1945,11 +1931,10 @@ static BOOL IsPUBGProcessRunning(void) {
         }
     }
 
-    // Fallback force-open common URL schemes
-    [app openURL:[NSURL URLWithString:@"com.vng.pubgmobile://"] options:@{} completionHandler:nil];
-    [app openURL:[NSURL URLWithString:@"com.tencent.ig://"] options:@{} completionHandler:nil];
+    // Fallback force-open PUBG VNG URL schemes
+    [app openURL:[NSURL URLWithString:@"vn.vng.pubgmobile://"] options:@{} completionHandler:nil];
     [app openURL:[NSURL URLWithString:@"fb309539426210664://"] options:@{} completionHandler:nil];
-    [app openURL:[NSURL URLWithString:@"fb177278079603038://"] options:@{} completionHandler:nil];
+    [app openURL:[NSURL URLWithString:@"vngpubg://"] options:@{} completionHandler:nil];
     return YES;
 }
 
