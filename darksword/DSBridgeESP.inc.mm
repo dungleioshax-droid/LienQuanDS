@@ -3309,17 +3309,22 @@ static void ds_hosted_apply_pubg(void) {
                             !isnan(vx) && !isinf(vx) && !isnan(vy) && !isinf(vy) &&
                             fabsf(ux) < 10000.0f && fabsf(uy) < 10000.0f &&
                             fabsf(vx) < 10000.0f && fabsf(vy) < 10000.0f) {
-                            [skelPath moveToPoint:CGPointMake(ux, uy)];
-                            [skelPath addLineToPoint:CGPointMake(vx, vy)];
-                            drawnLines++;
+                            // Guard against wild phantom / stray lines across the screen:
+                            // A single bone segment can never exceed the character bounding box height!
+                            float segLen = hypotf(ux - vx, uy - vy);
+                            if (segLen <= p.boxHeight * 1.2f) {
+                                [skelPath moveToPoint:CGPointMake(ux, uy)];
+                                [skelPath addLineToPoint:CGPointMake(vx, vy)];
+                                drawnLines++;
+                            }
                         }
                     }
                 }
 
                 // Head Circle (scaled with 3D perspective projection distance)
-                if (p.skeleton[15].valid || p.skeleton[0].valid) {
-                    float cx = p.skeleton[15].valid ? p.skeleton[15].x : p.skeleton[0].x;
-                    float cy = p.skeleton[15].valid ? p.skeleton[15].y : p.skeleton[0].y;
+                if (p.skeleton[0].valid || p.skeleton[15].valid) {
+                    float cx = p.skeleton[0].valid ? p.skeleton[0].x : p.skeleton[15].x;
+                    float cy = p.skeleton[0].valid ? p.skeleton[0].y : p.skeleton[15].y;
                     if (!isnan(cx) && !isinf(cx) && !isnan(cy) && !isinf(cy) &&
                         fabsf(cx) < 10000.0f && fabsf(cy) < 10000.0f) {
                         float r = p.boxHeight / 18.0f;
