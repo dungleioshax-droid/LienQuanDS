@@ -1767,8 +1767,8 @@ static const int kESPBoneMapD[15] = {
 
 static const int kESPBoneMapG[15] = {
     6, 5, 1,          // Head, Neck, Pelvis
-    13, 15, 16,       // UprR, LwrR, HandR
-    34, 36, 37,       // UprL, LwrL, HandL
+    13, 14, 16,       // UprR, LwrR, HandR (14=lowerarm_r elbow, 16=hand_r wrist)
+    34, 35, 37,       // UprL, LwrL, HandL (35=lowerarm_l elbow, 37=hand_l wrist)
     57, 58, 59,       // ThighR, CalfR, FootR (verified: 57=thigh_r, 58=calf_r, 59=foot_r)
     53, 54, 55        // ThighL, CalfL, FootL (verified: 53=thigh_l, 54=calf_l, 55=foot_l)
 };
@@ -2852,11 +2852,30 @@ static void ds_pubg_tick(void) {
                             // Player & Bot rig (67 bones - ShadowTrackerExtra)
                             bHead = 6; bNeck = 5; bPelvis = 1;
 
-                            // Right Arm (stable UE4 humanoid rig: UpperArm=13, LowerArm=15, Hand=16):
-                            bUprR = 13; bLwrR = 15; bHandR = 16;
+                            // Right Arm (stable UE4 humanoid rig: UpperArm=13, LowerArm=14 [elbow], Hand=16 [wrist]):
+                            // Bone 14 is lowerarm_r (true elbow joint). Bone 15 is lowerarm_twist_01_r (mid-forearm twist bone).
+                            // When armed/running, bone 15 rotates/stretches towards the hand, so selecting 14 keeps the elbow anchored.
+                            bUprR = 13; bHandR = 16; bLwrR = 14;
+                            DSPUBGVector v14 = {}, v15 = {};
+                            bool ok14 = getBoneLocal(14, v14);
+                            bool ok15 = getBoneLocal(15, v15);
+                            if (ok14 && (v14.X != 0.0f || v14.Y != 0.0f || v14.Z != 0.0f)) {
+                                bLwrR = 14;
+                            } else if (ok15 && (v15.X != 0.0f || v15.Y != 0.0f || v15.Z != 0.0f)) {
+                                bLwrR = 15;
+                            }
 
-                            // Left Arm (stable UE4 humanoid rig: UpperArm=34, LowerArm=36, Hand=37):
-                            bUprL = 34; bLwrL = 36; bHandL = 37;
+                            // Left Arm (stable UE4 humanoid rig: UpperArm=34, LowerArm=35 [elbow], Hand=37 [wrist]):
+                            // Bone 35 is lowerarm_l (true elbow joint). Bone 36 is lowerarm_twist_01_l (mid-forearm twist bone).
+                            bUprL = 34; bHandL = 37; bLwrL = 35;
+                            DSPUBGVector v35 = {}, v36 = {};
+                            bool ok35 = getBoneLocal(35, v35);
+                            bool ok36 = getBoneLocal(36, v36);
+                            if (ok35 && (v35.X != 0.0f || v35.Y != 0.0f || v35.Z != 0.0f)) {
+                                bLwrL = 35;
+                            } else if (ok36 && (v36.X != 0.0f || v36.Y != 0.0f || v36.Z != 0.0f)) {
+                                bLwrL = 36;
+                            }
 
                             // Dynamic Armed vs Unarmed Leg Selection:
                             // Unarmed (tay không / gục ngã): Right={55, 56, 57}, Left={59, 60, 61}
@@ -2888,16 +2907,64 @@ static void ds_pubg_tick(void) {
                             bThighL, bCalfL, bFootL
                         };
 
+                        DSPUBGVector locals[15] = {};
+                        bool localsValid[15] = {};
+                        for (int i = 0; i < 15; i++) {
+                            localsValid[i] = getBoneLocal(jointIndices[i], locals[i]);
+                        }
+
+                        // Anatomical safeguards: clamp arm segments to natural human limits
+                        // to guarantee arm lines never overextend or protrude during weapon sprint animations.
+                        // Right Upper Arm: joint 3 (UprR) -> joint 4 (LwrR) (natural ~26-28cm, max 35cm)
+                        if (localsValid[3] && localsValid[4]) {
+                            float dUprR = dist3D(locals[3], locals[4]);
+                            if (dUprR > 35.0f && dUprR < 150.0f) {
+                                float s = 28.0f / dUprR;
+                                locals[4].X = locals[3].X + (locals[4].X - locals[3].X) * s;
+                                locals[4].Y = locals[3].Y + (locals[4].Y - locals[3].Y) * s;
+                                locals[4].Z = locals[3].Z + (locals[4].Z - locals[3].Z) * s;
+                            }
+                        }
+                        // Right Forearm: joint 4 (LwrR) -> joint 5 (HandR) (natural ~24-26cm, max 32cm)
+                        if (localsValid[4] && localsValid[5]) {
+                            float dArmR = dist3D(locals[4], locals[5]);
+                            if (dArmR > 32.0f && dArmR < 150.0f) {
+                                float s = 26.0f / dArmR;
+                                locals[5].X = locals[4].X + (locals[5].X - locals[4].X) * s;
+                                locals[5].Y = locals[4].Y + (locals[5].Y - locals[4].Y) * s;
+                                locals[5].Z = locals[4].Z + (locals[5].Z - locals[4].Z) * s;
+                            }
+                        }
+
+                        // Left Upper Arm: joint 6 (UprL) -> joint 7 (LwrL) (natural ~26-28cm, max 35cm)
+                        if (localsValid[6] && localsValid[7]) {
+                            float dUprL = dist3D(locals[6], locals[7]);
+                            if (dUprL > 35.0f && dUprL < 150.0f) {
+                                float s = 28.0f / dUprL;
+                                locals[7].X = locals[6].X + (locals[7].X - locals[6].X) * s;
+                                locals[7].Y = locals[6].Y + (locals[7].Y - locals[6].Y) * s;
+                                locals[7].Z = locals[6].Z + (locals[7].Z - locals[6].Z) * s;
+                            }
+                        }
+                        // Left Forearm: joint 7 (LwrL) -> joint 8 (HandL) (natural ~24-26cm, max 32cm)
+                        if (localsValid[7] && localsValid[8]) {
+                            float dArmL = dist3D(locals[7], locals[8]);
+                            if (dArmL > 32.0f && dArmL < 150.0f) {
+                                float s = 26.0f / dArmL;
+                                locals[8].X = locals[7].X + (locals[8].X - locals[7].X) * s;
+                                locals[8].Y = locals[7].Y + (locals[8].Y - locals[7].Y) * s;
+                                locals[8].Z = locals[7].Z + (locals[8].Z - locals[7].Z) * s;
+                            }
+                        }
+
                         uint8_t c2w[48] = {0};
                         ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);
 
                         int okBones = 0;
                         for (int i = 0; i < 15; i++) {
-                            int bi = jointIndices[i];
-                            DSPUBGVector localTrans = {};
-                            if (getBoneLocal(bi, localTrans)) {
+                            if (localsValid[i]) {
                                 DSPUBGVector world = {};
-                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &localTrans, &world);
+                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &locals[i], &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
                                 if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
@@ -2907,9 +2974,8 @@ static void ds_pubg_tick(void) {
                         }
 
                         // Project HeadTop for circle at vHead.Z += 7.0f (exact internal snippet logic)
-                        DSPUBGVector headLocal = {};
-                        if (getBoneLocal(bHead, headLocal)) {
-                            DSPUBGVector headTopLocal = headLocal;
+                        if (localsValid[0]) {
+                            DSPUBGVector headTopLocal = locals[0];
                             headTopLocal.Z += 7.0f;
                             DSPUBGVector worldHeadTop = {};
                             ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &headTopLocal, &worldHeadTop);
