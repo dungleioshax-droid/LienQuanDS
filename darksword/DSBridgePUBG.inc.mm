@@ -1477,6 +1477,7 @@ static void ds_pubg_tick(void) {
 
         bool onScreen = false;
         float boxX = 0, boxY = 0, boxW = 0, boxH = 0, centerX = 0, topY = 0;
+        float halfH = 87.5f;
 
         if (camRelZ > 10.0f) {
             float extZ = ds_pubg_read_f32(meshComp + kDSPUBGMeshBoxExtentZOffset);
@@ -1486,7 +1487,7 @@ static void ds_pubg_tick(void) {
             }
 
             DSPUBGVector pos = rootLoc;
-            float halfH = actorH * 0.5f;
+            halfH = actorH * 0.5f;
             DSPUBGVector bot = pos; bot.Z -= halfH;
             DSPUBGVector top = pos; top.Z += halfH;
 
