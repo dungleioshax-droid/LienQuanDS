@@ -39,9 +39,15 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
+		<string>com.vng.pubgmobile</string>
+		<string>com.tencent.ig</string>
+		<string>com.pubg.krmobile</string>
+		<string>com.pubg.imobile</string>
+		<string>com.rekoo.pubgm</string>
 		<string>vngpubg</string>
 		<string>pubgmobile</string>
 		<string>shadowtracker</string>
+		<string>shadowtrackerextra</string>
 		<string>pubg</string>
 		<string>tencent1106467070</string>
 		<string>wx488e0e5889c0d59d</string>

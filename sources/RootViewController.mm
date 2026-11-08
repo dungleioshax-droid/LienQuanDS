@@ -391,7 +391,6 @@ static BOOL IsPUBGProcessRunning(void) {
     UILabel *_warningTitleLabel;
     UILabel *_warningSubLabel;
     UIButton *_warningLaunchGameBtn;
-    UIButton *_warningProceedBtn;
     UIButton *_warningDismissBtn;
 
     // Auth Gate UI
@@ -1842,9 +1841,6 @@ static BOOL IsPUBGProcessRunning(void) {
     if (_warningLaunchGameBtn) {
         [_warningLaunchGameBtn setTitle:isEN ? @"🚀 Launch Game & Auto Enable HUD" : @"🚀 Vào Game & Tự Động Bật HUD" forState:UIControlStateNormal];
     }
-    if (_warningProceedBtn) {
-        [_warningProceedBtn setTitle:isEN ? @"Already In-Game (Enable HUD)" : @"Đã Trong Game (Bật HUD)" forState:UIControlStateNormal];
-    }
     if (_warningDismissBtn) {
         [_warningDismissBtn setTitle:isEN ? @"Close" : @"Đóng" forState:UIControlStateNormal];
     }
@@ -1866,25 +1862,51 @@ static BOOL IsPUBGProcessRunning(void) {
         @"com.tencent.tmgp.pubgmhd"
     ];
 
-    // Method 1: LSApplicationWorkspace (direct Bundle ID launch)
-    Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
-    if (wsClass) {
-        id workspace = [wsClass performSelector:@selector(defaultWorkspace)];
-        SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
-        if (workspace && [workspace respondsToSelector:openSel]) {
-            typedef BOOL (*OpenFunc)(id, SEL, NSString *);
-            OpenFunc fn = (OpenFunc)[workspace methodForSelector:openSel];
-            if (fn) {
-                for (NSString *bid in bundleIDs) {
-                    if (fn(workspace, openSel, bid)) {
-                        return YES;
+    // Method 1: FrontBoardServices (FBSSystemService - launches app directly via SpringBoard)
+    void *fbs = dlopen("/System/Library/PrivateFrameworks/FrontBoardServices.framework/FrontBoardServices", RTLD_NOW);
+    if (fbs) {
+        Class fbsClass = NSClassFromString(@"FBSSystemService");
+        if (fbsClass) {
+            id service = [fbsClass performSelector:NSSelectorFromString(@"sharedService")];
+            SEL openSel = NSSelectorFromString(@"openApplication:options:withResult:");
+            if (service && [service respondsToSelector:openSel]) {
+                typedef void (*FBSOpenFunc)(id, SEL, NSString *, NSDictionary *, id);
+                FBSOpenFunc openFn = (FBSOpenFunc)[service methodForSelector:openSel];
+                if (openFn) {
+                    for (NSString *bid in bundleIDs) {
+                        @try {
+                            openFn(service, openSel, bid, nil, nil);
+                        } @catch (__unused NSException *e) {}
                     }
                 }
             }
         }
     }
 
-    // Method 2: SpringBoardServices private launch API
+    // Method 2: LSApplicationWorkspace (CoreServices / MobileCoreServices)
+    dlopen("/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
+    dlopen("/System/Library/PrivateFrameworks/MobileCoreServices.framework/MobileCoreServices", RTLD_NOW);
+    dlopen("/System/Library/Frameworks/CoreServices.framework/CoreServices", RTLD_NOW);
+    Class wsClass = NSClassFromString(@"LSApplicationWorkspace");
+    if (wsClass) {
+        id workspace = [wsClass performSelector:NSSelectorFromString(@"defaultWorkspace")];
+        SEL openSel = NSSelectorFromString(@"openApplicationWithBundleID:");
+        if (workspace && [workspace respondsToSelector:openSel]) {
+            typedef BOOL (*OpenFunc)(id, SEL, NSString *);
+            OpenFunc fn = (OpenFunc)[workspace methodForSelector:openSel];
+            if (fn) {
+                for (NSString *bid in bundleIDs) {
+                    @try {
+                        if (fn(workspace, openSel, bid)) {
+                            return YES;
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
+            }
+        }
+    }
+
+    // Method 3: SpringBoardServices private launch API
     void *sbs = dlopen("/System/Library/PrivateFrameworks/SpringBoardServices.framework/SpringBoardServices", RTLD_NOW);
     if (sbs) {
         typedef int (*SBSLaunchFunc)(CFStringRef, Boolean);
@@ -1898,14 +1920,21 @@ static BOOL IsPUBGProcessRunning(void) {
         }
     }
 
-    // Method 3: URL Schemes
+    // Method 4: URL Schemes (both direct app schemes and SDK schemes)
     NSArray<NSString *> *schemes = @[
+        @"com.vng.pubgmobile://",
+        @"com.tencent.ig://",
+        @"com.pubg.krmobile://",
+        @"com.pubg.imobile://",
+        @"com.rekoo.pubgm://",
+        @"fb309539426210664://",
+        @"fb177278079603038://",
+        @"tencent1106467070://",
+        @"wx488e0e5889c0d59d://",
         @"vngpubg://",
         @"pubgmobile://",
         @"shadowtracker://",
-        @"pubg://",
-        @"fb309539426210664://",
-        @"fb177278079603038://"
+        @"shadowtrackerextra://"
     ];
     UIApplication *app = [UIApplication sharedApplication];
     for (NSString *s in schemes) {
@@ -1916,9 +1945,11 @@ static BOOL IsPUBGProcessRunning(void) {
         }
     }
 
-    // Fallback force-open
-    [app openURL:[NSURL URLWithString:@"vngpubg://"] options:@{} completionHandler:nil];
-    [app openURL:[NSURL URLWithString:@"pubgmobile://"] options:@{} completionHandler:nil];
+    // Fallback force-open common URL schemes
+    [app openURL:[NSURL URLWithString:@"com.vng.pubgmobile://"] options:@{} completionHandler:nil];
+    [app openURL:[NSURL URLWithString:@"com.tencent.ig://"] options:@{} completionHandler:nil];
+    [app openURL:[NSURL URLWithString:@"fb309539426210664://"] options:@{} completionHandler:nil];
+    [app openURL:[NSURL URLWithString:@"fb177278079603038://"] options:@{} completionHandler:nil];
     return YES;
 }
 
@@ -1930,11 +1961,14 @@ static BOOL IsPUBGProcessRunning(void) {
     BOOL isEN = IsEnglish();
     [self appendConsoleLog:@"SYS" message:(isEN ? @"Launching PUBG Mobile & auto-activating HUD..." : @"Đang mở PUBG Mobile & tự động kích hoạt HUD...") tagColor:[UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0]];
 
-    // 1. Immediately trigger HUD enable in DarkPubg
+    // 1. Launch PUBG Mobile immediately to switch app
+    [self launchPUBGGameProcess];
+
+    // 2. Immediately trigger HUD enable in DarkPubg
     [self doEnableHUD];
 
-    // 2. Launch PUBG Mobile to bring game to foreground
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    // 3. Re-trigger launch after 0.4s to ensure foreground switch
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self launchPUBGGameProcess];
     });
 }
@@ -1942,12 +1976,6 @@ static BOOL IsPUBGProcessRunning(void) {
 - (void)openPUBGGameApp
 {
     [self openPUBGAndAutoEnableHUD];
-}
-
-- (void)proceedEnableHUDTapped:(UIButton *)sender
-{
-    [self dismissWarningPopup];
-    [self doEnableHUD];
 }
 
 - (void)showGameNotRunningAlert
@@ -1996,29 +2024,17 @@ static BOOL IsPUBGProcessRunning(void) {
         _warningSubLabel.numberOfLines = 0;
         [card addSubview:_warningSubLabel];
 
-        // Button 1: Launch game directly
+        // Button 1: Launch game directly & auto enable HUD
         _warningLaunchGameBtn = [UIButton buttonWithType:UIButtonTypeSystem];
         _warningLaunchGameBtn.translatesAutoresizingMaskIntoConstraints = NO;
         [_warningLaunchGameBtn setTitleColor:[UIColor colorWithRed:13/255.0 green:17/255.0 blue:23/255.0 alpha:1.0] forState:UIControlStateNormal];
-        _warningLaunchGameBtn.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightBold];
+        _warningLaunchGameBtn.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold];
         _warningLaunchGameBtn.backgroundColor = [UIColor colorWithRed:0/255.0 green:210/255.0 blue:180/255.0 alpha:1.0];
-        _warningLaunchGameBtn.layer.cornerRadius = 12.0f;
+        _warningLaunchGameBtn.layer.cornerRadius = 14.0f;
         [_warningLaunchGameBtn addTarget:self action:@selector(openPUBGGameApp) forControlEvents:UIControlEventTouchUpInside];
         [card addSubview:_warningLaunchGameBtn];
 
-        // Button 2: Proceed anyway if user is already in game
-        _warningProceedBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        _warningProceedBtn.translatesAutoresizingMaskIntoConstraints = NO;
-        [_warningProceedBtn setTitleColor:[UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:1.0] forState:UIControlStateNormal];
-        _warningProceedBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-        _warningProceedBtn.backgroundColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:0.15];
-        _warningProceedBtn.layer.cornerRadius = 12.0f;
-        _warningProceedBtn.layer.borderColor = [UIColor colorWithRed:46/255.0 green:204/255.0 blue:113/255.0 alpha:0.45].CGColor;
-        _warningProceedBtn.layer.borderWidth = 1.0f;
-        [_warningProceedBtn addTarget:self action:@selector(proceedEnableHUDTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [card addSubview:_warningProceedBtn];
-
-        // Button 3: Close
+        // Button 2: Close
         _warningDismissBtn = [UIButton buttonWithType:UIButtonTypeSystem];
         _warningDismissBtn.translatesAutoresizingMaskIntoConstraints = NO;
         [_warningDismissBtn setTitleColor:[UIColor colorWithRed:139/255.0 green:148/255.0 blue:158/255.0 alpha:1.0] forState:UIControlStateNormal];
@@ -2031,10 +2047,10 @@ static BOOL IsPUBGProcessRunning(void) {
             [card.centerYAnchor constraintEqualToAnchor:_warningPopupOverlay.centerYAnchor],
             [card.widthAnchor constraintEqualToConstant:324.0f],
 
-            [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:20.0f],
+            [icon.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0f],
             [icon.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
-            [icon.widthAnchor constraintEqualToConstant:40.0f],
-            [icon.heightAnchor constraintEqualToConstant:40.0f],
+            [icon.widthAnchor constraintEqualToConstant:42.0f],
+            [icon.heightAnchor constraintEqualToConstant:42.0f],
 
             [_warningTitleLabel.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:12.0f],
             [_warningTitleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16.0f],
@@ -2044,20 +2060,15 @@ static BOOL IsPUBGProcessRunning(void) {
             [_warningSubLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
             [_warningSubLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
 
-            [_warningLaunchGameBtn.topAnchor constraintEqualToAnchor:_warningSubLabel.bottomAnchor constant:18.0f],
+            [_warningLaunchGameBtn.topAnchor constraintEqualToAnchor:_warningSubLabel.bottomAnchor constant:20.0f],
             [_warningLaunchGameBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
             [_warningLaunchGameBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
-            [_warningLaunchGameBtn.heightAnchor constraintEqualToConstant:42.0f],
+            [_warningLaunchGameBtn.heightAnchor constraintEqualToConstant:44.0f],
 
-            [_warningProceedBtn.topAnchor constraintEqualToAnchor:_warningLaunchGameBtn.bottomAnchor constant:10.0f],
-            [_warningProceedBtn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0f],
-            [_warningProceedBtn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0f],
-            [_warningProceedBtn.heightAnchor constraintEqualToConstant:38.0f],
-
-            [_warningDismissBtn.topAnchor constraintEqualToAnchor:_warningProceedBtn.bottomAnchor constant:6.0f],
+            [_warningDismissBtn.topAnchor constraintEqualToAnchor:_warningLaunchGameBtn.bottomAnchor constant:12.0f],
             [_warningDismissBtn.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
             [_warningDismissBtn.heightAnchor constraintEqualToConstant:32.0f],
-            [_warningDismissBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-14.0f],
+            [_warningDismissBtn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-16.0f],
         ]];
     }
 
