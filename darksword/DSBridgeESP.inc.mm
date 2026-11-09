@@ -1266,7 +1266,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         return l;
     };
 
-    _pubgBoxLabel = pubgCreateLabel(@"Box 2D");
+    _pubgBoxLabel = pubgCreateLabel(@"Box Góc 2D");
     _pubgBoxSwitch = pubgCreateSwitch(@selector(dsPubgBoxChanged:));
     _pubgSkeletonLabel = pubgCreateLabel(@"Xương");
     _pubgSkeletonSwitch = pubgCreateSwitch(@selector(dsPubgSkeletonChanged:));
@@ -3666,12 +3666,48 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 1. Bounding Box: Màu trắng
+        // 1. Bounding Box: Hộp 4 line 4 góc (Corner Box ESP)
         if (g_pubgEspBox) {
-            CGRect boxRect = CGRectMake(p.screenX, p.screenY, p.boxWidth, p.boxHeight);
-            box.path = [UIBezierPath bezierPathWithRect:boxRect].CGPath;
+            CGFloat bx = p.screenX;
+            CGFloat by = p.screenY;
+            CGFloat bw = p.boxWidth;
+            CGFloat bh = p.boxHeight;
+
+            // Chiều dài mỗi đoạn line ở 4 góc (1/4 chiều rộng, 1/5 chiều cao)
+            CGFloat lineW = bw * 0.25f;
+            CGFloat lineH = bh * 0.20f;
+            if (lineW < 4.0f) lineW = 4.0f;
+            if (lineH < 4.0f) lineH = 4.0f;
+            if (lineW > bw * 0.45f) lineW = bw * 0.45f;
+            if (lineH > bh * 0.45f) lineH = bh * 0.45f;
+
+            UIBezierPath *boxPath = [UIBezierPath bezierPath];
+
+            // Góc trên - trái (Top-Left)
+            [boxPath moveToPoint:CGPointMake(bx, by + lineH)];
+            [boxPath addLineToPoint:CGPointMake(bx, by)];
+            [boxPath addLineToPoint:CGPointMake(bx + lineW, by)];
+
+            // Góc trên - phải (Top-Right)
+            [boxPath moveToPoint:CGPointMake(bx + bw - lineW, by)];
+            [boxPath addLineToPoint:CGPointMake(bx + bw, by)];
+            [boxPath addLineToPoint:CGPointMake(bx + bw, by + lineH)];
+
+            // Góc dưới - trái (Bottom-Left)
+            [boxPath moveToPoint:CGPointMake(bx, by + bh - lineH)];
+            [boxPath addLineToPoint:CGPointMake(bx, by + bh)];
+            [boxPath addLineToPoint:CGPointMake(bx + lineW, by + bh)];
+
+            // Góc dưới - phải (Bottom-Right)
+            [boxPath moveToPoint:CGPointMake(bx + bw - lineW, by + bh)];
+            [boxPath addLineToPoint:CGPointMake(bx + bw, by + bh)];
+            [boxPath addLineToPoint:CGPointMake(bx + bw, by + bh - lineH)];
+
+            box.path = boxPath.CGPath;
             box.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
             box.lineWidth = 1.5;
+            box.lineCap = kCALineCapSquare;
+            box.lineJoin = kCALineJoinMiter;
             box.hidden = NO;
         } else {
             box.hidden = YES;
