@@ -110,7 +110,6 @@ static bool g_dspubgGNamesIsChunkArray = true;
 // to eliminate repetitive GNames lookups and memory reads for thousands of level actors.
 struct DSPUBGActorCacheEntry {
     uint64_t actor;
-    uint64_t classPrivate;
     bool isScenery;
     bool isPawn;
     DSPUBGItemCategory itemCat;
@@ -493,29 +492,26 @@ static bool ds_pubg_get_actor_name(uint64_t actor, char *outBuf, size_t outCap) 
     if (!actor || !outBuf || outCap < 2) return false;
     outBuf[0] = '\0';
 
-    // 1. Try ClassPrivate at 0x10ULL -> FName at +0x18ULL or +0x20ULL
+    // 1. Try ClassPrivate at 0x10ULL -> NamePrivate at +0x20ULL (UE4 64-bit standard: 0x18 is OuterPrivate, 0x20 is NamePrivate)
     uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
-    if (!classPrivate || !ds_pubg_valid(classPrivate)) {
-        classPrivate = ds_pubg_read_ptr(actor + 0x08ULL);
-    }
     if (classPrivate && ds_pubg_valid(classPrivate)) {
-        uint32_t classFId = ds_pubg_read_u32(classPrivate + 0x18ULL);
-        if (classFId > 0 && classFId < 4194304 && ds_pubg_get_name_by_id(classFId, outBuf, outCap)) {
+        uint32_t classFId = ds_pubg_read_u32(classPrivate + 0x20ULL);
+        if (classFId > 0 && classFId < 2000000 && ds_pubg_get_name_by_id(classFId, outBuf, outCap)) {
             if (strlen(outBuf) > 1) return true;
         }
-        uint32_t classFId2 = ds_pubg_read_u32(classPrivate + 0x20ULL);
-        if (classFId2 > 0 && classFId2 < 4194304 && ds_pubg_get_name_by_id(classFId2, outBuf, outCap)) {
+        uint32_t classFId2 = ds_pubg_read_u32(classPrivate + 0x18ULL);
+        if (classFId2 > 0 && classFId2 < 500000 && ds_pubg_get_name_by_id(classFId2, outBuf, outCap)) {
             if (strlen(outBuf) > 1) return true;
         }
     }
 
-    // 2. Try actor's own FName at 0x18ULL or 0x20ULL
-    uint32_t actorFId = ds_pubg_read_u32(actor + 0x18ULL);
-    if (actorFId > 0 && actorFId < 4194304 && ds_pubg_get_name_by_id(actorFId, outBuf, outCap)) {
+    // 2. Try actor's own FName at +0x20ULL, fallback to +0x18ULL
+    uint32_t actorFId = ds_pubg_read_u32(actor + 0x20ULL);
+    if (actorFId > 0 && actorFId < 2000000 && ds_pubg_get_name_by_id(actorFId, outBuf, outCap)) {
         if (strlen(outBuf) > 1) return true;
     }
-    uint32_t actorFId2 = ds_pubg_read_u32(actor + 0x20ULL);
-    if (actorFId2 > 0 && actorFId2 < 4194304 && ds_pubg_get_name_by_id(actorFId2, outBuf, outCap)) {
+    uint32_t actorFId2 = ds_pubg_read_u32(actor + 0x18ULL);
+    if (actorFId2 > 0 && actorFId2 < 500000 && ds_pubg_get_name_by_id(actorFId2, outBuf, outCap)) {
         if (strlen(outBuf) > 1) return true;
     }
 
@@ -2779,8 +2775,7 @@ static void ds_pubg_tick(void) {
 
         uint32_t cSlot = ds_pubg_actor_cache_hash(pawn);
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        uint64_t classPrivate = ds_pubg_read_ptr(pawn + 0x10ULL);
-        if (cEntry.actor == pawn && cEntry.classPrivate == classPrivate) {
+        if (cEntry.actor == pawn) {
             if (cEntry.isScenery) {
                 return false;
             }
@@ -2799,7 +2794,6 @@ static void ds_pubg_tick(void) {
                 strstr(pawnName, "Roof") || strstr(pawnName, "Brush"));
             if (isScenery) {
                 cEntry.actor = pawn;
-                cEntry.classPrivate = classPrivate;
                 cEntry.isScenery = true;
                 cEntry.isPawn = false;
                 cEntry.itemCat = DSPUBGItemCategoryNone;
@@ -3247,7 +3241,6 @@ static void ds_pubg_tick(void) {
             if (isAI) botCount++; else enemyCount++;
         }
         cEntry.actor = pawn;
-        cEntry.classPrivate = classPrivate;
         cEntry.isScenery = false;
         cEntry.isPawn = true;
         cEntry.itemCat = DSPUBGItemCategoryNone;
@@ -3262,6 +3255,33 @@ static void ds_pubg_tick(void) {
         if (grenadeStagingCount >= kDSPUBGMaxGrenades) return false;
         if (!g_pubgEspGrenade) return false;
 
+        // 1. Fast Location check FIRST (only spatial actors within range can be grenades)
+        DSPUBGVector rootLoc = {};
+        bool hasLoc = false;
+        uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+        if (!rootComp || !ds_pubg_valid(rootComp)) {
+            rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
+        }
+        if (rootComp && ds_pubg_valid(rootComp)) {
+            if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
+                if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
+                    !isnan(rootLoc.Y) && !isinf(rootLoc.Y) &&
+                    !isnan(rootLoc.Z) && !isinf(rootLoc.Z) &&
+                    (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
+                    hasLoc = true;
+                }
+            }
+        }
+        if (!hasLoc) return false;
+
+        // 2. Early Distance check (grenades only exist within 150m)
+        float dx = (rootLoc.X - basis.lx) * 0.01f;
+        float dy = (rootLoc.Y - basis.ly) * 0.01f;
+        float dz = (rootLoc.Z - basis.lz) * 0.01f;
+        float dist3D = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (dist3D > 150.0f) return false;
+
+        // 3. Name check (only executed for actors within 150m)
         char actorName[64] = {0};
         if (!ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
             return false;
@@ -3273,53 +3293,6 @@ static void ds_pubg_tick(void) {
         if (!ds_pubg_classify_grenade(actorName, &gType, gDisplayName, sizeof(gDisplayName), &dmgRadius)) {
             return false;
         }
-
-        // Cache update: explicitly ensure this actor is known as a valid grenade
-        uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        cEntry.actor = actor;
-        cEntry.classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
-        cEntry.isScenery = false;
-        cEntry.isPawn = false;
-        cEntry.itemCat = DSPUBGItemCategoryNone;
-
-        DSPUBGVector rootLoc = {};
-        bool hasLoc = false;
-        uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-        if (!rootComp || !ds_pubg_valid(rootComp)) {
-            rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
-        }
-        if (!rootComp || !ds_pubg_valid(rootComp)) {
-            rootComp = ds_pubg_read_ptr(actor + 0x190ULL);
-        }
-        if (!rootComp || !ds_pubg_valid(rootComp)) {
-            rootComp = ds_pubg_read_ptr(actor + 0x210ULL);
-        }
-        if (rootComp && ds_pubg_valid(rootComp)) {
-            if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
-                if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
-                    !isnan(rootLoc.Y) && !isinf(rootLoc.Y) &&
-                    !isnan(rootLoc.Z) && !isinf(rootLoc.Z) &&
-                    (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
-                    hasLoc = true;
-                }
-            }
-            if (!hasLoc) {
-                if (ds_pubg_read(rootComp + 0x1E0ULL, &rootLoc, sizeof(rootLoc))) {
-                    if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
-                        (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
-                        hasLoc = true;
-                    }
-                }
-            }
-        }
-        if (!hasLoc) return false;
-
-        float dx = (rootLoc.X - basis.lx) * 0.01f;
-        float dy = (rootLoc.Y - basis.ly) * 0.01f;
-        float dz = (rootLoc.Z - basis.lz) * 0.01f;
-        float dist3D = sqrtf(dx * dx + dy * dy + dz * dz);
-        if (dist3D > 150.0f) return true;
 
         float sx = 0, sy = 0, dist = 0;
         bool isVisible = ds_pubg_cam_basis_project(basis, rootLoc, sx, sy, dist);
@@ -3449,8 +3422,7 @@ static void ds_pubg_tick(void) {
 
         uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
-        if (cEntry.actor == actor && cEntry.classPrivate == classPrivate && cEntry.isScenery) {
+        if (cEntry.actor == actor && cEntry.isScenery) {
             return;
         }
 
@@ -3532,7 +3504,6 @@ static void ds_pubg_tick(void) {
                 return;
             }
             cEntry.actor = actor;
-            cEntry.classPrivate = classPrivate;
             cEntry.isScenery = false;
             cEntry.isPawn = false;
             cEntry.itemCat = cat;
@@ -3673,9 +3644,7 @@ static void ds_pubg_tick(void) {
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
 
                     uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-                    DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-                    uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
-                    if (cEntry.actor == actor && cEntry.classPrivate == classPrivate && cEntry.isScenery) {
+                    if (g_dspubgActorCache[cSlot].actor == actor && g_dspubgActorCache[cSlot].isScenery) {
                         continue;
                     }
 
