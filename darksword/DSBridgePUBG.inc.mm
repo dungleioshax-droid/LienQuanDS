@@ -3537,17 +3537,39 @@ static void ds_pubg_tick(void) {
         pg.type = gType;
         strncpy(pg.name, gDisplayName, sizeof(pg.name) - 1);
         pg.name[sizeof(pg.name) - 1] = '\0';
-        pg.damageRadiusMeters = 18.0f;
-        pg.isLocalInDanger = (dist3D <= 18.0f);
-        pg.trajCount = 0;
-        pg.circlePointCount = kDSPUBGCirclePoints;
+        float maxFuse = 5.0f;
+        if (gType == DSPUBGGrenadeTypeStun) {
+            maxFuse = 3.0f;
+        } else if (gType == DSPUBGGrenadeTypeBurn) {
+            maxFuse = 5.0f;
+        } else if (gType == DSPUBGGrenadeTypeSmoke) {
+            maxFuse = 5.0f;
+        }
+        pg.totalFuseSeconds = maxFuse;
 
-        // Remaining cook time in seconds (standard fuse 6.0s / 5.0s counting down)
+        // Remaining cook time in seconds counting down
         double nowTime = CACurrentMediaTime();
         double elapsed = (histSlot >= 0 && s_grenadeHistories[histSlot].firstSeenTimestamp > 0.0) ? (nowTime - s_grenadeHistories[histSlot].firstSeenTimestamp) : 0.0;
-        float fuseLeft = 6.0f - (float)elapsed;
+        float fuseLeft = maxFuse - (float)elapsed;
         if (fuseLeft < 0.0f) fuseLeft = 0.0f;
         pg.cookSeconds = fuseLeft;
+
+        // 3D Damage Circle Radius matching metalbiew.txt (360.0f units = 3.6m)
+        float rOuter = 360.0f;
+        float rMid   = 260.0f;
+        float rInner = 180.0f;
+        if (gType == DSPUBGGrenadeTypeBurn) {
+            rOuter = 280.0f; rMid = 200.0f; rInner = 140.0f;
+        } else if (gType == DSPUBGGrenadeTypeSmoke) {
+            rOuter = 320.0f; rMid = 220.0f; rInner = 150.0f;
+        } else if (gType == DSPUBGGrenadeTypeStun) {
+            rOuter = 360.0f; rMid = 260.0f; rInner = 180.0f;
+        }
+
+        pg.damageRadiusMeters = (rOuter / 100.0f);
+        pg.isLocalInDanger = (dist3D <= pg.damageRadiusMeters);
+        pg.trajCount = 0;
+        pg.circlePointCount = kDSPUBGCirclePoints;
 
         // Altitude Drop Line to ground
         float gZ = (histSlot >= 0 && s_grenadeHistories[histSlot].groundZ != 0.0f) ? s_grenadeHistories[histSlot].groundZ : (basis.lz - 90.0f);
@@ -3582,18 +3604,7 @@ static void ds_pubg_tick(void) {
             }
         }
 
-        // 5. 3 Concentric Circles matching user reference code (32 segments):
-        // Frag Grenade: Outer 1800.0f (White: 18m), Mid 1500.0f (Yellow: 15m), Inner 1200.0f (Red: 12m)
-        float rOuter = 1800.0f;
-        float rMid   = 1500.0f;
-        float rInner = 1200.0f;
-        if (gType == DSPUBGGrenadeTypeBurn) {
-            rOuter = 600.0f; rMid = 450.0f; rInner = 300.0f;
-        } else if (gType == DSPUBGGrenadeTypeSmoke) {
-            rOuter = 800.0f; rMid = 550.0f; rInner = 300.0f;
-        } else if (gType == DSPUBGGrenadeTypeStun) {
-            rOuter = 1200.0f; rMid = 800.0f; rInner = 500.0f;
-        }
+        // 5. 3 Concentric Circles matching metalbiew.txt (32 segments)
 
         for (int k = 0; k < kDSPUBGCirclePoints; k++) {
             float theta = (float)k / (float)kDSPUBGCirclePoints * 2.0f * (float)M_PI;

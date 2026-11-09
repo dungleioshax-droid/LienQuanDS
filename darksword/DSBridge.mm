@@ -1038,6 +1038,7 @@ typedef struct {
     bool boxCornersValid[8];
 
     float cookSeconds;
+    float totalFuseSeconds;
     bool hasDropLine;
     CGPoint groundPoint;
 } DSPUBGProjectedGrenade;

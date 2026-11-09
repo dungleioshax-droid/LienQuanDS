@@ -3745,9 +3745,8 @@ static CAShapeLayer *g_hostedPUBGGrenadeBoxLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeLabels[kDSPUBGMaxGrenades] = {};
 static CAShapeLayer *g_hostedPUBGGrenadeDropLineLayers[kDSPUBGMaxGrenades] = {};
 static CALayer *g_hostedPUBGGrenadeMarkerLayers[kDSPUBGMaxGrenades] = {};
-static CAShapeLayer *g_hostedPUBGGrenadeHudBgLayers[kDSPUBGMaxGrenades] = {};
-static CALayer *g_hostedPUBGGrenadeHudIconLayers[kDSPUBGMaxGrenades] = {};
-static CATextLayer *g_hostedPUBGGrenadeHudTimerLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeMarkerBgLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeMarkerFillLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeDangerBanner = nil;
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
@@ -3777,102 +3776,13 @@ static void ds_hosted_pubg_hide_all(void) {
         if (g_hostedPUBGGrenadeLabels[i] && !g_hostedPUBGGrenadeLabels[i].hidden) g_hostedPUBGGrenadeLabels[i].hidden = YES;
         if (g_hostedPUBGGrenadeDropLineLayers[i] && !g_hostedPUBGGrenadeDropLineLayers[i].hidden) g_hostedPUBGGrenadeDropLineLayers[i].hidden = YES;
         if (g_hostedPUBGGrenadeMarkerLayers[i] && !g_hostedPUBGGrenadeMarkerLayers[i].hidden) g_hostedPUBGGrenadeMarkerLayers[i].hidden = YES;
-        if (g_hostedPUBGGrenadeHudBgLayers[i] && !g_hostedPUBGGrenadeHudBgLayers[i].hidden) g_hostedPUBGGrenadeHudBgLayers[i].hidden = YES;
-        if (g_hostedPUBGGrenadeHudIconLayers[i] && !g_hostedPUBGGrenadeHudIconLayers[i].hidden) g_hostedPUBGGrenadeHudIconLayers[i].hidden = YES;
-        if (g_hostedPUBGGrenadeHudTimerLayers[i] && !g_hostedPUBGGrenadeHudTimerLayers[i].hidden) g_hostedPUBGGrenadeHudTimerLayers[i].hidden = YES;
     }
     if (g_hostedPUBGGrenadeDangerBanner && !g_hostedPUBGGrenadeDangerBanner.hidden) g_hostedPUBGGrenadeDangerBanner.hidden = YES;
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
 }
 
-static UIImage *s_pubgBombMarkerImage = nil;
-static UIImage *s_pubgGrenadeBadgeIconImage = nil;
 
-static void ds_pubg_ensure_grenade_images(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        CGFloat scale = [UIScreen mainScreen].scale;
-
-        // 1. 3D Bomb Marker Icon (size: 32x32 pt)
-        {
-            CGSize sz = CGSizeMake(32.0, 32.0);
-            UIGraphicsBeginImageContextWithOptions(sz, NO, scale);
-            CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-            CGFloat cx = 15.0, cy = 17.0, r = 11.0;
-
-            // Fuse pin at top-right
-            CGFloat fx = cx + r * 0.65;
-            CGFloat fy = cy - r * 0.65;
-            CGContextSetRGBFillColor(ctx, 0.85, 1.0, 0.2, 1.0); // lime green
-            CGContextFillRect(ctx, CGRectMake(fx - 1.0, fy - 5.5, 5.5, 5.5));
-            CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 1.0);
-            CGContextSetLineWidth(ctx, 1.0);
-            CGContextStrokeRect(ctx, CGRectMake(fx - 1.0, fy - 5.5, 5.5, 5.5));
-
-            // Circle body (clipped)
-            CGContextSaveGState(ctx);
-            CGContextAddArc(ctx, cx, cy, r, 0, 2 * M_PI, 0);
-            CGContextClip(ctx);
-
-            // Yellow upper body
-            CGContextSetRGBFillColor(ctx, 1.0, 0.95, 0.0, 1.0);
-            CGContextFillRect(ctx, CGRectMake(cx - r, cy - r, 2 * r, 2 * r));
-
-            // Red bottom 35%
-            CGContextSetRGBFillColor(ctx, 0.94, 0.08, 0.08, 1.0);
-            CGContextFillRect(ctx, CGRectMake(cx - r, cy + 3.0, 2 * r, r + 2.0));
-            CGContextRestoreGState(ctx);
-
-            // White outer border
-            CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 1.0);
-            CGContextSetLineWidth(ctx, 1.6);
-            CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - r, cy - r, 2 * r, 2 * r));
-
-            // White specular shine arc
-            CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 0.9);
-            CGContextSetLineWidth(ctx, 1.8);
-            CGContextSetLineCap(ctx, kCGLineCapRound);
-            CGContextAddArc(ctx, cx, cy, r - 2.8, 3.4, 4.3, 0);
-            CGContextStrokePath(ctx);
-
-            s_pubgBombMarkerImage = UIGraphicsGetImageFromCurrentImageContext();
-            UIGraphicsEndImageContext();
-        }
-
-        // 2. Orange Grenade Icon for HUD Diamond (size: 20x20 pt)
-        {
-            CGSize sz = CGSizeMake(20.0, 20.0);
-            UIGraphicsBeginImageContextWithOptions(sz, NO, scale);
-            CGContextRef ctx = UIGraphicsGetCurrentContext();
-
-            CGFloat gcx = 10.0, gcy = 11.0;
-            // Oval body
-            CGContextSetRGBFillColor(ctx, 1.0, 0.65, 0.1, 1.0); // orange
-            CGContextFillEllipseInRect(ctx, CGRectMake(gcx - 5.5, gcy - 6.5, 11.0, 13.0));
-
-            // Grooves
-            CGContextSetRGBStrokeColor(ctx, 0.15, 0.18, 0.22, 0.8);
-            CGContextSetLineWidth(ctx, 0.8);
-            CGContextMoveToPoint(ctx, gcx - 4.5, gcy - 2.0); CGContextAddLineToPoint(ctx, gcx + 4.5, gcy - 2.0);
-            CGContextMoveToPoint(ctx, gcx - 4.5, gcy + 2.0); CGContextAddLineToPoint(ctx, gcx + 4.5, gcy + 2.0);
-            CGContextMoveToPoint(ctx, gcx, gcy - 5.5); CGContextAddLineToPoint(ctx, gcx, gcy + 5.5);
-            CGContextStrokePath(ctx);
-
-            // Neck & handle
-            CGContextSetRGBFillColor(ctx, 1.0, 0.65, 0.1, 1.0);
-            CGContextFillRect(ctx, CGRectMake(gcx - 2.5, gcy - 9.5, 5.0, 3.5));
-            CGContextSetRGBStrokeColor(ctx, 1.0, 0.65, 0.1, 1.0);
-            CGContextSetLineWidth(ctx, 1.5);
-            CGContextMoveToPoint(ctx, gcx + 1.5, gcy - 9.0); CGContextAddLineToPoint(ctx, gcx + 4.5, gcy - 4.5);
-            CGContextStrokePath(ctx);
-
-            s_pubgGrenadeBadgeIconImage = UIGraphicsGetImageFromCurrentImageContext();
-            UIGraphicsEndImageContext();
-        }
-    });
-}
 
 static void ds_hosted_apply_pubg(void) {
     if (!g_hostedLayer) return;
@@ -4644,8 +4554,7 @@ static void ds_hosted_apply_pubg(void) {
         }
     }
 
-    // --- GRENADE WARNING RENDERING (Flight Line, 3D Bomb Icon, Drop Line, Damage Circle, HUD Badge) ---
-    ds_pubg_ensure_grenade_images();
+    // --- GRENADE WARNING RENDERING (Flight Line, Dynamic 3D Bomb Icon, Drop Line, Damage Circle) ---
     DSPUBGProjectedGrenade grenades[kDSPUBGMaxGrenades];
     uint64_t grenadeEpoch = 0;
     int grenadeCount = ds_pubg_copy_projected_grenades(grenades, &grenadeEpoch);
@@ -4659,9 +4568,6 @@ static void ds_hosted_apply_pubg(void) {
         CATextLayer *badgeLbl = g_hostedPUBGGrenadeLabels[i];
         CAShapeLayer *dropLineLayer = g_hostedPUBGGrenadeDropLineLayers[i];
         CALayer *markerLayer = g_hostedPUBGGrenadeMarkerLayers[i];
-        CAShapeLayer *hudBgLayer = g_hostedPUBGGrenadeHudBgLayers[i];
-        CALayer *hudIconLayer = g_hostedPUBGGrenadeHudIconLayers[i];
-        CATextLayer *hudTimerLayer = g_hostedPUBGGrenadeHudTimerLayers[i];
 
         if (i >= grenadeCount || !g_pubgEspGrenade || !g_hostedEspEnabled) {
             if (trajLayer) trajLayer.hidden = YES;
@@ -4672,9 +4578,6 @@ static void ds_hosted_apply_pubg(void) {
             if (badgeLbl) badgeLbl.hidden = YES;
             if (dropLineLayer) dropLineLayer.hidden = YES;
             if (markerLayer) markerLayer.hidden = YES;
-            if (hudBgLayer) hudBgLayer.hidden = YES;
-            if (hudIconLayer) hudIconLayer.hidden = YES;
-            if (hudTimerLayer) hudTimerLayer.hidden = YES;
             continue;
         }
 
@@ -4697,9 +4600,6 @@ static void ds_hosted_apply_pubg(void) {
             if (badgeLbl) badgeLbl.hidden = YES;
             if (dropLineLayer) dropLineLayer.hidden = YES;
             if (markerLayer) markerLayer.hidden = YES;
-            if (hudBgLayer) hudBgLayer.hidden = YES;
-            if (hudIconLayer) hudIconLayer.hidden = YES;
-            if (hudTimerLayer) hudTimerLayer.hidden = YES;
             continue;
         }
 
@@ -4781,47 +4681,33 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // 4. 3D Bomb Marker Icon (Icon quả bom nửa vàng nửa đỏ có chốt xanh như trong ảnh)
+        // 4. 3D Bomb Marker Icon with Dynamic Yellow-to-Red Countdown
         if (markerLayer) {
             if (g.isVisible) {
                 markerLayer.position = CGPointMake(g.screenX, g.screenY);
                 markerLayer.hidden = NO;
+
+                float total = (g.totalFuseSeconds > 0.1f) ? g.totalFuseSeconds : 5.0f;
+                float progress = 1.0f - (g.cookSeconds / total);
+                if (progress < 0.0f) progress = 0.0f;
+                if (progress > 1.0f) progress = 1.0f;
+
+                CALayer *redFill = g_hostedPUBGGrenadeMarkerFillLayers[i];
+                CALayer *bgYellow = g_hostedPUBGGrenadeMarkerBgLayers[i];
+                if (redFill) {
+                    CGFloat redH = 22.0f * progress;
+                    redFill.frame = CGRectMake(0, 22.0f - redH, 22.0f, redH);
+                }
+                if (bgYellow) {
+                    if (progress >= 0.85f) {
+                        bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.40f blue:0.05f alpha:1.0f].CGColor;
+                    } else {
+                        bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.95f blue:0.05f alpha:1.0f].CGColor;
+                    }
+                }
             } else {
                 markerLayer.hidden = YES;
             }
-        }
-
-        // 5. Top HUD Diamond Badge with Grenade Icon & Timer (Hình thoi viền vàng + icon quả bom + đếm giây như trong ảnh)
-        if (hudBgLayer && hudIconLayer && hudTimerLayer) {
-            CGFloat badgeCx = width * 0.5f - 20.0f + (i * 90.0f);
-            CGFloat badgeCy = 125.0f;
-            CGFloat dR = 14.0f;
-
-            UIBezierPath *bp = [UIBezierPath bezierPath];
-            CGRect boxRect = CGRectMake(badgeCx + dR * 0.4f, badgeCy - 11.0f, 44.0f, 22.0f);
-            UIBezierPath *boxPath = [UIBezierPath bezierPathWithRoundedRect:boxRect cornerRadius:4.0f];
-            [bp appendPath:boxPath];
-
-            [bp moveToPoint:CGPointMake(badgeCx, badgeCy - dR)];
-            [bp addLineToPoint:CGPointMake(badgeCx + dR, badgeCy)];
-            [bp addLineToPoint:CGPointMake(badgeCx, badgeCy + dR)];
-            [bp addLineToPoint:CGPointMake(badgeCx - dR, badgeCy)];
-            [bp closePath];
-
-            hudBgLayer.path = bp.CGPath;
-            hudBgLayer.fillColor = [UIColor colorWithRed:0.12f green:0.15f blue:0.20f alpha:0.85f].CGColor;
-            hudBgLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.20f alpha:1.0f].CGColor;
-            hudBgLayer.lineWidth = 1.5f;
-            hudBgLayer.hidden = NO;
-
-            hudIconLayer.position = CGPointMake(badgeCx, badgeCy);
-            hudIconLayer.hidden = NO;
-
-            int secLeft = (int)ceilf(g.cookSeconds);
-            if (secLeft < 0) secLeft = 0;
-            hudTimerLayer.string = [NSString stringWithFormat:@"%d s", secLeft];
-            hudTimerLayer.frame = CGRectMake(boxRect.origin.x + 2.0f, boxRect.origin.y + 2.0f, boxRect.size.width - 4.0f, 18.0f);
-            hudTimerLayer.hidden = NO;
         }
 
         // 6. 3D Bounding Box around grenade (< 13m)
@@ -5317,7 +5203,6 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 g_hostedPUBGItemLabels[i] = itemLbl;
             }
 
-            ds_pubg_ensure_grenade_images();
             for (int i = 0; i < kDSPUBGMaxGrenades; i++) {
                 CAShapeLayer *traj = [CAShapeLayer layer];
                 traj.actions = noAnim;
@@ -5368,44 +5253,68 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [g_hostedLayer addSublayer:dropLine];
                 g_hostedPUBGGrenadeDropLineLayers[i] = dropLine;
 
-                CALayer *marker = [CALayer layer];
-                marker.actions = noAnim;
-                marker.contentsScale = scale;
-                marker.bounds = CGRectMake(0, 0, 32.0, 32.0);
-                marker.contents = (id)s_pubgBombMarkerImage.CGImage;
-                marker.hidden = YES;
-                [g_hostedLayer addSublayer:marker];
-                g_hostedPUBGGrenadeMarkerLayers[i] = marker;
+                // Dynamic Vector Bomb Marker (32x32 pt)
+                CALayer *markerContainer = [CALayer layer];
+                markerContainer.actions = noAnim;
+                markerContainer.contentsScale = scale;
+                markerContainer.bounds = CGRectMake(0, 0, 32.0, 32.0);
+                markerContainer.hidden = YES;
 
-                CAShapeLayer *hudBg = [CAShapeLayer layer];
-                hudBg.actions = noAnim;
-                hudBg.contentsScale = scale;
-                hudBg.fillColor = [UIColor colorWithRed:0.12f green:0.15f blue:0.20f alpha:0.85f].CGColor;
-                hudBg.strokeColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.20f alpha:1.0f].CGColor;
-                hudBg.lineWidth = 1.5;
-                hudBg.hidden = YES;
-                [g_hostedLayer addSublayer:hudBg];
-                g_hostedPUBGGrenadeHudBgLayers[i] = hudBg;
+                // 1. Fuse Pin on top-right
+                CALayer *fusePin = [CALayer layer];
+                fusePin.actions = noAnim;
+                fusePin.contentsScale = scale;
+                fusePin.frame = CGRectMake(20.5, 2.5, 5.0, 5.5);
+                fusePin.cornerRadius = 1.0;
+                fusePin.backgroundColor = [UIColor colorWithRed:0.85f green:1.0f blue:0.20f alpha:1.0f].CGColor;
+                [markerContainer addSublayer:fusePin];
 
-                CALayer *hudIcon = [CALayer layer];
-                hudIcon.actions = noAnim;
-                hudIcon.contentsScale = scale;
-                hudIcon.bounds = CGRectMake(0, 0, 20.0, 20.0);
-                hudIcon.contents = (id)s_pubgGrenadeBadgeIconImage.CGImage;
-                hudIcon.hidden = YES;
-                [g_hostedLayer addSublayer:hudIcon];
-                g_hostedPUBGGrenadeHudIconLayers[i] = hudIcon;
+                // 2. Circular body container (masks child layers to circle)
+                CALayer *circleBody = [CALayer layer];
+                circleBody.actions = noAnim;
+                circleBody.contentsScale = scale;
+                circleBody.frame = CGRectMake(5.0, 5.0, 22.0, 22.0);
+                circleBody.cornerRadius = 11.0;
+                circleBody.masksToBounds = YES;
+                circleBody.backgroundColor = [UIColor colorWithRed:1.0f green:0.95f blue:0.05f alpha:1.0f].CGColor;
+                [markerContainer addSublayer:circleBody];
+                g_hostedPUBGGrenadeMarkerBgLayers[i] = circleBody;
 
-                CATextLayer *hudTimer = [CATextLayer layer];
-                hudTimer.actions = noAnim;
-                hudTimer.contentsScale = scale;
-                hudTimer.alignmentMode = kCAAlignmentCenter;
-                hudTimer.fontSize = 12.0;
-                hudTimer.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightHeavy];
-                hudTimer.foregroundColor = UIColor.whiteColor.CGColor;
-                hudTimer.hidden = YES;
-                [g_hostedLayer addSublayer:hudTimer];
-                g_hostedPUBGGrenadeHudTimerLayers[i] = hudTimer;
+                // 3. Dynamic Red Fill inside circleBody (fills from bottom to top as fuse counts down)
+                CALayer *redFill = [CALayer layer];
+                redFill.actions = noAnim;
+                redFill.contentsScale = scale;
+                redFill.backgroundColor = [UIColor colorWithRed:0.95f green:0.08f blue:0.08f alpha:1.0f].CGColor;
+                redFill.frame = CGRectMake(0, 22.0, 22.0, 0);
+                [circleBody addSublayer:redFill];
+                g_hostedPUBGGrenadeMarkerFillLayers[i] = redFill;
+
+                // 4. White outer circular border
+                CAShapeLayer *borderLayer = [CAShapeLayer layer];
+                borderLayer.actions = noAnim;
+                borderLayer.contentsScale = scale;
+                UIBezierPath *bPath = [UIBezierPath bezierPathWithOvalInRect:CGRectMake(5.0, 5.0, 22.0, 22.0)];
+                borderLayer.path = bPath.CGPath;
+                borderLayer.fillColor = UIColor.clearColor.CGColor;
+                borderLayer.strokeColor = UIColor.whiteColor.CGColor;
+                borderLayer.lineWidth = 1.6;
+                [markerContainer addSublayer:borderLayer];
+
+                // 5. Specular shine arc on top-left of circle
+                CAShapeLayer *shineLayer = [CAShapeLayer layer];
+                shineLayer.actions = noAnim;
+                shineLayer.contentsScale = scale;
+                UIBezierPath *sPath = [UIBezierPath bezierPath];
+                [sPath addArcWithCenter:CGPointMake(16.0, 16.0) radius:8.5 startAngle:3.4 endAngle:4.3 clockwise:YES];
+                shineLayer.path = sPath.CGPath;
+                shineLayer.fillColor = UIColor.clearColor.CGColor;
+                shineLayer.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+                shineLayer.lineWidth = 1.8;
+                shineLayer.lineCap = kCALineCapRound;
+                [markerContainer addSublayer:shineLayer];
+
+                [g_hostedLayer addSublayer:markerContainer];
+                g_hostedPUBGGrenadeMarkerLayers[i] = markerContainer;
 
                 CAShapeLayer *box = [CAShapeLayer layer];
                 box.actions = noAnim;
