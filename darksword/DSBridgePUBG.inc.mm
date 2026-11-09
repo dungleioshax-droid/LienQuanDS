@@ -100,18 +100,6 @@ static uint64_t g_dspubgItemEpoch = 1;
 static DSPUBGProjectedGrenade g_dspubgGrenades[kDSPUBGMaxGrenades] = {};
 static int g_dspubgGrenadeCount = 0;
 static uint64_t g_dspubgGrenadeEpoch = 1;
-
-struct DSPUBGGrenadeHistory {
-    uint64_t actor;
-    DSPUBGGrenadeType type;
-    DSPUBGVector trail[16];
-    int trailCount;
-    uint64_t lastSeenTick;
-    DSPUBGVector throwerPos;
-    bool hasThrowerPos;
-};
-static DSPUBGGrenadeHistory s_grenadeHistories[16] = {};
-static uint64_t s_grenadeTickCounter = 0;
 static uint64_t g_dspubgLocalPawn = 0;
 
 static uint64_t g_dspubgGNames = 0;
@@ -151,6 +139,18 @@ struct DSPUBGCamBasis {
     float k;
     float cx, cy;
 };
+
+struct DSPUBGGrenadeHistory {
+    uint64_t actor;
+    DSPUBGGrenadeType type;
+    DSPUBGVector trail[16];
+    int trailCount;
+    uint64_t lastSeenTick;
+    DSPUBGVector throwerPos;
+    bool hasThrowerPos;
+};
+static DSPUBGGrenadeHistory s_grenadeHistories[16] = {};
+static uint64_t s_grenadeTickCounter = 0;
 
 static inline bool ds_pubg_valid(uint64_t address) {
     uint64_t clean = address & 0x0000FFFFFFFFFFFFULL;

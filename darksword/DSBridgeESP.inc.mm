@@ -4553,7 +4553,7 @@ static void ds_hosted_apply_pubg(void) {
         CAShapeLayer *circleLayer = g_hostedPUBGGrenadeCircleLayers[i];
         CATextLayer *badgeLbl = g_hostedPUBGGrenadeLabels[i];
 
-        if (i >= grenadeCount || !g_pubgEspGrenade || !g_hostedESPEnabled) {
+        if (i >= grenadeCount || !g_pubgEspGrenade || !g_hostedEspEnabled) {
             if (trajLayer) trajLayer.hidden = YES;
             if (circleLayer) circleLayer.hidden = YES;
             if (badgeLbl) badgeLbl.hidden = YES;
@@ -4697,7 +4697,7 @@ static void ds_hosted_apply_pubg(void) {
 
     // 4. Center Screen Danger Banner (khi người chơi nằm trong vùng sát thương)
     if (g_hostedPUBGGrenadeDangerBanner) {
-        if (anyDanger && g_pubgEspGrenade && g_hostedESPEnabled) {
+        if (anyDanger && g_pubgEspGrenade && g_hostedEspEnabled) {
             bool isEn = (g_pubgLanguage == 1);
             NSString *bannerText = isEn
                 ? [NSString stringWithFormat:@"⚠️ WARNING: IN GRENADE BLAST ZONE! (%.1fm) ⚠️", closestDangerDist]
