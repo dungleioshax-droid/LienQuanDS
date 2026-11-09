@@ -993,6 +993,45 @@ static bool ds_pubg_identify_grenade(uint64_t actor, DSPUBGGrenadeType *outType,
     return false;
 }
 
+static bool ds_pubg_check_pawn_cooking_grenade(uint64_t pawn, DSPUBGGrenadeType *outType, char *outDisplay, size_t outCap) {
+    if (!pawn || !ds_pubg_valid(pawn)) return false;
+    static const uint64_t wmOffsets[] = { 0x2628ULL, 0x25B8ULL, 0x15B8ULL, 0x2600ULL, 0x2618ULL, 0x2620ULL, 0x2630ULL };
+    for (uint64_t wmOff : wmOffsets) {
+        uint64_t wm = ds_pubg_read_ptr(pawn + wmOff);
+        if (!wm || !ds_pubg_valid(wm)) continue;
+
+        uint64_t w = ds_pubg_read_ptr(wm + 0x5E8ULL); // CurrentWeaponReplicated
+        if (!w || !ds_pubg_valid(w)) w = ds_pubg_read_ptr(wm + 0x5F8ULL);
+        if (w && ds_pubg_valid(w)) {
+            // WeaponThrowState: 1=Prepare (rút chốt), 2=Aim (ngắm ném)
+            uint8_t throwState = ds_pubg_read_u8(w + 0x0C39ULL);
+            if (throwState == 1 || throwState == 2) {
+                char wName[64] = {0};
+                ds_pubg_get_actor_name(w, wName, sizeof(wName));
+                int32_t wid = ds_pubg_read_i32(w + 0x798ULL);
+                if (wid <= 0) wid = ds_pubg_read_i32(w + 0x68CULL);
+
+                bool isEn = (g_pubgLanguage == 1);
+                if (wid == 602003 || wid == 601003 || strcasestr(wName, "Burn") || strcasestr(wName, "Molotov")) {
+                    if (outType) *outType = DSPUBGGrenadeTypeBurn;
+                    snprintf(outDisplay, outCap, isEn ? "BOM LỬA [RÚT CHỐT]" : "BOM LỬA [RÚT CHỐT]");
+                } else if (wid == 602002 || wid == 601002 || strcasestr(wName, "Smoke")) {
+                    if (outType) *outType = DSPUBGGrenadeTypeSmoke;
+                    snprintf(outDisplay, outCap, isEn ? "BOM KHÓI [RÚT CHỐT]" : "BOM KHÓI [RÚT CHỐT]");
+                } else if (wid == 602001 || wid == 601004 || strcasestr(wName, "Stun")) {
+                    if (outType) *outType = DSPUBGGrenadeTypeStun;
+                    snprintf(outDisplay, outCap, isEn ? "BOM CHOÁNG [RÚT CHỐT]" : "BOM CHOÁNG [RÚT CHỐT]");
+                } else {
+                    if (outType) *outType = DSPUBGGrenadeTypeFrag;
+                    snprintf(outDisplay, outCap, isEn ? "LỰU ĐẠN [RÚT CHỐT]" : "LỰU ĐẠN [RÚT CHỐT]");
+                }
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay, size_t outCap) {
     if (itemId <= 0 || !outDisplay || outCap < 4) return DSPUBGItemCategoryNone;
     outDisplay[0] = '\0';
@@ -2797,6 +2836,10 @@ static void ds_pubg_tick(void) {
     int total360BotCount = 0;
     std::vector<uint64_t> seenPawns;
 
+    DSPUBGProjectedGrenade grenadeStaging[kDSPUBGMaxGrenades * 2];
+    int grenadeStagingCount = 0;
+    s_grenadeTickCounter++;
+
     auto processPawn = [&](uint64_t pawn, uint64_t psHint, bool knownBot) -> bool {
         if (!pawn || pawn == localPawn || !ds_pubg_valid(pawn)) return false;
         for (uint64_t seen : seenPawns) {
@@ -3270,6 +3313,56 @@ static void ds_pubg_tick(void) {
             staging[publishedCount++] = p;
             if (isAI) botCount++; else enemyCount++;
         }
+
+        // Cooking Grenade Detection (rút chốt trên tay địch)
+        DSPUBGGrenadeType cType = DSPUBGGrenadeTypeFrag;
+        char cDisp[32] = {0};
+        if (g_pubgEspGrenade && dist3D <= 100.0f && grenadeStagingCount < kDSPUBGMaxGrenades &&
+            ds_pubg_check_pawn_cooking_grenade(pawn, &cType, cDisp, sizeof(cDisp))) {
+            DSPUBGProjectedGrenade &cpg = grenadeStaging[grenadeStagingCount++];
+            cpg.screenX = centerX;
+            cpg.screenY = topY + boxH * 0.5f;
+            cpg.distanceMeters = dist3D;
+            cpg.isVisible = onScreen;
+            cpg.type = cType;
+            strncpy(cpg.name, cDisp, sizeof(cpg.name) - 1);
+            cpg.name[sizeof(cpg.name) - 1] = '\0';
+            cpg.damageRadiusMeters = 9.0f;
+            cpg.isLocalInDanger = (dist3D < 18.0f);
+            cpg.isCooking = true;
+            cpg.hasStart = false;
+            cpg.trajCount = 0;
+            cpg.hasBox = false;
+
+            const float rOuter = 360.0f, rMid = 260.0f, rInner = 180.0f;
+            for (int k = 0; k < kDSPUBGCirclePoints; k++) {
+                float angle = (float)k * (2.0f * (float)M_PI / (float)kDSPUBGCirclePoints);
+                float ca = cosf(angle), sa = sinf(angle);
+                DSPUBGVector cptOut = { rootLoc.X + rOuter * ca, rootLoc.Y + rOuter * sa, rootLoc.Z };
+                float csx = 0, csy = 0, cdist = 0;
+                if (ds_pubg_cam_basis_project(basis, cptOut, csx, csy, cdist)) {
+                    cpg.circlePoints[k] = CGPointMake(csx, csy);
+                    cpg.circlePointsValid[k] = true;
+                } else {
+                    cpg.circlePointsValid[k] = false;
+                }
+                DSPUBGVector cptMid = { rootLoc.X + rMid * ca, rootLoc.Y + rMid * sa, rootLoc.Z };
+                if (ds_pubg_cam_basis_project(basis, cptMid, csx, csy, cdist)) {
+                    cpg.circlePointsMid[k] = CGPointMake(csx, csy);
+                    cpg.circlePointsMidValid[k] = true;
+                } else {
+                    cpg.circlePointsMidValid[k] = false;
+                }
+                DSPUBGVector cptIn = { rootLoc.X + rInner * ca, rootLoc.Y + rInner * sa, rootLoc.Z };
+                if (ds_pubg_cam_basis_project(basis, cptIn, csx, csy, cdist)) {
+                    cpg.circlePointsInner[k] = CGPointMake(csx, csy);
+                    cpg.circlePointsInnerValid[k] = true;
+                } else {
+                    cpg.circlePointsInnerValid[k] = false;
+                }
+            }
+        }
+
         cEntry.actor = pawn;
         cEntry.isScenery = false;
         cEntry.isPawn = true;
@@ -3277,28 +3370,64 @@ static void ds_pubg_tick(void) {
         return true;
     };
 
-    DSPUBGProjectedGrenade grenadeStaging[kDSPUBGMaxGrenades * 2];
-    int grenadeStagingCount = 0;
-    s_grenadeTickCounter++;
-
     auto processGrenade = [&](uint64_t actor) -> bool {
         if (grenadeStagingCount >= kDSPUBGMaxGrenades) return false;
         if (!g_pubgEspGrenade) return false;
 
-        // 1. Fast Location check FIRST (only spatial actors within range can be grenades)
+        // 1. Fast Location check (handles both in-flight and attached-to-hand / cooking grenade)
         DSPUBGVector rootLoc = {};
         bool hasLoc = false;
+        bool isCooking = false;
         uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
         if (!rootComp || !ds_pubg_valid(rootComp)) {
             rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
         }
         if (rootComp && ds_pubg_valid(rootComp)) {
-            if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
-                if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
-                    !isnan(rootLoc.Y) && !isinf(rootLoc.Y) &&
-                    !isnan(rootLoc.Z) && !isinf(rootLoc.Z) &&
-                    (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
+            // Check if attached to player (hand socket / cooking)
+            uint64_t attachParent = ds_pubg_read_ptr(rootComp + 0x188ULL); // USceneComponent.AttachParent
+            if (attachParent && ds_pubg_valid(attachParent)) {
+                isCooking = true;
+                DSPUBGVector pLoc = {};
+                if (ds_pubg_read(attachParent + kDSPUBGSceneCompRelativeLocOffset, &pLoc, sizeof(pLoc)) &&
+                    (pLoc.X != 0.0f || pLoc.Y != 0.0f || pLoc.Z != 0.0f)) {
+                    rootLoc = pLoc;
                     hasLoc = true;
+                } else {
+                    uint64_t grandParent = ds_pubg_read_ptr(attachParent + 0x188ULL);
+                    if (grandParent && ds_pubg_valid(grandParent)) {
+                        if (ds_pubg_read(grandParent + kDSPUBGSceneCompRelativeLocOffset, &pLoc, sizeof(pLoc)) &&
+                            (pLoc.X != 0.0f || pLoc.Y != 0.0f || pLoc.Z != 0.0f)) {
+                            rootLoc = pLoc;
+                            hasLoc = true;
+                        }
+                    }
+                }
+            }
+
+            if (!hasLoc) {
+                if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
+                    if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
+                        !isnan(rootLoc.Y) && !isinf(rootLoc.Y) &&
+                        !isnan(rootLoc.Z) && !isinf(rootLoc.Z) &&
+                        (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
+                        hasLoc = true;
+                    }
+                }
+            }
+        }
+
+        // Fallback: check AActor.Instigator (APawn* holding the grenade)
+        if (!hasLoc || (rootLoc.X == 0.0f && rootLoc.Y == 0.0f && rootLoc.Z == 0.0f)) {
+            uint64_t instigator = ds_pubg_read_ptr(actor + 0x1F0ULL); // AActor.Instigator
+            if (instigator && ds_pubg_valid(instigator)) {
+                uint64_t instRoot = ds_pubg_read_ptr(instigator + kDSPUBGActorRootComponentOffset);
+                if (instRoot && ds_pubg_valid(instRoot)) {
+                    DSPUBGVector instLoc = {};
+                    if (ds_pubg_read(instRoot + kDSPUBGSceneCompRelativeLocOffset, &instLoc, sizeof(instLoc))) {
+                        rootLoc = instLoc;
+                        hasLoc = true;
+                        isCooking = true;
+                    }
                 }
             }
         }
@@ -3339,6 +3468,7 @@ static void ds_pubg_tick(void) {
                     s_grenadeHistories[h].hasThrowerPos = false;
                     uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
                     if (!inst || !ds_pubg_valid(inst)) inst = ds_pubg_read_ptr(actor + 0x140ULL);
+                    if (!inst || !ds_pubg_valid(inst)) inst = ds_pubg_read_ptr(actor + 0x1F0ULL); // AActor.Instigator
                     if (inst && ds_pubg_valid(inst)) {
                         uint64_t instRoot = ds_pubg_read_ptr(inst + kDSPUBGActorRootComponentOffset);
                         if (instRoot && ds_pubg_valid(instRoot)) {
@@ -3362,13 +3492,18 @@ static void ds_pubg_tick(void) {
         pg.distanceMeters = dist3D;
         pg.isVisible = isVisible;
         pg.type = gType;
-        strncpy(pg.name, gDisplayName, sizeof(pg.name) - 1);
-        pg.name[sizeof(pg.name) - 1] = '\0';
+        if (isCooking) {
+            snprintf(pg.name, sizeof(pg.name), "%s [RÚT CHỐT]", gDisplayName);
+        } else {
+            strncpy(pg.name, gDisplayName, sizeof(pg.name) - 1);
+            pg.name[sizeof(pg.name) - 1] = '\0';
+        }
         pg.damageRadiusMeters = dmgRadius;
-        pg.isLocalInDanger = (dist3D < 13.0f); // In metalbiew.txt: gDistance < 13.f triggers danger alert
+        pg.isLocalInDanger = isCooking ? (dist3D < 18.0f) : (dist3D < 13.0f);
+        pg.isCooking = isCooking;
         pg.hasStart = false;
-        pg.startX = screenW * 0.5f;
-        pg.startY = 25.0f;
+        pg.startX = 0;
+        pg.startY = 0;
         pg.trajCount = 0;
         pg.circlePointCount = kDSPUBGCirclePoints;
 
@@ -3395,20 +3530,42 @@ static void ds_pubg_tick(void) {
                 }
             }
 
+            int projectedTraj = 0;
+            // 1. Thrower starting point
             if (hist.hasThrowerPos) {
                 float tsx = 0, tsy = 0, tdist = 0;
                 if (ds_pubg_cam_basis_project(basis, hist.throwerPos, tsx, tsy, tdist)) {
-                    pg.startX = tsx;
-                    pg.startY = tsy;
-                    pg.hasStart = true;
+                    pg.trajPoints[projectedTraj++] = CGPointMake(tsx, tsy);
                 }
             }
-
-            int projectedTraj = 0;
-            for (int t = 0; t < hist.trailCount && projectedTraj < 16; t++) {
+            // 2. Past trail points
+            for (int t = 0; t < hist.trailCount && projectedTraj < 14; t++) {
                 float psx = 0, psy = 0, pdist = 0;
                 if (ds_pubg_cam_basis_project(basis, hist.trail[t], psx, psy, pdist)) {
                     pg.trajPoints[projectedTraj++] = CGPointMake(psx, psy);
+                }
+            }
+            // 3. Current grenade position
+            if (isVisible && projectedTraj < 32) {
+                pg.trajPoints[projectedTraj++] = CGPointMake(sx, sy);
+            }
+            // 4. Future flight arc from ComponentVelocity (parabolic curve: P(t) = P0 + V0*t + 0.5*g*t^2)
+            DSPUBGVector vel = {};
+            if (rootComp && ds_pubg_read(rootComp + 0x2C0ULL, &vel, sizeof(vel))) { // ComponentVelocity
+                float speedSq = vel.X * vel.X + vel.Y * vel.Y + vel.Z * vel.Z;
+                if (speedSq > 40000.0f) { // speed > 200 cm/s (2 m/s) -> in flight
+                    for (int s = 1; s <= 12 && projectedTraj < 32; s++) {
+                        float t = (float)s * 0.08f;
+                        DSPUBGVector arcPt = {
+                            rootLoc.X + vel.X * t,
+                            rootLoc.Y + vel.Y * t,
+                            rootLoc.Z + vel.Z * t - 0.5f * 980.0f * t * t
+                        };
+                        float asx = 0, asy = 0, adist = 0;
+                        if (ds_pubg_cam_basis_project(basis, arcPt, asx, asy, adist)) {
+                            pg.trajPoints[projectedTraj++] = CGPointMake(asx, asy);
+                        }
+                    }
                 }
             }
             pg.trajCount = projectedTraj;

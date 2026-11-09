@@ -4552,6 +4552,7 @@ static void ds_hosted_apply_pubg(void) {
     int grenadeCount = ds_pubg_copy_projected_grenades(grenades, &grenadeEpoch);
 
     bool anyDanger = false;
+    bool closestIsCooking = false;
     DSPUBGGrenadeType closestDangerType = DSPUBGGrenadeTypeFrag;
     float closestDangerDist = 999.0f;
 
@@ -4580,6 +4581,7 @@ static void ds_hosted_apply_pubg(void) {
             if (g.distanceMeters < closestDangerDist) {
                 closestDangerDist = g.distanceMeters;
                 closestDangerType = g.type;
+                closestIsCooking = g.isCooking;
             }
         }
 
@@ -4620,36 +4622,17 @@ static void ds_hosted_apply_pubg(void) {
                 break;
         }
 
-        // 1. Line bom ném ra (Trajectory line & Snapline)
+        // 1. Line bom ném ra (Đường bay & quỹ đạo của quả bom nối từ bom ra phía trước)
         if (trajLayer) {
-            UIBezierPath *linePath = [UIBezierPath bezierPath];
-            bool hasLine = false;
-
-            // Flight trajectory curve
-            if (g.trajCount > 1) {
+            if (g.trajCount >= 2) {
+                UIBezierPath *linePath = [UIBezierPath bezierPath];
                 [linePath moveToPoint:g.trajPoints[0]];
                 for (int t = 1; t < g.trajCount; t++) {
                     [linePath addLineToPoint:g.trajPoints[t]];
                 }
-                if (g.isVisible) {
-                    [linePath addLineToPoint:CGPointMake(g.screenX, g.screenY)];
-                }
-                hasLine = true;
-            }
-
-            // Snapline from screen top/thrower directly to grenade
-            if (g.isVisible) {
-                CGFloat originX = g.hasStart ? g.startX : (width * 0.5f);
-                CGFloat originY = g.hasStart ? g.startY : 25.0f;
-                [linePath moveToPoint:CGPointMake(originX, originY)];
-                [linePath addLineToPoint:CGPointMake(g.screenX, g.screenY)];
-                hasLine = true;
-            }
-
-            if (hasLine) {
                 trajLayer.path = linePath.CGPath;
                 trajLayer.strokeColor = baseColor.CGColor;
-                trajLayer.lineWidth = fmaxf(1.5f, g_pubgEspThickness + 0.6f);
+                trajLayer.lineWidth = fmaxf(2.0f, g_pubgEspThickness + 0.8f);
                 trajLayer.hidden = NO;
             } else {
                 trajLayer.hidden = YES;
@@ -4779,21 +4762,25 @@ static void ds_hosted_apply_pubg(void) {
         if (anyDanger && g_pubgEspGrenade && g_hostedEspEnabled) {
             NSString *bannerText = nil;
             UIColor *bannerColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f];
-            switch (closestDangerType) {
-                case DSPUBGGrenadeTypeFrag:
-                    bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN BOM !! (%.1fm) ⚠️", closestDangerDist];
-                    break;
-                case DSPUBGGrenadeTypeBurn:
-                    bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.1fm) 🔥", closestDangerDist];
-                    break;
-                case DSPUBGGrenadeTypeSmoke:
-                    bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.1fm)", closestDangerDist];
-                    bannerColor = [UIColor colorWithWhite:0.95 alpha:1.0f];
-                    break;
-                case DSPUBGGrenadeTypeStun:
-                    bannerText = [NSString stringWithFormat:@"⚡ !! CẨN THẬN BOM CHOÁNG !! (%.1fm) ⚡", closestDangerDist];
-                    bannerColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f];
-                    break;
+            if (closestIsCooking) {
+                bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN: ĐỊCH ĐANG RÚT CHỐT BOM !! (%.1fm) ⚠️", closestDangerDist];
+            } else {
+                switch (closestDangerType) {
+                    case DSPUBGGrenadeTypeFrag:
+                        bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN BOM !! (%.1fm) ⚠️", closestDangerDist];
+                        break;
+                    case DSPUBGGrenadeTypeBurn:
+                        bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.1fm) 🔥", closestDangerDist];
+                        break;
+                    case DSPUBGGrenadeTypeSmoke:
+                        bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.1fm)", closestDangerDist];
+                        bannerColor = [UIColor colorWithWhite:0.95 alpha:1.0f];
+                        break;
+                    case DSPUBGGrenadeTypeStun:
+                        bannerText = [NSString stringWithFormat:@"⚡ !! CẨN THẬN BOM CHOÁNG !! (%.1fm) ⚡", closestDangerDist];
+                        bannerColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f];
+                        break;
+                }
             }
 
             NSAttributedString *bannerAttr = [[NSAttributedString alloc] initWithString:bannerText attributes:@{

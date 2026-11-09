@@ -1024,7 +1024,7 @@ typedef struct {
     bool hasStart;
 
     int trajCount;
-    CGPoint trajPoints[16];
+    CGPoint trajPoints[32];
 
     int circlePointCount;
     CGPoint circlePoints[kDSPUBGCirclePoints];
@@ -1039,6 +1039,8 @@ typedef struct {
     bool hasBox;
     CGPoint boxCorners[8];
     bool boxCornersValid[8];
+
+    bool isCooking;
 } DSPUBGProjectedGrenade;
 
 static const int kDSPUBGMaxPlayers = 96;
