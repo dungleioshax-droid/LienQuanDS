@@ -4639,26 +4639,19 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // Helper lambda to build smooth circle path
+        // Helper lambda to build smooth circle path matching Circle3D
         auto buildCirclePath = [&](const CGPoint *pts, const bool *validPts, int count) -> UIBezierPath * {
             UIBezierPath *p = [UIBezierPath bezierPath];
-            int validCount = 0;
-            bool inSubpath = false;
-            for (int k = 0; k <= count; k++) {
-                int idx = k % count;
-                if (validPts[idx]) {
-                    if (!inSubpath) {
-                        [p moveToPoint:pts[idx]];
-                        inSubpath = true;
-                    } else {
-                        [p addLineToPoint:pts[idx]];
-                    }
-                    validCount++;
-                } else {
-                    inSubpath = false;
+            int validSegments = 0;
+            for (int k = 0; k < count; k++) {
+                int next = (k + 1) % count;
+                if (validPts[k] && validPts[next]) {
+                    [p moveToPoint:pts[k]];
+                    [p addLineToPoint:pts[next]];
+                    validSegments++;
                 }
             }
-            return validCount >= 3 ? p : nil;
+            return validSegments >= 3 ? p : nil;
         };
 
         // 2. 3 Concentric Circles matching metalbiew.txt:
@@ -4983,7 +4976,10 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
     {
         NSDictionary *noAnim = @{@"position": [NSNull null], @"hidden": [NSNull null],
                                  @"string": [NSNull null], @"bounds": [NSNull null],
-                                 @"frame": [NSNull null], @"backgroundColor": [NSNull null]};
+                                 @"frame": [NSNull null], @"backgroundColor": [NSNull null],
+                                 @"path": [NSNull null], @"strokeColor": [NSNull null],
+                                 @"fillColor": [NSNull null], @"lineWidth": [NSNull null],
+                                 @"lineDashPhase": [NSNull null]};
         CGFloat scale = UIScreen.mainScreen.scale;
         CGFloat minimapIconSize = ds_hosted_lq_minimap_icon_size(
             MIN(CGRectGetWidth(content), CGRectGetHeight(content)));

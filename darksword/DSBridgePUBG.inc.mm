@@ -3362,10 +3362,7 @@ static void ds_pubg_tick(void) {
             return false;
         }
 
-        float sx = 0, sy = 0, dist = 0;
-        bool isVisible = ds_pubg_cam_basis_project(basis, rootLoc, sx, sy, dist);
-
-        // 4. Update / find history slot for real flight trail
+        // 4. Update / find history slot for real flight trail & motion smoothing
         int histSlot = -1;
         for (int h = 0; h < 16; h++) {
             if (s_grenadeHistories[h].actor == actor) {
@@ -3387,6 +3384,39 @@ static void ds_pubg_tick(void) {
             }
         }
 
+        if (histSlot >= 0) {
+            DSPUBGGrenadeHistory &hist = s_grenadeHistories[histSlot];
+            hist.lastSeenTick = s_grenadeTickCounter;
+
+            float mdx = (rootLoc.X - hist.lastLoc.X);
+            float mdy = (rootLoc.Y - hist.lastLoc.Y);
+            float mdz = (rootLoc.Z - hist.lastLoc.Z);
+            float moveDist = sqrtf(mdx * mdx + mdy * mdy + mdz * mdz);
+
+            // Smooth position during flight to eliminate 20Hz network tick stepping
+            if (moveDist > 5.0f && moveDist < 600.0f && hist.lastTimestamp > 0.0) {
+                rootLoc.X = hist.lastLoc.X * 0.35f + rootLoc.X * 0.65f;
+                rootLoc.Y = hist.lastLoc.Y * 0.35f + rootLoc.Y * 0.65f;
+                rootLoc.Z = hist.lastLoc.Z * 0.35f + rootLoc.Z * 0.65f;
+            }
+
+            // If moving > 30cm, record actual flight trail point
+            if (moveDist > 30.0f) {
+                if (hist.trailCount < 30) {
+                    hist.trail[hist.trailCount++] = rootLoc;
+                } else {
+                    for (int k = 0; k < 29; k++) hist.trail[k] = hist.trail[k + 1];
+                    hist.trail[29] = rootLoc;
+                }
+            }
+            hist.lastLoc = rootLoc;
+            hist.lastTimestamp = CACurrentMediaTime();
+        }
+
+        // Project grenade center with smoothed location
+        float sx = 0, sy = 0, dist = 0;
+        bool isVisible = ds_pubg_cam_basis_project(basis, rootLoc, sx, sy, dist);
+
         DSPUBGProjectedGrenade &pg = grenadeStaging[grenadeStagingCount++];
         pg.screenX = sx;
         pg.screenY = sy;
@@ -3403,25 +3433,6 @@ static void ds_pubg_tick(void) {
         // Real Flight Trail: Only tracks actual positions when grenade moves in the air
         if (histSlot >= 0) {
             DSPUBGGrenadeHistory &hist = s_grenadeHistories[histSlot];
-            hist.lastSeenTick = s_grenadeTickCounter;
-
-            float mdx = (rootLoc.X - hist.lastLoc.X) * 0.01f;
-            float mdy = (rootLoc.Y - hist.lastLoc.Y) * 0.01f;
-            float mdz = (rootLoc.Z - hist.lastLoc.Z) * 0.01f;
-            float moveDist = sqrtf(mdx * mdx + mdy * mdy + mdz * mdz);
-
-            // If moving > 30cm, record actual flight point
-            if (moveDist > 0.3f) {
-                if (hist.trailCount < 30) {
-                    hist.trail[hist.trailCount++] = rootLoc;
-                } else {
-                    for (int k = 0; k < 29; k++) hist.trail[k] = hist.trail[k + 1];
-                    hist.trail[29] = rootLoc;
-                }
-                hist.lastLoc = rootLoc;
-            }
-
-            // Project real flight path to screen
             if (hist.trailCount >= 2) {
                 int count = 0;
                 for (int t = 0; t < hist.trailCount && count < (kDSPUBGMaxTrajPoints - 1); t++) {
