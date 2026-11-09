@@ -859,17 +859,25 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
         return DSPUBGItemCategoryWeapon;
     }
 
-    // 6. Crates & AirDrops
+    // 6. Crates & AirDrops & Tokens
     if (strcasestr(name, "AirDrop")) {
-        snprintf(outDisplay, outCap, "HÒM THÍNH");
+        snprintf(outDisplay, outCap, (g_pubgLanguage == 1) ? "AirDrop" : "HÒM THÍNH");
         return DSPUBGItemCategoryCrate;
     }
     if (strcasestr(name, "DeadBox") || strcasestr(name, "PlayerDeadInventoryBox") || strcasestr(name, "TombBox")) {
-        snprintf(outDisplay, outCap, "Hòm Xác");
+        snprintf(outDisplay, outCap, (g_pubgLanguage == 1) ? "DeadBox" : "Hòm Xác");
         return DSPUBGItemCategoryCrate;
     }
     if (strcasestr(name, "PickUpListWrapper")) {
-        snprintf(outDisplay, outCap, "Đồ Rơi");
+        snprintf(outDisplay, outCap, (g_pubgLanguage == 1) ? "DropLoot" : "Đồ Rơi");
+        return DSPUBGItemCategoryCrate;
+    }
+    if (strcasestr(name, "Token") || strcasestr(name, "ShopToken") || strcasestr(name, "GoldToken")) {
+        snprintf(outDisplay, outCap, (g_pubgLanguage == 1) ? "TokenShop" : "Xu Shop");
+        return DSPUBGItemCategoryCrate;
+    }
+    if (strcasestr(name, "GasCan") || strcasestr(name, "JerryCan") || strcasestr(name, "FuelCan")) {
+        snprintf(outDisplay, outCap, (g_pubgLanguage == 1) ? "Gascan" : "Bình Xăng");
         return DSPUBGItemCategoryCrate;
     }
 
@@ -879,12 +887,13 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
 static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay, size_t outCap) {
     if (itemId <= 0 || !outDisplay || outCap < 4) return DSPUBGItemCategoryNone;
     outDisplay[0] = '\0';
+    bool isEn = (g_pubgLanguage == 1);
 
     switch (itemId) {
         // --- Assault Rifles (AR) ---
         case 101001: snprintf(outDisplay, outCap, "AKM"); return DSPUBGItemCategoryWeapon;
         case 101002: snprintf(outDisplay, outCap, "M16A4"); return DSPUBGItemCategoryWeapon;
-        case 101003: snprintf(outDisplay, outCap, "SCAR-L"); return DSPUBGItemCategoryWeapon;
+        case 101003: snprintf(outDisplay, outCap, isEn ? "SCARL" : "SCAR-L"); return DSPUBGItemCategoryWeapon;
         case 101004: snprintf(outDisplay, outCap, "M416"); return DSPUBGItemCategoryWeapon;
         case 101005: snprintf(outDisplay, outCap, "Groza"); return DSPUBGItemCategoryWeapon;
         case 101006: snprintf(outDisplay, outCap, "AUG"); return DSPUBGItemCategoryWeapon;
@@ -900,7 +909,7 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 102002: snprintf(outDisplay, outCap, "UMP45"); return DSPUBGItemCategoryWeapon;
         case 102003: snprintf(outDisplay, outCap, "Vector"); return DSPUBGItemCategoryWeapon;
         case 102004: snprintf(outDisplay, outCap, "Tommy Gun"); return DSPUBGItemCategoryWeapon;
-        case 102005: snprintf(outDisplay, outCap, "Bizon PP-19"); return DSPUBGItemCategoryWeapon;
+        case 102005: snprintf(outDisplay, outCap, isEn ? "Bizon" : "PP-19 Bizon"); return DSPUBGItemCategoryWeapon;
         case 102007: snprintf(outDisplay, outCap, "MP5K"); return DSPUBGItemCategoryWeapon;
         case 102008: snprintf(outDisplay, outCap, "P90"); return DSPUBGItemCategoryWeapon;
 
@@ -941,80 +950,84 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 106007: snprintf(outDisplay, outCap, "Flare Gun"); return DSPUBGItemCategoryWeapon;
         case 106008: snprintf(outDisplay, outCap, "Skorpion"); return DSPUBGItemCategoryWeapon;
         case 106010: snprintf(outDisplay, outCap, "Deagle"); return DSPUBGItemCategoryWeapon;
-        case 107001: snprintf(outDisplay, outCap, "Nỏ"); return DSPUBGItemCategoryWeapon;
-        case 108001: snprintf(outDisplay, outCap, "Chảo"); return DSPUBGItemCategoryWeapon;
+        case 107001: snprintf(outDisplay, outCap, isEn ? "Crossbow" : "Nỏ"); return DSPUBGItemCategoryWeapon;
+        case 108001: snprintf(outDisplay, outCap, isEn ? "Pan" : "Chảo"); return DSPUBGItemCategoryWeapon;
 
         // --- Scopes & Sights ---
-        case 201001: snprintf(outDisplay, outCap, "Red Dot"); return DSPUBGItemCategoryScope;
+        case 201001: snprintf(outDisplay, outCap, "RedDot"); return DSPUBGItemCategoryScope;
         case 201002: snprintf(outDisplay, outCap, "Holo"); return DSPUBGItemCategoryScope;
-        case 201003: snprintf(outDisplay, outCap, "Scope 2x"); return DSPUBGItemCategoryScope;
-        case 201004: snprintf(outDisplay, outCap, "Scope 4x"); return DSPUBGItemCategoryScope;
-        case 201005: snprintf(outDisplay, outCap, "Scope 8x"); return DSPUBGItemCategoryScope;
-        case 201009: snprintf(outDisplay, outCap, "Scope 3x"); return DSPUBGItemCategoryScope;
-        case 201010: snprintf(outDisplay, outCap, "Scope 6x"); return DSPUBGItemCategoryScope;
+        case 201003: snprintf(outDisplay, outCap, isEn ? "Scope2x" : "Scope 2x"); return DSPUBGItemCategoryScope;
+        case 201004: snprintf(outDisplay, outCap, isEn ? "Scope4x" : "Scope 4x"); return DSPUBGItemCategoryScope;
+        case 201005: snprintf(outDisplay, outCap, isEn ? "Scope8x" : "Scope 8x"); return DSPUBGItemCategoryScope;
+        case 201009: snprintf(outDisplay, outCap, isEn ? "Scope3x" : "Scope 3x"); return DSPUBGItemCategoryScope;
+        case 201010: snprintf(outDisplay, outCap, isEn ? "Scope6x" : "Scope 6x"); return DSPUBGItemCategoryScope;
         case 201011: snprintf(outDisplay, outCap, "Canted Sight"); return DSPUBGItemCategoryScope;
-        case 201012: snprintf(outDisplay, outCap, "Scope 15x"); return DSPUBGItemCategoryScope;
+        case 201012: snprintf(outDisplay, outCap, isEn ? "Scope15x" : "Scope 15x"); return DSPUBGItemCategoryScope;
 
         // --- Armor & Helmets ---
-        case 501001: case 501004: snprintf(outDisplay, outCap, "Giáp 1"); return DSPUBGItemCategoryArmor;
-        case 501002: case 501005: snprintf(outDisplay, outCap, "Giáp 2"); return DSPUBGItemCategoryArmor;
-        case 501003: case 501006: snprintf(outDisplay, outCap, "Giáp 3"); return DSPUBGItemCategoryArmor;
+        case 501001: case 501004: snprintf(outDisplay, outCap, isEn ? "ArmorLv1" : "Giáp 1"); return DSPUBGItemCategoryArmor;
+        case 501002: case 501005: snprintf(outDisplay, outCap, isEn ? "ArmorLv2" : "Giáp 2"); return DSPUBGItemCategoryArmor;
+        case 501003: case 501006: snprintf(outDisplay, outCap, isEn ? "ArmorLv3" : "Giáp 3"); return DSPUBGItemCategoryArmor;
 
-        case 502001: snprintf(outDisplay, outCap, "Mũ 1"); return DSPUBGItemCategoryArmor;
-        case 502002: snprintf(outDisplay, outCap, "Mũ 2"); return DSPUBGItemCategoryArmor;
-        case 502003: snprintf(outDisplay, outCap, "Mũ 3"); return DSPUBGItemCategoryArmor;
+        case 502001: snprintf(outDisplay, outCap, isEn ? "HelmetLv1" : "Mũ 1"); return DSPUBGItemCategoryArmor;
+        case 502002: snprintf(outDisplay, outCap, isEn ? "HelmetLv2" : "Mũ 2"); return DSPUBGItemCategoryArmor;
+        case 502003: snprintf(outDisplay, outCap, isEn ? "HelmetLv3" : "Mũ 3"); return DSPUBGItemCategoryArmor;
 
         // --- Backpacks ---
-        case 503001: snprintf(outDisplay, outCap, "Balo 1"); return DSPUBGItemCategoryBag;
-        case 503002: snprintf(outDisplay, outCap, "Balo 2"); return DSPUBGItemCategoryBag;
-        case 503003: snprintf(outDisplay, outCap, "Balo 3"); return DSPUBGItemCategoryBag;
+        case 503001: snprintf(outDisplay, outCap, isEn ? "BagLv1" : "Balo 1"); return DSPUBGItemCategoryBag;
+        case 503002: snprintf(outDisplay, outCap, isEn ? "BagLv2" : "Balo 2"); return DSPUBGItemCategoryBag;
+        case 503003: snprintf(outDisplay, outCap, isEn ? "BagLv3" : "Balo 3"); return DSPUBGItemCategoryBag;
 
         // --- Medical / Boosters ---
-        case 601001: snprintf(outDisplay, outCap, "Băng Gạc"); return DSPUBGItemCategoryCrate;
-        case 601002: snprintf(outDisplay, outCap, "First Aid"); return DSPUBGItemCategoryCrate;
-        case 601003: snprintf(outDisplay, outCap, "Med Kit"); return DSPUBGItemCategoryCrate;
-        case 601004: snprintf(outDisplay, outCap, "Nước Tăng Lực"); return DSPUBGItemCategoryCrate;
-        case 601005: snprintf(outDisplay, outCap, "Giảm Đau"); return DSPUBGItemCategoryCrate;
+        case 601001: snprintf(outDisplay, outCap, isEn ? "Bandage" : "Băng Gạc"); return DSPUBGItemCategoryCrate;
+        case 601002: snprintf(outDisplay, outCap, isEn ? "FirstaidKit" : "First Aid"); return DSPUBGItemCategoryCrate;
+        case 601003: snprintf(outDisplay, outCap, isEn ? "MedKit" : "Med Kit"); return DSPUBGItemCategoryCrate;
+        case 601004: snprintf(outDisplay, outCap, isEn ? "EnergyDrink" : "Nước Tăng Lực"); return DSPUBGItemCategoryCrate;
+        case 601005: snprintf(outDisplay, outCap, isEn ? "Painkiller" : "Giảm Đau"); return DSPUBGItemCategoryCrate;
         case 601006: snprintf(outDisplay, outCap, "Adrenaline"); return DSPUBGItemCategoryCrate;
 
         // --- Throwables ---
-        case 602001: snprintf(outDisplay, outCap, "Lựu Đạn"); return DSPUBGItemCategoryWeapon;
-        case 602002: snprintf(outDisplay, outCap, "Bom Khói"); return DSPUBGItemCategoryWeapon;
-        case 602003: snprintf(outDisplay, outCap, "Bom Xăng"); return DSPUBGItemCategoryWeapon;
-        case 602004: snprintf(outDisplay, outCap, "Choáng"); return DSPUBGItemCategoryWeapon;
+        case 602001: snprintf(outDisplay, outCap, isEn ? "Grenade" : "Lựu Đạn"); return DSPUBGItemCategoryWeapon;
+        case 602002: snprintf(outDisplay, outCap, isEn ? "Smoke" : "Bom Khói"); return DSPUBGItemCategoryWeapon;
+        case 602003: snprintf(outDisplay, outCap, isEn ? "Molotof" : "Bom Xăng"); return DSPUBGItemCategoryWeapon;
+        case 602004: snprintf(outDisplay, outCap, isEn ? "Flash" : "Choáng"); return DSPUBGItemCategoryWeapon;
 
         // --- Ammo ---
-        case 301001: snprintf(outDisplay, outCap, "Đạn 9mm"); return DSPUBGItemCategoryCrate;
-        case 302001: snprintf(outDisplay, outCap, "Đạn 7.62"); return DSPUBGItemCategoryCrate;
-        case 303001: snprintf(outDisplay, outCap, "Đạn 5.56"); return DSPUBGItemCategoryCrate;
-        case 304001: snprintf(outDisplay, outCap, "Đạn 12G"); return DSPUBGItemCategoryCrate;
-        case 305001: snprintf(outDisplay, outCap, "Đạn .300"); return DSPUBGItemCategoryCrate;
-        case 306001: snprintf(outDisplay, outCap, "Đạn Flare"); return DSPUBGItemCategoryWeapon;
-        case 307001: snprintf(outDisplay, outCap, "Đạn .45"); return DSPUBGItemCategoryCrate;
-        case 308001: snprintf(outDisplay, outCap, "Đạn 5.7"); return DSPUBGItemCategoryCrate;
+        case 301001: snprintf(outDisplay, outCap, isEn ? "9mm" : "Đạn 9mm"); return DSPUBGItemCategoryCrate;
+        case 302001: snprintf(outDisplay, outCap, isEn ? "7.62mm" : "Đạn 7.62"); return DSPUBGItemCategoryCrate;
+        case 303001: snprintf(outDisplay, outCap, isEn ? "5.56mm" : "Đạn 5.56"); return DSPUBGItemCategoryCrate;
+        case 304001: snprintf(outDisplay, outCap, isEn ? "12Guage" : "Đạn 12G"); return DSPUBGItemCategoryCrate;
+        case 305001: snprintf(outDisplay, outCap, isEn ? ".300 Mag" : "Đạn .300"); return DSPUBGItemCategoryCrate;
+        case 306001: snprintf(outDisplay, outCap, isEn ? "FlareAmmo" : "Đạn Flare"); return DSPUBGItemCategoryWeapon;
+        case 307001: snprintf(outDisplay, outCap, isEn ? "45ACP" : "Đạn .45"); return DSPUBGItemCategoryCrate;
+        case 308001: snprintf(outDisplay, outCap, isEn ? "5.7mm" : "Đạn 5.7"); return DSPUBGItemCategoryCrate;
+
+        // --- Shop Tokens & Event Currency ---
+        case 603001: case 603002: case 603003: case 603004:
+            snprintf(outDisplay, outCap, isEn ? "TokenShop" : "Xu Shop"); return DSPUBGItemCategoryCrate;
 
         default:
             break;
     }
 
     if (itemId >= 101000 && itemId < 109000) {
-        snprintf(outDisplay, outCap, "Súng (#%d)", itemId % 1000);
+        snprintf(outDisplay, outCap, isEn ? "Gun #%d" : "Súng (#%d)", itemId % 1000);
         return DSPUBGItemCategoryWeapon;
     }
     if (itemId >= 201000 && itemId < 202000) {
-        snprintf(outDisplay, outCap, "Scope (#%d)", itemId % 1000);
+        snprintf(outDisplay, outCap, isEn ? "Scope #%d" : "Scope (#%d)", itemId % 1000);
         return DSPUBGItemCategoryScope;
     }
     if (itemId >= 501000 && itemId < 502000) {
-        snprintf(outDisplay, outCap, "Giáp (#%d)", itemId % 10);
+        snprintf(outDisplay, outCap, isEn ? "Armor #%d" : "Giáp (#%d)", itemId % 10);
         return DSPUBGItemCategoryArmor;
     }
     if (itemId >= 502000 && itemId < 503000) {
-        snprintf(outDisplay, outCap, "Mũ (#%d)", itemId % 10);
+        snprintf(outDisplay, outCap, isEn ? "Helmet #%d" : "Mũ (#%d)", itemId % 10);
         return DSPUBGItemCategoryArmor;
     }
     if (itemId >= 503000 && itemId < 504000) {
-        snprintf(outDisplay, outCap, "Balo (#%d)", itemId % 10);
+        snprintf(outDisplay, outCap, isEn ? "Bag #%d" : "Balo (#%d)", itemId % 10);
         return DSPUBGItemCategoryBag;
     }
 
@@ -1410,6 +1423,157 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     }
 
     return DSPUBGItemCategoryNone;
+}
+
+struct CrateItemInfo {
+    char name[36];
+    DSPUBGItemCategory category;
+    int priority;
+};
+
+static std::vector<CrateItemInfo> ds_pubg_get_crate_items(uint64_t crateActor) {
+    std::vector<CrateItemInfo> results;
+    if (!crateActor || !ds_pubg_valid(crateActor)) return results;
+
+    uint8_t isEmpty = ds_pubg_read_u8(crateActor + 0x729ULL) & 1;
+    if (isEmpty) return results;
+
+    std::vector<uint64_t> targets;
+    targets.push_back(crateActor);
+
+    // Look for attached wrappers or inventory components
+    static const uint64_t kCompOffsets[] = {
+        0x5B8ULL, 0x5C8ULL, 0x620ULL, 0x630ULL, 0x640ULL, 0x650ULL, 0x660ULL, 0x680ULL, 0x6F0ULL, 0x700ULL
+    };
+    for (uint64_t cOff : kCompOffsets) {
+        uint64_t comp = ds_pubg_read_ptr(crateActor + cOff);
+        if (comp && comp != crateActor && ds_pubg_valid(comp)) {
+            targets.push_back(comp);
+        }
+    }
+
+    auto addItem = [&](int itemId, int count) {
+        if (itemId < 101001 || itemId > 699999) return;
+        char dName[36] = {0};
+        DSPUBGItemCategory cat = ds_pubg_classify_item_id(itemId, dName, sizeof(dName));
+        if (cat == DSPUBGItemCategoryNone) return;
+
+        int prio = 10;
+        if (itemId == 101004 || itemId == 103003 || itemId == 101005 || itemId == 103007 ||
+            itemId == 105003 || itemId == 103013 || itemId == 102008 || itemId == 101006 ||
+            itemId == 106007 || itemId == 101008 || itemId == 103001 || itemId == 103002) {
+            prio = 1; // M416, AWM, Groza, Mk14, MG3, AMR, P90, AUG, Flare Gun, M762, Kar98k, M24
+        } else if (cat == DSPUBGItemCategoryWeapon) {
+            prio = 2; // Other weapons
+        } else if (itemId == 501003 || itemId == 501006 || itemId == 502003 || itemId == 503003) {
+            prio = 3; // L3 Armor, Helmet, Bag
+        } else if (itemId == 201005 || itemId == 201010 || itemId == 201012) {
+            prio = 4; // Scope 8x, 6x, 15x
+        } else if (itemId == 501002 || itemId == 501005 || itemId == 502002 || itemId == 503002) {
+            prio = 5; // L2 Armor, Helmet, Bag
+        } else if (itemId == 201004 || itemId == 201009) {
+            prio = 6; // Scope 4x, 3x
+        } else if (itemId == 601003 || itemId == 601006 || itemId == 601002) {
+            prio = 7; // Med Kit, Adrenaline, First Aid
+        } else if (itemId == 305001 || itemId == 303001 || itemId == 302001) {
+            prio = 8; // Ammo
+        }
+
+        // Avoid exact duplicates in list
+        for (const auto &ex : results) {
+            if (strcmp(ex.name, dName) == 0) return;
+        }
+
+        CrateItemInfo info;
+        strncpy(info.name, dName, sizeof(info.name) - 1);
+        info.name[sizeof(info.name) - 1] = '\0';
+        info.category = cat;
+        info.priority = prio;
+        results.push_back(info);
+    };
+
+    for (uint64_t target : targets) {
+        if (!target || !ds_pubg_valid(target)) continue;
+
+        for (uint64_t off = 0x580ULL; off <= 0x980ULL; off += 8ULL) {
+            uint64_t dataPtr = ds_pubg_read_ptr(target + off);
+            if (!dataPtr || !ds_pubg_valid(dataPtr)) continue;
+
+            uint32_t count = ds_pubg_read_u32(target + off + 8ULL);
+            if (count == 0 || count > 64) continue;
+            uint32_t max = ds_pubg_read_u32(target + off + 12ULL);
+            if (max < count || max > 128) continue;
+
+            // Test if pointer array
+            int validItemsPtr = 0;
+            int testLimit = (count > 6) ? 6 : (int)count;
+            for (int t = 0; t < testLimit; t++) {
+                uint64_t obj = ds_pubg_read_ptr(dataPtr + t * 8ULL);
+                if (obj && ds_pubg_valid(obj)) {
+                    int id = ds_pubg_read_i32(obj + 0x5FCULL);
+                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x758ULL);
+                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x2F4ULL);
+                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0xCCULL);
+                    if (id >= 101001 && id <= 699999) validItemsPtr++;
+                }
+            }
+
+            if (validItemsPtr > 0) {
+                for (uint32_t i = 0; i < count; i++) {
+                    uint64_t obj = ds_pubg_read_ptr(dataPtr + i * 8ULL);
+                    if (!obj || !ds_pubg_valid(obj)) continue;
+                    int id = ds_pubg_read_i32(obj + 0x5FCULL);
+                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x758ULL);
+                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x2F4ULL);
+                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0xCCULL);
+                    int qty = ds_pubg_read_i32(obj + 0x618ULL);
+                    addItem(id, qty);
+                }
+                break;
+            }
+
+            // Test struct array
+            static const int kStrides[] = { 48, 56, 64, 40, 32, 72, 80 };
+            static const int kIdOffsets[] = { 4, 0, 8, 12, 16, 20 };
+            int bestStride = 0, bestIdOff = 0, bestMatchCount = 0;
+
+            for (int stride : kStrides) {
+                for (int idOff : kIdOffsets) {
+                    int matches = 0;
+                    for (int t = 0; t < testLimit; t++) {
+                        int id = ds_pubg_read_i32(dataPtr + t * stride + idOff);
+                        if (id >= 101001 && id <= 699999) matches++;
+                    }
+                    if (matches > bestMatchCount) {
+                        bestMatchCount = matches;
+                        bestStride = stride;
+                        bestIdOff = idOff;
+                    }
+                }
+                if (bestMatchCount >= 2 || (count == 1 && bestMatchCount == 1)) break;
+            }
+
+            if (bestMatchCount > 0) {
+                for (uint32_t i = 0; i < count; i++) {
+                    uint64_t elem = dataPtr + i * bestStride;
+                    int id = ds_pubg_read_i32(elem + bestIdOff);
+                    int qty = ds_pubg_read_i32(elem + bestIdOff + 4);
+                    addItem(id, qty);
+                }
+                break;
+            }
+        }
+        if (!results.empty()) break;
+    }
+
+    if (!results.empty()) {
+        std::sort(results.begin(), results.end(), [](const CrateItemInfo &a, const CrateItemInfo &b) {
+            if (a.priority != b.priority) return a.priority < b.priority;
+            return strcmp(a.name, b.name) < 0;
+        });
+        if (results.size() > 10) results.resize(10);
+    }
+    return results;
 }
 
 // Automatically scans __DATA sections of the main Mach-O image to discover GEngine or GWorld dynamically.
@@ -3100,6 +3264,25 @@ static void ds_pubg_tick(void) {
                         ((cat == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
         if (dist3D > maxDist) return;
 
+        if (cat == DSPUBGItemCategoryCrate) {
+            std::vector<CrateItemInfo> cItems = ds_pubg_get_crate_items(actor);
+            if (!cItems.empty()) {
+                for (const auto &ci : cItems) {
+                    if (itemStagingCount >= (kDSPUBGMaxItems * 2 - 2)) break;
+                    DSPUBGProjectedItem &pi = itemStaging[itemStagingCount++];
+                    pi.screenX = sx;
+                    pi.screenY = sy;
+                    pi.distanceMeters = dist3D;
+                    pi.category = ci.category;
+                    pi.isVisible = true;
+                    strncpy(pi.name, ci.name, sizeof(pi.name) - 1);
+                    pi.name[sizeof(pi.name) - 1] = '\0';
+                    pi.hp = 0.0f; pi.hpMax = 0.0f; pi.fuel = 0.0f; pi.fuelMax = 0.0f;
+                }
+                return;
+            }
+        }
+
         DSPUBGProjectedItem &pi = itemStaging[itemStagingCount++];
         pi.screenX = sx;
         pi.screenY = sy;
@@ -3234,7 +3417,7 @@ static void ds_pubg_tick(void) {
         });
     }
 
-    int copyItemCount = itemStagingCount > 36 ? 36 : itemStagingCount;
+    int copyItemCount = itemStagingCount > kDSPUBGMaxItems ? kDSPUBGMaxItems : itemStagingCount;
 
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));

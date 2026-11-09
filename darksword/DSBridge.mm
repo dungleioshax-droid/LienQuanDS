@@ -1000,7 +1000,7 @@ typedef struct {
 } DSPUBGProjectedItem;
 
 static const int kDSPUBGMaxPlayers = 96;
-static const int kDSPUBGMaxItems = 64;
+static const int kDSPUBGMaxItems = 96;
 static float g_dspubgMaxDistance = 400.0f;
 static float g_pubgItemMaxDistance = 150.0f;
 static int g_pubgLanguage = 0; // 0 = Tiếng Việt, 1 = English
