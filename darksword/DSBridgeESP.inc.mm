@@ -951,6 +951,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UIView *_pubgTabBar;
     UIButton *_pubgTabButtonPlayer;
     UIButton *_pubgTabButtonItems;
+    UIButton *_pubgTabButtonSettings;
     UIView *_pubgItemCards[8];
     UILabel *_pubgWeaponLabel;
     UISwitch *_pubgWeaponSwitch;
@@ -966,6 +967,16 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UILabel *_pubgItemScanLabel;
     UILabel *_pubgItemScanValueLabel;
     UISlider *_pubgItemScanSlider;
+    UIView *_pubgSettingLangCard;
+    UILabel *_pubgSettingLangLabel;
+    UISegmentedControl *_pubgLangSegment;
+    UIView *_pubgSettingThicknessCard;
+    UILabel *_pubgSettingThicknessLabel;
+    UILabel *_pubgSettingThicknessValueLabel;
+    UISlider *_pubgSettingThicknessSlider;
+    UIView *_pubgSettingInfoCard;
+    UILabel *_pubgSettingInfoLabel;
+    UILabel *_pubgSettingInfoDescLabel;
     CGPoint _buttonAnchorUnit;
     CGPoint _panelAnchorUnit;
     CGPoint _dragStartAnchor;
@@ -1039,17 +1050,24 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
     _pubgTabButtonPlayer = [UIButton buttonWithType:UIButtonTypeCustom];
     [_pubgTabButtonPlayer setTitle:@"👤 ESP Địch" forState:UIControlStateNormal];
-    _pubgTabButtonPlayer.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgTabButtonPlayer.titleLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
     _pubgTabButtonPlayer.layer.cornerRadius = 6.0;
     [_pubgTabButtonPlayer addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_pubgTabBar addSubview:_pubgTabButtonPlayer];
 
     _pubgTabButtonItems = [UIButton buttonWithType:UIButtonTypeCustom];
     [_pubgTabButtonItems setTitle:@"📦 Vật Phẩm" forState:UIControlStateNormal];
-    _pubgTabButtonItems.titleLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgTabButtonItems.titleLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
     _pubgTabButtonItems.layer.cornerRadius = 6.0;
     [_pubgTabButtonItems addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_pubgTabBar addSubview:_pubgTabButtonItems];
+
+    _pubgTabButtonSettings = [UIButton buttonWithType:UIButtonTypeCustom];
+    [_pubgTabButtonSettings setTitle:@"⚙️ Cài Đặt" forState:UIControlStateNormal];
+    _pubgTabButtonSettings.titleLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold];
+    _pubgTabButtonSettings.layer.cornerRadius = 6.0;
+    [_pubgTabButtonSettings addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [_pubgTabBar addSubview:_pubgTabButtonSettings];
 
     _scanCard = [[UIView alloc] initWithFrame:CGRectZero];
     _scanCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
@@ -1337,6 +1355,87 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _pubgItemScanSlider.hidden = YES;
     [_panelView addSubview:_pubgItemScanSlider];
 
+    // Tab 2: Settings Controls (Cài đặt ngôn ngữ và độ dày nét vẽ địch)
+    _pubgSettingLangCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _pubgSettingLangCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+    _pubgSettingLangCard.layer.cornerRadius = 9.0;
+    _pubgSettingLangCard.layer.borderWidth = 0.8;
+    _pubgSettingLangCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+    _pubgSettingLangCard.hidden = YES;
+    [_panelView addSubview:_pubgSettingLangCard];
+
+    _pubgSettingLangLabel = pubgCreateLabel(@"Ngôn ngữ giao diện");
+    _pubgSettingLangLabel.hidden = YES;
+
+    _pubgLangSegment = [[UISegmentedControl alloc] initWithItems:@[@"Tiếng Việt", @"English"]];
+    _pubgLangSegment.selectedSegmentIndex = g_pubgLanguage;
+    _pubgLangSegment.hidden = YES;
+    [_pubgLangSegment addTarget:self action:@selector(dsPubgLangChanged:) forControlEvents:UIControlEventValueChanged];
+    _pubgLangSegment.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.07];
+    if (@available(iOS 13.0, *)) {
+        _pubgLangSegment.selectedSegmentTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.35];
+    }
+    [_pubgLangSegment setTitleTextAttributes:@{
+        NSForegroundColorAttributeName: [UIColor colorWithWhite:0.95 alpha:1.0],
+        NSFontAttributeName: [UIFont systemFontOfSize:11.0 weight:UIFontWeightBold]
+    } forState:UIControlStateSelected];
+    [_pubgLangSegment setTitleTextAttributes:@{
+        NSForegroundColorAttributeName: [UIColor colorWithWhite:0.6 alpha:1.0],
+        NSFontAttributeName: [UIFont systemFontOfSize:10.5 weight:UIFontWeightMedium]
+    } forState:UIControlStateNormal];
+    [_panelView addSubview:_pubgLangSegment];
+
+    _pubgSettingThicknessCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _pubgSettingThicknessCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+    _pubgSettingThicknessCard.layer.cornerRadius = 9.0;
+    _pubgSettingThicknessCard.layer.borderWidth = 0.8;
+    _pubgSettingThicknessCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+    _pubgSettingThicknessCard.hidden = YES;
+    [_panelView addSubview:_pubgSettingThicknessCard];
+
+    _pubgSettingThicknessLabel = pubgCreateLabel(@"Độ dày nét vẽ địch");
+    _pubgSettingThicknessLabel.hidden = YES;
+
+    _pubgSettingThicknessValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgSettingThicknessValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    _pubgSettingThicknessValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgSettingThicknessValueLabel.textAlignment = NSTextAlignmentRight;
+    _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
+    _pubgSettingThicknessValueLabel.hidden = YES;
+    [_panelView addSubview:_pubgSettingThicknessValueLabel];
+
+    _pubgSettingThicknessSlider = [[UISlider alloc] initWithFrame:CGRectZero];
+    _pubgSettingThicknessSlider.minimumValue = 0.8f;
+    _pubgSettingThicknessSlider.maximumValue = 3.5f;
+    _pubgSettingThicknessSlider.value = g_pubgEspThickness;
+    _pubgSettingThicknessSlider.continuous = YES;
+    _pubgSettingThicknessSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    _pubgSettingThicknessSlider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
+    [_pubgSettingThicknessSlider addTarget:self action:@selector(dsPubgThicknessChanged:) forControlEvents:UIControlEventValueChanged];
+    _pubgSettingThicknessSlider.hidden = YES;
+    [_panelView addSubview:_pubgSettingThicknessSlider];
+
+    _pubgSettingInfoCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _pubgSettingInfoCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+    _pubgSettingInfoCard.layer.cornerRadius = 9.0;
+    _pubgSettingInfoCard.layer.borderWidth = 0.8;
+    _pubgSettingInfoCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+    _pubgSettingInfoCard.hidden = YES;
+    [_panelView addSubview:_pubgSettingInfoCard];
+
+    _pubgSettingInfoLabel = pubgCreateLabel(@"Hệ thống & Tối ưu");
+    _pubgSettingInfoLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    _pubgSettingInfoLabel.font = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
+    _pubgSettingInfoLabel.hidden = YES;
+
+    _pubgSettingInfoDescLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgSettingInfoDescLabel.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
+    _pubgSettingInfoDescLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightRegular];
+    _pubgSettingInfoDescLabel.numberOfLines = 2;
+    _pubgSettingInfoDescLabel.text = @"• Tần số quét: 60/120 FPS mượt mà\n• Độ trễ: Zero-Lag Interactive QoS";
+    _pubgSettingInfoDescLabel.hidden = YES;
+    [_panelView addSubview:_pubgSettingInfoDescLabel];
+
     _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _toggleButton.backgroundColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.92];
     _toggleButton.tintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
@@ -1434,6 +1533,17 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
         _pubgItemScanSlider.value = g_pubgItemMaxDistance;
         _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_pubgItemMaxDistance];
+
+        if ([defaults objectForKey:@"pubg_lang"] != nil) g_pubgLanguage = (int)[defaults integerForKey:@"pubg_lang"];
+        _pubgLangSegment.selectedSegmentIndex = g_pubgLanguage;
+        if ([defaults objectForKey:@"pubg_thickness"] != nil) {
+            g_pubgEspThickness = [defaults floatForKey:@"pubg_thickness"];
+            if (g_pubgEspThickness < 0.8f) g_pubgEspThickness = 0.8f;
+            if (g_pubgEspThickness > 3.5f) g_pubgEspThickness = 3.5f;
+        }
+        _pubgSettingThicknessSlider.value = g_pubgEspThickness;
+        _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
+        [self dsUpdatePubgLanguage];
     } else {
         _titleLabel.text = @"LQ Tools";
         _zoomLabel.text = @"Zoom";
@@ -1554,7 +1664,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _masterCard.hidden = NO;
         _masterCard.frame = CGRectMake(12.0, 36.0, panelW - 24.0, 32.0);
         _espLabel.hidden = NO;
-        _espLabel.text = @"Bật ESP Master";
+        _espLabel.text = (g_pubgLanguage == 1) ? @"Master ESP" : @"Bật ESP Master";
         _espLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
         _espLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
         _espLabel.frame = CGRectMake(22.0, 42.0, 150.0, 20.0);
@@ -1562,22 +1672,35 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _espSwitch.transform = CGAffineTransformMakeScale(0.70, 0.70);
         layoutCardSwitch(_espSwitch, panelW - 12.0, 36.0 + 16.0);
 
-        // Tab Bar setup
+        // Tab Bar setup (3 tabs: ESP Địch, Vật Phẩm, Cài Đặt)
         _pubgTabBar.hidden = NO;
-        _pubgTabBar.frame = CGRectMake(12.0, 70.0, panelW - 24.0, 26.0);
-        CGFloat tabW = (panelW - 24.0 - 6.0) * 0.5;
+        CGFloat tabTotalW = panelW - 24.0;
+        _pubgTabBar.frame = CGRectMake(12.0, 70.0, tabTotalW, 26.0);
+        CGFloat tabGap = 4.0;
+        CGFloat tabW = floorf((tabTotalW - tabGap * 2.0) / 3.0);
         _pubgTabButtonPlayer.frame = CGRectMake(0, 0, tabW, 26.0);
-        _pubgTabButtonItems.frame = CGRectMake(tabW + 6.0, 0, tabW, 26.0);
+        _pubgTabButtonItems.frame = CGRectMake(tabW + tabGap, 0, tabW, 26.0);
+        _pubgTabButtonSettings.frame = CGRectMake((tabW + tabGap) * 2.0, 0, tabTotalW - (tabW + tabGap) * 2.0, 26.0);
+
+        auto resetTabBtn = ^(UIButton *b) {
+            b.backgroundColor = [UIColor clearColor];
+            b.layer.borderWidth = 0.0;
+            [b setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
+        };
+        auto setTabBtnActive = ^(UIButton *b, UIColor *bg, UIColor *border, UIColor *text) {
+            b.backgroundColor = bg;
+            b.layer.borderWidth = 1.0;
+            b.layer.borderColor = border.CGColor;
+            [b setTitleColor:text forState:UIControlStateNormal];
+        };
 
         if (_pubgCurrentTab == 0) {
-            _pubgTabButtonPlayer.backgroundColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.18];
-            _pubgTabButtonPlayer.layer.borderWidth = 1.0;
-            _pubgTabButtonPlayer.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.6].CGColor;
-            [_pubgTabButtonPlayer setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
-
-            _pubgTabButtonItems.backgroundColor = [UIColor clearColor];
-            _pubgTabButtonItems.layer.borderWidth = 0.0;
-            [_pubgTabButtonItems setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
+            setTabBtnActive(_pubgTabButtonPlayer,
+                            [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.18],
+                            [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.6],
+                            [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0]);
+            resetTabBtn(_pubgTabButtonItems);
+            resetTabBtn(_pubgTabButtonSettings);
 
             // Hide Tab 1 (Items)
             for (int ci = 0; ci < 8; ci++) _pubgItemCards[ci].hidden = YES;
@@ -1591,6 +1714,12 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _pubgCrateLabel.hidden = YES; _pubgCrateSwitch.hidden = YES;
             _pubgItemScanCard.hidden = YES; _pubgItemScanLabel.hidden = YES;
             _pubgItemScanValueLabel.hidden = YES; _pubgItemScanSlider.hidden = YES;
+
+            // Hide Tab 2 (Settings)
+            _pubgSettingLangCard.hidden = YES; _pubgSettingLangLabel.hidden = YES; _pubgLangSegment.hidden = YES;
+            _pubgSettingThicknessCard.hidden = YES; _pubgSettingThicknessLabel.hidden = YES;
+            _pubgSettingThicknessValueLabel.hidden = YES; _pubgSettingThicknessSlider.hidden = YES;
+            _pubgSettingInfoCard.hidden = YES; _pubgSettingInfoLabel.hidden = YES; _pubgSettingInfoDescLabel.hidden = YES;
 
             // Show & Layout Tab 0 (Player ESP)
             CGFloat cardH0 = 28.0;
@@ -1657,7 +1786,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             CGFloat y4 = 230.0;
             _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
             _scanCard.hidden = NO;
-            _zoomLabel.text = @"Khoảng cách hiện địch";
+            _zoomLabel.text = (g_pubgLanguage == 1) ? @"Enemy ESP Distance" : @"Khoảng cách hiện địch";
             _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
             _zoomLabel.font = [UIFont systemFontOfSize:11.0 weight:UIFontWeightSemibold];
             _zoomLabel.hidden = NO;
@@ -1669,15 +1798,13 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
             _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
             _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
-        } else {
-            _pubgTabButtonItems.backgroundColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.18];
-            _pubgTabButtonItems.layer.borderWidth = 1.0;
-            _pubgTabButtonItems.layer.borderColor = [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.6].CGColor;
-            [_pubgTabButtonItems setTitleColor:[UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0] forState:UIControlStateNormal];
-
-            _pubgTabButtonPlayer.backgroundColor = [UIColor clearColor];
-            _pubgTabButtonPlayer.layer.borderWidth = 0.0;
-            [_pubgTabButtonPlayer setTitleColor:[UIColor colorWithWhite:0.6 alpha:1.0] forState:UIControlStateNormal];
+        } else if (_pubgCurrentTab == 1) {
+            setTabBtnActive(_pubgTabButtonItems,
+                            [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.18],
+                            [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.6],
+                            [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:1.0]);
+            resetTabBtn(_pubgTabButtonPlayer);
+            resetTabBtn(_pubgTabButtonSettings);
 
             // Hide Tab 0 (Player ESP)
             for (int ci = 0; ci < 8; ci++) _pubgCards[ci].hidden = YES;
@@ -1690,6 +1817,12 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _pubgBotLabel.hidden = YES; _pubgBotSwitch.hidden = YES;
             _pubgArrowLabel.hidden = YES; _pubgArrowSwitch.hidden = YES;
             _scanCard.hidden = YES; _zoomLabel.hidden = YES; _zoomValueLabel.hidden = YES; _zoomSlider.hidden = YES;
+
+            // Hide Tab 2 (Settings)
+            _pubgSettingLangCard.hidden = YES; _pubgSettingLangLabel.hidden = YES; _pubgLangSegment.hidden = YES;
+            _pubgSettingThicknessCard.hidden = YES; _pubgSettingThicknessLabel.hidden = YES;
+            _pubgSettingThicknessValueLabel.hidden = YES; _pubgSettingThicknessSlider.hidden = YES;
+            _pubgSettingInfoCard.hidden = YES; _pubgSettingInfoLabel.hidden = YES; _pubgSettingInfoDescLabel.hidden = YES;
 
             // Show & Layout Tab 1 (Items)
             CGFloat cardH1 = 28.0;
@@ -1762,6 +1895,68 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _pubgItemScanValueLabel.hidden = NO;
             _pubgItemScanSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
             _pubgItemScanSlider.hidden = NO;
+        } else {
+            // Tab 2: Settings (Cài Đặt)
+            setTabBtnActive(_pubgTabButtonSettings,
+                            [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.18],
+                            [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.6],
+                            [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0]);
+            resetTabBtn(_pubgTabButtonPlayer);
+            resetTabBtn(_pubgTabButtonItems);
+
+            // Hide Tab 0 (Player ESP)
+            for (int ci = 0; ci < 8; ci++) _pubgCards[ci].hidden = YES;
+            _pubgBoxLabel.hidden = YES; _pubgBoxSwitch.hidden = YES;
+            _pubgSkeletonLabel.hidden = YES; _pubgSkeletonSwitch.hidden = YES;
+            _pubgLineLabel.hidden = YES; _pubgLineSwitch.hidden = YES;
+            _pubgHealthLabel.hidden = YES; _pubgHealthSwitch.hidden = YES;
+            _pubgNameLabel.hidden = YES; _pubgNameSwitch.hidden = YES;
+            _pubgDistLabel.hidden = YES; _pubgDistSwitch.hidden = YES;
+            _pubgBotLabel.hidden = YES; _pubgBotSwitch.hidden = YES;
+            _pubgArrowLabel.hidden = YES; _pubgArrowSwitch.hidden = YES;
+            _scanCard.hidden = YES; _zoomLabel.hidden = YES; _zoomValueLabel.hidden = YES; _zoomSlider.hidden = YES;
+
+            // Hide Tab 1 (Items)
+            for (int ci = 0; ci < 8; ci++) _pubgItemCards[ci].hidden = YES;
+            _pubgVehicleLabel.hidden = YES; _pubgVehicleSwitch.hidden = YES;
+            _pubgVehicleHpLabel.hidden = YES; _pubgVehicleHpSwitch.hidden = YES;
+            _pubgVehicleFuelLabel.hidden = YES; _pubgVehicleFuelSwitch.hidden = YES;
+            _pubgWeaponLabel.hidden = YES; _pubgWeaponSwitch.hidden = YES;
+            _pubgArmorLabel.hidden = YES; _pubgArmorSwitch.hidden = YES;
+            _pubgBagLabel.hidden = YES; _pubgBagSwitch.hidden = YES;
+            _pubgScopeLabel.hidden = YES; _pubgScopeSwitch.hidden = YES;
+            _pubgCrateLabel.hidden = YES; _pubgCrateSwitch.hidden = YES;
+            _pubgItemScanCard.hidden = YES; _pubgItemScanLabel.hidden = YES;
+            _pubgItemScanValueLabel.hidden = YES; _pubgItemScanSlider.hidden = YES;
+
+            // Show & Layout Tab 2 (Settings)
+            CGFloat cardWFull = panelW - 24.0;
+            CGFloat y0 = 100.0;
+            _pubgSettingLangCard.frame = CGRectMake(col1X, y0, cardWFull, 52.0);
+            _pubgSettingLangCard.hidden = NO;
+            _pubgSettingLangLabel.frame = CGRectMake(col1X + 10.0, y0 + 3.0, cardWFull - 20.0, 18.0);
+            _pubgSettingLangLabel.hidden = NO;
+            _pubgLangSegment.frame = CGRectMake(col1X + 8.0, y0 + 22.0, cardWFull - 16.0, 24.0);
+            _pubgLangSegment.hidden = NO;
+
+            CGFloat y1 = 158.0;
+            _pubgSettingThicknessCard.frame = CGRectMake(col1X, y1, cardWFull, 52.0);
+            _pubgSettingThicknessCard.hidden = NO;
+            _pubgSettingThicknessLabel.frame = CGRectMake(col1X + 10.0, y1 + 3.0, cardWFull - 90.0, 18.0);
+            _pubgSettingThicknessLabel.hidden = NO;
+            _pubgSettingThicknessValueLabel.frame = CGRectMake(col1X + cardWFull - 80.0, y1 + 3.0, 70.0, 18.0);
+            _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
+            _pubgSettingThicknessValueLabel.hidden = NO;
+            _pubgSettingThicknessSlider.frame = CGRectMake(col1X + 8.0, y1 + 22.0, cardWFull - 16.0, 24.0);
+            _pubgSettingThicknessSlider.hidden = NO;
+
+            CGFloat y2 = 216.0;
+            _pubgSettingInfoCard.frame = CGRectMake(col1X, y2, cardWFull, 62.0);
+            _pubgSettingInfoCard.hidden = NO;
+            _pubgSettingInfoLabel.frame = CGRectMake(col1X + 10.0, y2 + 5.0, cardWFull - 20.0, 18.0);
+            _pubgSettingInfoLabel.hidden = NO;
+            _pubgSettingInfoDescLabel.frame = CGRectMake(col1X + 10.0, y2 + 24.0, cardWFull - 20.0, 32.0);
+            _pubgSettingInfoDescLabel.hidden = NO;
         }
 
         // Reset button
@@ -1809,6 +2004,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgCrateLabel.hidden = YES; _pubgCrateSwitch.hidden = YES;
         _pubgItemScanCard.hidden = YES; _pubgItemScanLabel.hidden = YES;
         _pubgItemScanValueLabel.hidden = YES; _pubgItemScanSlider.hidden = YES;
+        _pubgSettingLangCard.hidden = YES; _pubgSettingLangLabel.hidden = YES; _pubgLangSegment.hidden = YES;
+        _pubgSettingThicknessCard.hidden = YES; _pubgSettingThicknessLabel.hidden = YES;
+        _pubgSettingThicknessValueLabel.hidden = YES; _pubgSettingThicknessSlider.hidden = YES;
+        _pubgSettingInfoCard.hidden = YES; _pubgSettingInfoLabel.hidden = YES; _pubgSettingInfoDescLabel.hidden = YES;
 
         _titleLabel.text = @"LQ Tools";
         _enableLabel.hidden = NO;
@@ -2066,10 +2265,69 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsPubgTabTapped:(UIButton *)sender {
     if (sender == _pubgTabButtonItems) {
         _pubgCurrentTab = 1;
+    } else if (sender == _pubgTabButtonSettings) {
+        _pubgCurrentTab = 2;
     } else {
         _pubgCurrentTab = 0;
     }
     [self dsLayoutMenu];
+}
+
+- (void)dsPubgLangChanged:(UISegmentedControl *)sender {
+    g_pubgLanguage = (int)sender.selectedSegmentIndex;
+    [NSUserDefaults.standardUserDefaults setInteger:g_pubgLanguage forKey:@"pubg_lang"];
+    [self dsUpdatePubgLanguage];
+}
+
+- (void)dsPubgThicknessChanged:(UISlider *)sender {
+    g_pubgEspThickness = sender.value;
+    _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
+    [NSUserDefaults.standardUserDefaults setFloat:g_pubgEspThickness forKey:@"pubg_thickness"];
+}
+
+- (void)dsUpdatePubgLanguage {
+    BOOL isEn = (g_pubgLanguage == 1);
+
+    // Tab buttons
+    [_pubgTabButtonPlayer setTitle:isEn ? @"👤 Enemy" : @"👤 ESP Địch" forState:UIControlStateNormal];
+    [_pubgTabButtonItems setTitle:isEn ? @"📦 Items" : @"📦 Vật Phẩm" forState:UIControlStateNormal];
+    [_pubgTabButtonSettings setTitle:isEn ? @"⚙️ Settings" : @"⚙️ Cài Đặt" forState:UIControlStateNormal];
+
+    // Master ESP
+    _espLabel.text = isEn ? @"Master ESP" : @"Bật ESP Master";
+
+    // Tab 0: Enemy ESP
+    _pubgBoxLabel.text = isEn ? @"Corner Box 2D" : @"Box Góc 2D";
+    _pubgSkeletonLabel.text = isEn ? @"Skeleton" : @"Xương";
+    _pubgLineLabel.text = isEn ? @"Snapline" : @"Tia Line";
+    _pubgHealthLabel.text = isEn ? @"Health Bar" : @"Thanh Máu";
+    _pubgNameLabel.text = isEn ? @"Player Name" : @"Tên Địch";
+    _pubgDistLabel.text = isEn ? @"Distance" : @"Khoảng Cách";
+    _pubgBotLabel.text = isEn ? @"Show Bots AI" : @"Hiện Bot AI";
+    _pubgArrowLabel.text = isEn ? @"360° Arrow" : @"Mũi Tên";
+    _zoomLabel.text = isEn ? @"Enemy ESP Distance" : @"Khoảng cách hiện địch";
+
+    // Tab 1: Items
+    _pubgVehicleLabel.text = isEn ? @"Vehicles" : @"Hiện Xe";
+    _pubgVehicleHpLabel.text = isEn ? @"Vehicle HP" : @"Máu Xe";
+    _pubgVehicleFuelLabel.text = isEn ? @"Vehicle Fuel" : @"Xăng Xe";
+    _pubgWeaponLabel.text = isEn ? @"Weapons" : @"Hiện Súng";
+    _pubgArmorLabel.text = isEn ? @"Armor & Helm" : @"Giáp & Mũ";
+    _pubgBagLabel.text = isEn ? @"Backpacks" : @"Hiện Balo";
+    _pubgScopeLabel.text = isEn ? @"Scopes" : @"Ống Ngắm";
+    _pubgCrateLabel.text = isEn ? @"Crates & AirDrop" : @"Hòm & Thính";
+    _pubgItemScanLabel.text = isEn ? @"Item ESP Distance" : @"Khoảng cách vật phẩm";
+
+    // Tab 2: Settings
+    _pubgSettingLangLabel.text = isEn ? @"Menu Language" : @"Ngôn ngữ giao diện";
+    _pubgSettingThicknessLabel.text = isEn ? @"Enemy Line Thickness" : @"Độ dày nét vẽ địch";
+    _pubgSettingInfoLabel.text = isEn ? @"System & Optimization" : @"Hệ thống & Tối ưu";
+    _pubgSettingInfoDescLabel.text = isEn
+        ? @"• Display: 60/120 FPS ProMotion\n• Latency: Zero-Lag Interactive QoS"
+        : @"• Tần số quét: 60/120 FPS mượt mà\n• Độ trễ: Zero-Lag Interactive QoS";
+
+    // Reset button
+    [_resetButton setTitle:isEn ? @"Reset to Defaults" : @"Khôi phục cài đặt gốc" forState:UIControlStateNormal];
 }
 
 - (void)dsZoomSliderChanged:(UISlider *)sender {
@@ -2187,6 +2445,15 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [defaults setBool:YES forKey:@"pubg_scope"];
         [defaults setBool:YES forKey:@"pubg_crate"];
         [defaults setFloat:150.0f forKey:@"pubg_item_dist"];
+
+        g_pubgLanguage = 0;
+        g_pubgEspThickness = 1.5f;
+        [defaults setInteger:0 forKey:@"pubg_lang"];
+        [defaults setFloat:1.5f forKey:@"pubg_thickness"];
+        _pubgLangSegment.selectedSegmentIndex = 0;
+        [_pubgSettingThicknessSlider setValue:1.5f animated:YES];
+        _pubgSettingThicknessValueLabel.text = @"1.5 px";
+        [self dsUpdatePubgLanguage];
 
         [self dsUpdateValueLabel];
         return;
@@ -3705,7 +3972,7 @@ static void ds_hosted_apply_pubg(void) {
 
             box.path = boxPath.CGPath;
             box.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-            box.lineWidth = 1.5;
+            box.lineWidth = g_pubgEspThickness;
             box.lineCap = kCALineCapSquare;
             box.lineJoin = kCALineJoinMiter;
             box.hidden = NO;
@@ -3720,7 +3987,7 @@ static void ds_hosted_apply_pubg(void) {
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
             line.path = linePath.CGPath;
             line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
-            line.lineWidth = 1.2;
+            line.lineWidth = g_pubgEspThickness;
             line.hidden = NO;
         } else {
             line.hidden = YES;
@@ -3738,7 +4005,7 @@ static void ds_hosted_apply_pubg(void) {
             aiMark.path = triPath.CGPath;
             aiMark.fillColor = [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.85].CGColor;
             aiMark.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-            aiMark.lineWidth = 1.0;
+            aiMark.lineWidth = fmaxf(1.0f, g_pubgEspThickness * 0.8f);
             aiMark.hidden = NO;
         } else if (aiMark) {
             aiMark.hidden = YES;
@@ -3786,19 +4053,20 @@ static void ds_hosted_apply_pubg(void) {
             NSString *weaponText = nil;
             CGColorRef weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
 
+            BOOL isEn = (g_pubgLanguage == 1);
             if (p.isKnocked) {
                 if (p.weaponName[0] != '\0') {
-                    weaponText = [NSString stringWithFormat:@"⚠️ GỤC | %s", p.weaponName];
+                    weaponText = [NSString stringWithFormat:isEn ? @"⚠️ KNOCKED | %s" : @"⚠️ GỤC | %s", p.weaponName];
                     weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
                 } else {
-                    weaponText = @"⚠️ GỤC | Tay";
+                    weaponText = isEn ? @"⚠️ KNOCKED | Fist" : @"⚠️ GỤC | Tay";
                     weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
                 }
             } else if (p.weaponName[0] != '\0') {
                 weaponText = [NSString stringWithUTF8String:p.weaponName];
                 weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
             } else {
-                weaponText = @"Tay";
+                weaponText = isEn ? @"Fist" : @"Tay";
                 weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
             }
 
@@ -3839,7 +4107,7 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
-            const char *displayName = haveNick ? p.name : (ai ? "Bot" : "Enemy");
+            const char *displayName = haveNick ? p.name : (ai ? "Bot" : (g_pubgLanguage == 1 ? "Enemy" : "Địch"));
 
             // Màu Tên: Bot = Xanh nước biển, Người = Vàng
             UIColor *nameColor = ai
@@ -3987,7 +4255,7 @@ static void ds_hosted_apply_pubg(void) {
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
                     skel.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-                    skel.lineWidth = 1.2;
+                    skel.lineWidth = g_pubgEspThickness;
                     skel.hidden = NO;
                 } else {
                     skel.hidden = YES;
