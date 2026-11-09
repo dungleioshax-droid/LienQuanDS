@@ -4561,7 +4561,21 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         const DSPUBGProjectedGrenade &g = grenades[i];
-        if (!g.isVisible && g.trajCount == 0) {
+
+        if (g.isLocalInDanger) {
+            anyDanger = true;
+            if (g.distanceMeters < closestDangerDist) closestDangerDist = g.distanceMeters;
+        }
+
+        bool hasCircleOnScreen = false;
+        for (int k = 0; k < g.circlePointCount; k++) {
+            if (g.circlePointsValid[k]) {
+                hasCircleOnScreen = true;
+                break;
+            }
+        }
+
+        if (!g.isVisible && g.trajCount == 0 && !hasCircleOnScreen) {
             if (trajLayer) trajLayer.hidden = YES;
             if (circleLayer) circleLayer.hidden = YES;
             if (badgeLbl) badgeLbl.hidden = YES;
@@ -4585,11 +4599,6 @@ static void ds_hosted_apply_pubg(void) {
             default:
                 baseColor = [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0];
                 break;
-        }
-
-        if (g.isLocalInDanger) {
-            anyDanger = true;
-            if (g.distanceMeters < closestDangerDist) closestDangerDist = g.distanceMeters;
         }
 
         // 1. Line bom ném ra (Trajectory line & Snapline)

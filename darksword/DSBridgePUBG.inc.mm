@@ -110,6 +110,7 @@ static bool g_dspubgGNamesIsChunkArray = true;
 // to eliminate repetitive GNames lookups and memory reads for thousands of level actors.
 struct DSPUBGActorCacheEntry {
     uint64_t actor;
+    uint64_t classPrivate;
     bool isScenery;
     bool isPawn;
     DSPUBGItemCategory itemCat;
@@ -451,7 +452,7 @@ static void ds_pubg_scan_for_gnames(uint64_t vmMap, const std::vector<ScanRange>
 static bool ds_pubg_get_name_by_id(uint32_t id, char *outBuf, size_t outCap) {
     if (!outBuf || outCap < 2) return false;
     outBuf[0] = '\0';
-    if (!g_dspubgGNames || id == 0 || id > 500000) return false;
+    if (!g_dspubgGNames || id == 0 || id > 4194304) return false;
 
     uint32_t chunkIdx = id / 16384;
     uint32_t inChunkIdx = id % 16384;
@@ -492,26 +493,29 @@ static bool ds_pubg_get_actor_name(uint64_t actor, char *outBuf, size_t outCap) 
     if (!actor || !outBuf || outCap < 2) return false;
     outBuf[0] = '\0';
 
-    // 1. Try ClassPrivate at 0x10ULL -> FName at +0x18ULL
+    // 1. Try ClassPrivate at 0x10ULL -> FName at +0x18ULL or +0x20ULL
     uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
+    if (!classPrivate || !ds_pubg_valid(classPrivate)) {
+        classPrivate = ds_pubg_read_ptr(actor + 0x08ULL);
+    }
     if (classPrivate && ds_pubg_valid(classPrivate)) {
         uint32_t classFId = ds_pubg_read_u32(classPrivate + 0x18ULL);
-        if (classFId > 0 && classFId < 500000 && ds_pubg_get_name_by_id(classFId, outBuf, outCap)) {
+        if (classFId > 0 && classFId < 4194304 && ds_pubg_get_name_by_id(classFId, outBuf, outCap)) {
             if (strlen(outBuf) > 1) return true;
         }
         uint32_t classFId2 = ds_pubg_read_u32(classPrivate + 0x20ULL);
-        if (classFId2 > 0 && classFId2 < 500000 && ds_pubg_get_name_by_id(classFId2, outBuf, outCap)) {
+        if (classFId2 > 0 && classFId2 < 4194304 && ds_pubg_get_name_by_id(classFId2, outBuf, outCap)) {
             if (strlen(outBuf) > 1) return true;
         }
     }
 
-    // 2. Try actor's own FName at 0x18ULL
+    // 2. Try actor's own FName at 0x18ULL or 0x20ULL
     uint32_t actorFId = ds_pubg_read_u32(actor + 0x18ULL);
-    if (actorFId > 0 && actorFId < 500000 && ds_pubg_get_name_by_id(actorFId, outBuf, outCap)) {
+    if (actorFId > 0 && actorFId < 4194304 && ds_pubg_get_name_by_id(actorFId, outBuf, outCap)) {
         if (strlen(outBuf) > 1) return true;
     }
     uint32_t actorFId2 = ds_pubg_read_u32(actor + 0x20ULL);
-    if (actorFId2 > 0 && actorFId2 < 500000 && ds_pubg_get_name_by_id(actorFId2, outBuf, outCap)) {
+    if (actorFId2 > 0 && actorFId2 < 4194304 && ds_pubg_get_name_by_id(actorFId2, outBuf, outCap)) {
         if (strlen(outBuf) > 1) return true;
     }
 
@@ -903,53 +907,57 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
 static bool ds_pubg_classify_grenade(const char *name, DSPUBGGrenadeType *outType, char *outDisplay, size_t outCap, float *outRadius) {
     if (!name || !outType || !outDisplay || outCap < 8) return false;
 
-    // Filter out pickup wrappers, weapons in hand, emitters, explosions, scenery
-    if (strcasestr(name, "PickUp") || strcasestr(name, "Wrapper") || strcasestr(name, "Weapon") ||
+    // Filter out pickup wrappers, visual effects, audio, cameras, and characters
+    if (strcasestr(name, "PickUp") ||
         strcasestr(name, "Particle") || strcasestr(name, "Emitter") || strcasestr(name, "Effect") ||
-        strcasestr(name, "Explosion") || strcasestr(name, "Decal") || strcasestr(name, "Sound") ||
+        strcasestr(name, "Decal") || strcasestr(name, "Sound") ||
         strcasestr(name, "Audio") || strcasestr(name, "Camera") || strcasestr(name, "Character") ||
-        strcasestr(name, "Pawn") || strcasestr(name, "Player")) {
+        strcasestr(name, "Pawn")) {
         return false;
     }
 
     bool isEn = (g_pubgLanguage == 1);
 
-    // 1. Frag Grenade (Lựu đạn nổ)
+    // 1. Frag Grenade (Lựu đạn nổ) - Shoulei / Frag / Grenade
     if (strcasestr(name, "Shoulei") || strcasestr(name, "Frag") || strcasestr(name, "ProjFrag") ||
-        strcasestr(name, "ProjGrenade_Shoulei") || strcasestr(name, "BP_Grenade_Shoulei")) {
+        strcasestr(name, "ProjGrenade_Shoulei") || strcasestr(name, "BP_Grenade_Shoulei") ||
+        strcasestr(name, "Grenade_Shoulei")) {
         *outType = DSPUBGGrenadeTypeFrag;
         snprintf(outDisplay, outCap, isEn ? "FRAG GRENADE" : "LỰU ĐẠN NỔ");
         if (outRadius) *outRadius = 9.0f; // 9 meters damage radius
         return true;
     }
 
-    // 2. Molotov / Burn Grenade (Bom lửa)
+    // 2. Molotov / Burn Grenade (Bom lửa) - Burn / Molotov / Fire / RanShaoPing
     if (strcasestr(name, "Burn") || strcasestr(name, "Molotov") || strcasestr(name, "Fire") ||
-        strcasestr(name, "ProjBurn") || strcasestr(name, "BP_Molotov")) {
+        strcasestr(name, "ProjBurn") || strcasestr(name, "BP_Molotov") || strcasestr(name, "RanShaoPing")) {
         *outType = DSPUBGGrenadeTypeBurn;
         snprintf(outDisplay, outCap, isEn ? "MOLOTOV" : "BOM LỬA");
         if (outRadius) *outRadius = 4.5f; // 4.5 meters burn radius
         return true;
     }
 
-    // 3. Smoke Grenade (Bom khói)
-    if (strcasestr(name, "Smoke") || strcasestr(name, "ProjSmoke") || strcasestr(name, "BP_Grenade_Smoke")) {
+    // 3. Smoke Grenade (Bom khói) - Smoke / YanWuDan
+    if (strcasestr(name, "Smoke") || strcasestr(name, "ProjSmoke") ||
+        strcasestr(name, "BP_Grenade_Smoke") || strcasestr(name, "YanWuDan")) {
         *outType = DSPUBGGrenadeTypeSmoke;
         snprintf(outDisplay, outCap, isEn ? "SMOKE" : "BOM KHÓI");
         if (outRadius) *outRadius = 6.0f; // 6 meters smoke radius
         return true;
     }
 
-    // 4. Stun Grenade (Bom choáng)
-    if (strcasestr(name, "Stun") || strcasestr(name, "Flash") || strcasestr(name, "ProjStun") || strcasestr(name, "BP_Grenade_Stun")) {
+    // 4. Stun Grenade (Bom choáng) - Stun / Flash / ZhenBaoDan
+    if (strcasestr(name, "Stun") || strcasestr(name, "Flash") || strcasestr(name, "ProjStun") ||
+        strcasestr(name, "BP_Grenade_Stun") || strcasestr(name, "ZhenBaoDan")) {
         *outType = DSPUBGGrenadeTypeStun;
         snprintf(outDisplay, outCap, isEn ? "STUN" : "BOM CHOÁNG");
         if (outRadius) *outRadius = 8.0f; // 8 meters flash radius
         return true;
     }
 
-    // 5. Generic Projectile Grenade
-    if (strcasestr(name, "ProjGrenade") || (strcasestr(name, "Grenade") && strcasestr(name, "Proj"))) {
+    // 5. Generic Projectile Grenade / Throwable
+    if (strcasestr(name, "Grenade") || strcasestr(name, "Throwable") ||
+        strcasestr(name, "ProjGrenade") || strcasestr(name, "ProjectileBase")) {
         *outType = DSPUBGGrenadeTypeFrag;
         snprintf(outDisplay, outCap, isEn ? "GRENADE" : "LỰU ĐẠN");
         if (outRadius) *outRadius = 9.0f;
@@ -2771,7 +2779,8 @@ static void ds_pubg_tick(void) {
 
         uint32_t cSlot = ds_pubg_actor_cache_hash(pawn);
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        if (cEntry.actor == pawn) {
+        uint64_t classPrivate = ds_pubg_read_ptr(pawn + 0x10ULL);
+        if (cEntry.actor == pawn && cEntry.classPrivate == classPrivate) {
             if (cEntry.isScenery) {
                 return false;
             }
@@ -2790,22 +2799,24 @@ static void ds_pubg_tick(void) {
                 strstr(pawnName, "Roof") || strstr(pawnName, "Brush"));
             if (isScenery) {
                 cEntry.actor = pawn;
+                cEntry.classPrivate = classPrivate;
                 cEntry.isScenery = true;
                 cEntry.isPawn = false;
                 cEntry.itemCat = DSPUBGItemCategoryNone;
                 return false;
             }
 
-            if (strstr(pawnName, "Bullet") || strstr(pawnName, "Proj") || strstr(pawnName, "Weapon") ||
-                strstr(pawnName, "PickUp") || strstr(pawnName, "Vehicle") || strstr(pawnName, "VH_") ||
-                strstr(pawnName, "Drop") || strstr(pawnName, "Tomb") || strstr(pawnName, "Box") ||
-                strstr(pawnName, "Supply") || strstr(pawnName, "Particle") || strstr(pawnName, "Effect") ||
-                strstr(pawnName, "Decal") || strstr(pawnName, "Camera") || strstr(pawnName, "Volume") ||
-                strstr(pawnName, "Trigger") || strstr(pawnName, "AirDrop") || strstr(pawnName, "Item") ||
-                strstr(pawnName, "Controller") || strstr(pawnName, "Light") || strstr(pawnName, "Audio") ||
-                strstr(pawnName, "Sound") || strstr(pawnName, "Zone") || strstr(pawnName, "Fog") ||
-                strstr(pawnName, "Shell") || strstr(pawnName, "Cartridge") || strstr(pawnName, "Trace") ||
-                strstr(pawnName, "Grenade") || strstr(pawnName, "Smoke") || strstr(pawnName, "Explosion")) {
+            if (strcasestr(pawnName, "Bullet") || strcasestr(pawnName, "Proj") || strcasestr(pawnName, "Weapon") ||
+                strcasestr(pawnName, "PickUp") || strcasestr(pawnName, "Vehicle") || strcasestr(pawnName, "VH_") ||
+                strcasestr(pawnName, "Drop") || strcasestr(pawnName, "Tomb") || strcasestr(pawnName, "Box") ||
+                strcasestr(pawnName, "Supply") || strcasestr(pawnName, "Particle") || strcasestr(pawnName, "Effect") ||
+                strcasestr(pawnName, "Decal") || strcasestr(pawnName, "Camera") || strcasestr(pawnName, "Volume") ||
+                strcasestr(pawnName, "Trigger") || strcasestr(pawnName, "AirDrop") || strcasestr(pawnName, "Item") ||
+                strcasestr(pawnName, "Controller") || strcasestr(pawnName, "Light") || strcasestr(pawnName, "Audio") ||
+                strcasestr(pawnName, "Sound") || strcasestr(pawnName, "Zone") || strcasestr(pawnName, "Fog") ||
+                strcasestr(pawnName, "Shell") || strcasestr(pawnName, "Cartridge") || strcasestr(pawnName, "Trace") ||
+                strcasestr(pawnName, "Grenade") || strcasestr(pawnName, "Smoke") || strcasestr(pawnName, "Explosion") ||
+                strcasestr(pawnName, "Shoulei") || strcasestr(pawnName, "Molotov") || strcasestr(pawnName, "Burn")) {
                 return false;
             }
         }
@@ -3236,6 +3247,7 @@ static void ds_pubg_tick(void) {
             if (isAI) botCount++; else enemyCount++;
         }
         cEntry.actor = pawn;
+        cEntry.classPrivate = classPrivate;
         cEntry.isScenery = false;
         cEntry.isPawn = true;
         cEntry.itemCat = DSPUBGItemCategoryNone;
@@ -3250,10 +3262,6 @@ static void ds_pubg_tick(void) {
         if (grenadeStagingCount >= kDSPUBGMaxGrenades) return false;
         if (!g_pubgEspGrenade) return false;
 
-        uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        if (cEntry.actor == actor && cEntry.isScenery) return false;
-
         char actorName[64] = {0};
         if (!ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
             return false;
@@ -3266,11 +3274,26 @@ static void ds_pubg_tick(void) {
             return false;
         }
 
+        // Cache update: explicitly ensure this actor is known as a valid grenade
+        uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
+        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+        cEntry.actor = actor;
+        cEntry.classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
+        cEntry.isScenery = false;
+        cEntry.isPawn = false;
+        cEntry.itemCat = DSPUBGItemCategoryNone;
+
         DSPUBGVector rootLoc = {};
         bool hasLoc = false;
         uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
         if (!rootComp || !ds_pubg_valid(rootComp)) {
             rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
+        }
+        if (!rootComp || !ds_pubg_valid(rootComp)) {
+            rootComp = ds_pubg_read_ptr(actor + 0x190ULL);
+        }
+        if (!rootComp || !ds_pubg_valid(rootComp)) {
+            rootComp = ds_pubg_read_ptr(actor + 0x210ULL);
         }
         if (rootComp && ds_pubg_valid(rootComp)) {
             if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
@@ -3279,6 +3302,14 @@ static void ds_pubg_tick(void) {
                     !isnan(rootLoc.Z) && !isinf(rootLoc.Z) &&
                     (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
                     hasLoc = true;
+                }
+            }
+            if (!hasLoc) {
+                if (ds_pubg_read(rootComp + 0x1E0ULL, &rootLoc, sizeof(rootLoc))) {
+                    if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
+                        (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
+                        hasLoc = true;
+                    }
                 }
             }
         }
@@ -3418,7 +3449,8 @@ static void ds_pubg_tick(void) {
 
         uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        if (cEntry.actor == actor && cEntry.isScenery) {
+        uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
+        if (cEntry.actor == actor && cEntry.classPrivate == classPrivate && cEntry.isScenery) {
             return;
         }
 
@@ -3500,6 +3532,7 @@ static void ds_pubg_tick(void) {
                 return;
             }
             cEntry.actor = actor;
+            cEntry.classPrivate = classPrivate;
             cEntry.isScenery = false;
             cEntry.isPawn = false;
             cEntry.itemCat = cat;
@@ -3640,7 +3673,9 @@ static void ds_pubg_tick(void) {
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
 
                     uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-                    if (g_dspubgActorCache[cSlot].actor == actor && g_dspubgActorCache[cSlot].isScenery) {
+                    DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+                    uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
+                    if (cEntry.actor == actor && cEntry.classPrivate == classPrivate && cEntry.isScenery) {
                         continue;
                     }
 
