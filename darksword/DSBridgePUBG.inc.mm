@@ -3554,8 +3554,8 @@ static void ds_pubg_tick(void) {
         // Check cook time in hand from UAEProjectile.SpawnSeconds (0x5A8) and STExtraGrenadeBase.GrenadeExplodeStartTime (0x6A8)
         float cookedInHand = 0.0f;
         if (gType == DSPUBGGrenadeTypeFrag) {
-            float spawnSec = ds_pubg_read_float(actor + 0x5A8ULL);
-            float expStart = ds_pubg_read_float(actor + 0x6A8ULL);
+            float spawnSec = ds_pubg_read_f32(actor + 0x5A8ULL);
+            float expStart = ds_pubg_read_f32(actor + 0x6A8ULL);
             if (spawnSec > 0.0f && expStart > 0.0f && spawnSec >= expStart) {
                 float diff = spawnSec - expStart;
                 if (diff >= 0.0f && diff < maxFuse) {
