@@ -999,6 +999,38 @@ typedef struct {
     float fuelMax;
 } DSPUBGProjectedItem;
 
+typedef enum {
+    DSPUBGGrenadeTypeFrag = 0,    // Lựu đạn nổ
+    DSPUBGGrenadeTypeSmoke = 1,   // Bom khói
+    DSPUBGGrenadeTypeBurn = 2,    // Molotov (bom lửa)
+    DSPUBGGrenadeTypeStun = 3,    // Bom choáng
+} DSPUBGGrenadeType;
+
+static const int kDSPUBGMaxGrenades = 8;
+static const int kDSPUBGCirclePoints = 24;
+
+typedef struct {
+    float screenX;
+    float screenY;
+    float distanceMeters;
+    bool isVisible;
+    DSPUBGGrenadeType type;
+    char name[32];
+    float damageRadiusMeters;
+    bool isLocalInDanger;
+
+    float startX;
+    float startY;
+    bool hasStart;
+
+    int trajCount;
+    CGPoint trajPoints[16];
+
+    int circlePointCount;
+    CGPoint circlePoints[kDSPUBGCirclePoints];
+    bool circlePointsValid[kDSPUBGCirclePoints];
+} DSPUBGProjectedGrenade;
+
 static const int kDSPUBGMaxPlayers = 96;
 static const int kDSPUBGMaxItems = 96;
 static float g_dspubgMaxDistance = 400.0f;
@@ -1013,6 +1045,7 @@ static BOOL g_pubgEspHealth = YES;
 static BOOL g_pubgEspName = YES;
 static BOOL g_pubgEspDist = YES;
 static BOOL g_pubgEspBot = YES;
+static BOOL g_pubgEspGrenade = YES;
 static BOOL g_pubgEspVehicle = YES;
 static BOOL g_pubgEspVehicleHp = YES;
 static BOOL g_pubgEspVehicleFuel = YES;
@@ -1028,6 +1061,8 @@ static int ds_pubg_copy_projected_players(DSPUBGProjectedPlayer out[kDSPUBGMaxPl
                                           uint64_t *epochOut);
 static int ds_pubg_copy_projected_items(DSPUBGProjectedItem out[kDSPUBGMaxItems],
                                         uint64_t *epochOut);
+static int ds_pubg_copy_projected_grenades(DSPUBGProjectedGrenade out[kDSPUBGMaxGrenades],
+                                           uint64_t *epochOut);
 static void ds_pubg_get_total_counts(int *outEnemies, int *outBots);
 static void ds_pubg_overlay_reset(void);
 

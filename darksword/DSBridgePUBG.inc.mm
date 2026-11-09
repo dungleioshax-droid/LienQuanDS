@@ -96,6 +96,22 @@ static uint64_t g_dspubgEpoch = 1;
 static DSPUBGProjectedItem g_dspubgItems[kDSPUBGMaxItems] = {};
 static int g_dspubgItemCount = 0;
 static uint64_t g_dspubgItemEpoch = 1;
+
+static DSPUBGProjectedGrenade g_dspubgGrenades[kDSPUBGMaxGrenades] = {};
+static int g_dspubgGrenadeCount = 0;
+static uint64_t g_dspubgGrenadeEpoch = 1;
+
+struct DSPUBGGrenadeHistory {
+    uint64_t actor;
+    DSPUBGGrenadeType type;
+    DSPUBGVector trail[16];
+    int trailCount;
+    uint64_t lastSeenTick;
+    DSPUBGVector throwerPos;
+    bool hasThrowerPos;
+};
+static DSPUBGGrenadeHistory s_grenadeHistories[16] = {};
+static uint64_t s_grenadeTickCounter = 0;
 static uint64_t g_dspubgLocalPawn = 0;
 
 static uint64_t g_dspubgGNames = 0;
@@ -882,6 +898,65 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
     }
 
     return DSPUBGItemCategoryNone;
+}
+
+static bool ds_pubg_classify_grenade(const char *name, DSPUBGGrenadeType *outType, char *outDisplay, size_t outCap, float *outRadius) {
+    if (!name || !outType || !outDisplay || outCap < 8) return false;
+
+    // Filter out pickup wrappers, weapons in hand, emitters, explosions, scenery
+    if (strcasestr(name, "PickUp") || strcasestr(name, "Wrapper") || strcasestr(name, "Weapon") ||
+        strcasestr(name, "Particle") || strcasestr(name, "Emitter") || strcasestr(name, "Effect") ||
+        strcasestr(name, "Explosion") || strcasestr(name, "Decal") || strcasestr(name, "Sound") ||
+        strcasestr(name, "Audio") || strcasestr(name, "Camera") || strcasestr(name, "Character") ||
+        strcasestr(name, "Pawn") || strcasestr(name, "Player")) {
+        return false;
+    }
+
+    bool isEn = (g_pubgLanguage == 1);
+
+    // 1. Frag Grenade (Lựu đạn nổ)
+    if (strcasestr(name, "Shoulei") || strcasestr(name, "Frag") || strcasestr(name, "ProjFrag") ||
+        strcasestr(name, "ProjGrenade_Shoulei") || strcasestr(name, "BP_Grenade_Shoulei")) {
+        *outType = DSPUBGGrenadeTypeFrag;
+        snprintf(outDisplay, outCap, isEn ? "FRAG GRENADE" : "LỰU ĐẠN NỔ");
+        if (outRadius) *outRadius = 9.0f; // 9 meters damage radius
+        return true;
+    }
+
+    // 2. Molotov / Burn Grenade (Bom lửa)
+    if (strcasestr(name, "Burn") || strcasestr(name, "Molotov") || strcasestr(name, "Fire") ||
+        strcasestr(name, "ProjBurn") || strcasestr(name, "BP_Molotov")) {
+        *outType = DSPUBGGrenadeTypeBurn;
+        snprintf(outDisplay, outCap, isEn ? "MOLOTOV" : "BOM LỬA");
+        if (outRadius) *outRadius = 4.5f; // 4.5 meters burn radius
+        return true;
+    }
+
+    // 3. Smoke Grenade (Bom khói)
+    if (strcasestr(name, "Smoke") || strcasestr(name, "ProjSmoke") || strcasestr(name, "BP_Grenade_Smoke")) {
+        *outType = DSPUBGGrenadeTypeSmoke;
+        snprintf(outDisplay, outCap, isEn ? "SMOKE" : "BOM KHÓI");
+        if (outRadius) *outRadius = 6.0f; // 6 meters smoke radius
+        return true;
+    }
+
+    // 4. Stun Grenade (Bom choáng)
+    if (strcasestr(name, "Stun") || strcasestr(name, "Flash") || strcasestr(name, "ProjStun") || strcasestr(name, "BP_Grenade_Stun")) {
+        *outType = DSPUBGGrenadeTypeStun;
+        snprintf(outDisplay, outCap, isEn ? "STUN" : "BOM CHOÁNG");
+        if (outRadius) *outRadius = 8.0f; // 8 meters flash radius
+        return true;
+    }
+
+    // 5. Generic Projectile Grenade
+    if (strcasestr(name, "ProjGrenade") || (strcasestr(name, "Grenade") && strcasestr(name, "Proj"))) {
+        *outType = DSPUBGGrenadeTypeFrag;
+        snprintf(outDisplay, outCap, isEn ? "GRENADE" : "LỰU ĐẠN");
+        if (outRadius) *outRadius = 9.0f;
+        return true;
+    }
+
+    return false;
 }
 
 static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay, size_t outCap) {
@@ -2341,17 +2416,32 @@ static int ds_pubg_copy_projected_items(DSPUBGProjectedItem out[kDSPUBGMaxItems]
     return count;
 }
 
+static int ds_pubg_copy_projected_grenades(DSPUBGProjectedGrenade out[kDSPUBGMaxGrenades], uint64_t *epochOut) {
+    os_unfair_lock_lock(&g_dspubgSnapshotLock);
+    int count = g_dspubgGrenadeCount;
+    if (count > kDSPUBGMaxGrenades) count = kDSPUBGMaxGrenades;
+    if (count > 0 && out) {
+        memcpy(out, g_dspubgGrenades, count * sizeof(DSPUBGProjectedGrenade));
+    }
+    if (epochOut) *epochOut = g_dspubgGrenadeEpoch;
+    os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+    return count;
+}
+
 static void ds_pubg_overlay_reset(void) {
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     g_dspubgPlayerCount = 0;
     g_dspubgItemCount = 0;
+    g_dspubgGrenadeCount = 0;
     g_dspubgTotalEnemies = 0;
     g_dspubgTotalBots = 0;
     memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
     memset(g_dspubgItems, 0, sizeof(g_dspubgItems));
+    memset(g_dspubgGrenades, 0, sizeof(g_dspubgGrenades));
     memset(g_dspubgActorCache, 0, sizeof(g_dspubgActorCache));
     ++g_dspubgEpoch;
     ++g_dspubgItemEpoch;
+    ++g_dspubgGrenadeEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }
 
@@ -3152,6 +3242,170 @@ static void ds_pubg_tick(void) {
         return true;
     };
 
+    DSPUBGProjectedGrenade grenadeStaging[kDSPUBGMaxGrenades * 2];
+    int grenadeStagingCount = 0;
+    s_grenadeTickCounter++;
+
+    auto processGrenade = [&](uint64_t actor) -> bool {
+        if (grenadeStagingCount >= kDSPUBGMaxGrenades) return false;
+        if (!g_pubgEspGrenade) return false;
+
+        uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
+        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+        if (cEntry.actor == actor && cEntry.isScenery) return false;
+
+        char actorName[64] = {0};
+        if (!ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
+            return false;
+        }
+
+        DSPUBGGrenadeType gType = DSPUBGGrenadeTypeFrag;
+        char gDisplayName[32] = {0};
+        float dmgRadius = 9.0f;
+        if (!ds_pubg_classify_grenade(actorName, &gType, gDisplayName, sizeof(gDisplayName), &dmgRadius)) {
+            return false;
+        }
+
+        DSPUBGVector rootLoc = {};
+        bool hasLoc = false;
+        uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+        if (!rootComp || !ds_pubg_valid(rootComp)) {
+            rootComp = ds_pubg_read_ptr(actor + 0x180ULL);
+        }
+        if (rootComp && ds_pubg_valid(rootComp)) {
+            if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) {
+                if (!isnan(rootLoc.X) && !isinf(rootLoc.X) &&
+                    !isnan(rootLoc.Y) && !isinf(rootLoc.Y) &&
+                    !isnan(rootLoc.Z) && !isinf(rootLoc.Z) &&
+                    (rootLoc.X != 0.0f || rootLoc.Y != 0.0f || rootLoc.Z != 0.0f)) {
+                    hasLoc = true;
+                }
+            }
+        }
+        if (!hasLoc) return false;
+
+        float dx = (rootLoc.X - basis.lx) * 0.01f;
+        float dy = (rootLoc.Y - basis.ly) * 0.01f;
+        float dz = (rootLoc.Z - basis.lz) * 0.01f;
+        float dist3D = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (dist3D > 150.0f) return true;
+
+        float sx = 0, sy = 0, dist = 0;
+        bool isVisible = ds_pubg_cam_basis_project(basis, rootLoc, sx, sy, dist);
+
+        int histSlot = -1;
+        for (int h = 0; h < 16; h++) {
+            if (s_grenadeHistories[h].actor == actor) {
+                histSlot = h;
+                break;
+            }
+        }
+        if (histSlot < 0) {
+            for (int h = 0; h < 16; h++) {
+                if (s_grenadeHistories[h].actor == 0 || (s_grenadeTickCounter - s_grenadeHistories[h].lastSeenTick) > 30) {
+                    histSlot = h;
+                    s_grenadeHistories[h].actor = actor;
+                    s_grenadeHistories[h].type = gType;
+                    s_grenadeHistories[h].trailCount = 0;
+                    s_grenadeHistories[h].hasThrowerPos = false;
+                    uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
+                    if (!inst || !ds_pubg_valid(inst)) inst = ds_pubg_read_ptr(actor + 0x140ULL);
+                    if (inst && ds_pubg_valid(inst)) {
+                        uint64_t instRoot = ds_pubg_read_ptr(inst + kDSPUBGActorRootComponentOffset);
+                        if (instRoot && ds_pubg_valid(instRoot)) {
+                            DSPUBGVector instLoc = {};
+                            if (ds_pubg_read(instRoot + kDSPUBGSceneCompRelativeLocOffset, &instLoc, sizeof(instLoc))) {
+                                s_grenadeHistories[h].throwerPos = instLoc;
+                                s_grenadeHistories[h].hasThrowerPos = true;
+                                s_grenadeHistories[h].trail[0] = instLoc;
+                                s_grenadeHistories[h].trailCount = 1;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        DSPUBGProjectedGrenade &pg = grenadeStaging[grenadeStagingCount++];
+        pg.screenX = sx;
+        pg.screenY = sy;
+        pg.distanceMeters = dist3D;
+        pg.isVisible = isVisible;
+        pg.type = gType;
+        strncpy(pg.name, gDisplayName, sizeof(pg.name) - 1);
+        pg.name[sizeof(pg.name) - 1] = '\0';
+        pg.damageRadiusMeters = dmgRadius;
+        pg.isLocalInDanger = (dist3D <= dmgRadius);
+        pg.hasStart = false;
+        pg.startX = screenW * 0.5f;
+        pg.startY = 25.0f;
+        pg.trajCount = 0;
+        pg.circlePointCount = kDSPUBGCirclePoints;
+
+        if (histSlot >= 0) {
+            DSPUBGGrenadeHistory &hist = s_grenadeHistories[histSlot];
+            hist.lastSeenTick = s_grenadeTickCounter;
+
+            if (hist.trailCount == 0) {
+                hist.trail[0] = rootLoc;
+                hist.trailCount = 1;
+            } else {
+                DSPUBGVector &lastPos = hist.trail[hist.trailCount - 1];
+                float mdx = (rootLoc.X - lastPos.X) * 0.01f;
+                float mdy = (rootLoc.Y - lastPos.Y) * 0.01f;
+                float mdz = (rootLoc.Z - lastPos.Z) * 0.01f;
+                float moveDist = sqrtf(mdx * mdx + mdy * mdy + mdz * mdz);
+                if (moveDist > 0.3f) {
+                    if (hist.trailCount < 16) {
+                        hist.trail[hist.trailCount++] = rootLoc;
+                    } else {
+                        for (int k = 0; k < 15; k++) hist.trail[k] = hist.trail[k + 1];
+                        hist.trail[15] = rootLoc;
+                    }
+                }
+            }
+
+            if (hist.hasThrowerPos) {
+                float tsx = 0, tsy = 0, tdist = 0;
+                if (ds_pubg_cam_basis_project(basis, hist.throwerPos, tsx, tsy, tdist)) {
+                    pg.startX = tsx;
+                    pg.startY = tsy;
+                    pg.hasStart = true;
+                }
+            }
+
+            int projectedTraj = 0;
+            for (int t = 0; t < hist.trailCount && projectedTraj < 16; t++) {
+                float psx = 0, psy = 0, pdist = 0;
+                if (ds_pubg_cam_basis_project(basis, hist.trail[t], psx, psy, pdist)) {
+                    pg.trajPoints[projectedTraj++] = CGPointMake(psx, psy);
+                }
+            }
+            pg.trajCount = projectedTraj;
+        }
+
+        float radUnits = dmgRadius * 100.0f;
+        for (int k = 0; k < kDSPUBGCirclePoints; k++) {
+            float angle = (float)k * (2.0f * (float)M_PI / (float)kDSPUBGCirclePoints);
+            DSPUBGVector cpt = {
+                rootLoc.X + radUnits * cosf(angle),
+                rootLoc.Y + radUnits * sinf(angle),
+                rootLoc.Z
+            };
+            float csx = 0, csy = 0, cdist = 0;
+            if (ds_pubg_cam_basis_project(basis, cpt, csx, csy, cdist)) {
+                pg.circlePoints[k] = CGPointMake(csx, csy);
+                pg.circlePointsValid[k] = true;
+            } else {
+                pg.circlePoints[k] = CGPointMake(-9999.0f, -9999.0f);
+                pg.circlePointsValid[k] = false;
+            }
+        }
+
+        return true;
+    };
+
     DSPUBGProjectedItem itemStaging[kDSPUBGMaxItems * 2];
     int itemStagingCount = 0;
 
@@ -3391,7 +3645,9 @@ static void ds_pubg_tick(void) {
                     }
 
                     if (!processPawn(actor, 0, false)) {
-                        processItemOrVehicle(actor);
+                        if (!processGrenade(actor)) {
+                            processItemOrVehicle(actor);
+                        }
                     }
                 }
             }
@@ -3418,6 +3674,7 @@ static void ds_pubg_tick(void) {
     }
 
     int copyItemCount = itemStagingCount > kDSPUBGMaxItems ? kDSPUBGMaxItems : itemStagingCount;
+    int copyGrenadeCount = grenadeStagingCount > kDSPUBGMaxGrenades ? kDSPUBGMaxGrenades : grenadeStagingCount;
 
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
     memcpy(g_dspubgPlayers, staging, publishedCount * sizeof(DSPUBGProjectedPlayer));
@@ -3429,5 +3686,9 @@ static void ds_pubg_tick(void) {
     memcpy(g_dspubgItems, itemStaging, copyItemCount * sizeof(DSPUBGProjectedItem));
     g_dspubgItemCount = copyItemCount;
     ++g_dspubgItemEpoch;
+
+    memcpy(g_dspubgGrenades, grenadeStaging, copyGrenadeCount * sizeof(DSPUBGProjectedGrenade));
+    g_dspubgGrenadeCount = copyGrenadeCount;
+    ++g_dspubgGrenadeEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 }

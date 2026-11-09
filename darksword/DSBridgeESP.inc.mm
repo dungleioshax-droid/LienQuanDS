@@ -923,6 +923,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     // Modern UI Containers
     UIView *_masterCard;
     UIView *_pubgCards[8];
+    UIView *_pubgGrenadeCard;
     UIView *_scanCard;
     // PUBG ESP controls
     UILabel *_pubgBoxLabel;
@@ -941,6 +942,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UISwitch *_pubgDistSwitch;
     UILabel *_pubgBotLabel;
     UISwitch *_pubgBotSwitch;
+    UILabel *_pubgGrenadeLabel;
+    UISwitch *_pubgGrenadeSwitch;
     UILabel *_pubgVehicleLabel;
     UISwitch *_pubgVehicleSwitch;
     UILabel *_pubgVehicleHpLabel;
@@ -1028,6 +1031,14 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [_panelView addSubview:card];
         _pubgCards[ci] = card;
     }
+
+    _pubgGrenadeCard = [[UIView alloc] initWithFrame:CGRectZero];
+    _pubgGrenadeCard.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.045];
+    _pubgGrenadeCard.layer.cornerRadius = 8.0;
+    _pubgGrenadeCard.layer.borderWidth = 0.8;
+    _pubgGrenadeCard.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.09].CGColor;
+    _pubgGrenadeCard.hidden = YES;
+    [_panelView addSubview:_pubgGrenadeCard];
 
     for (int ci = 0; ci < 8; ci++) {
         UIView *card = [[UIView alloc] initWithFrame:CGRectZero];
@@ -1303,6 +1314,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _pubgBotSwitch = pubgCreateSwitch(@selector(dsPubgBotChanged:));
     _pubgArrowLabel = pubgCreateLabel(@"Mũi Tên");
     _pubgArrowSwitch = pubgCreateSwitch(@selector(dsPubgArrowChanged:));
+    _pubgGrenadeLabel = pubgCreateLabel(@"Cảnh Báo Bom");
+    _pubgGrenadeSwitch = pubgCreateSwitch(@selector(dsPubgGrenadeChanged:));
 
     _pubgVehicleLabel = pubgCreateLabel(@"Hiện Xe");
     _pubgVehicleSwitch = pubgCreateSwitch(@selector(dsPubgVehicleChanged:));
@@ -1514,6 +1527,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgBotSwitch.on = g_pubgEspBot;
         if ([defaults objectForKey:@"pubg_arrow"] != nil) g_pubgEspArrow = [defaults boolForKey:@"pubg_arrow"];
         _pubgArrowSwitch.on = g_pubgEspArrow;
+        if ([defaults objectForKey:@"pubg_grenade"] != nil) g_pubgEspGrenade = [defaults boolForKey:@"pubg_grenade"];
+        _pubgGrenadeSwitch.on = g_pubgEspGrenade;
         if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
         _pubgVehicleSwitch.on = g_pubgEspVehicle;
         if ([defaults objectForKey:@"pubg_vehicle_hp"] != nil) g_pubgEspVehicleHp = [defaults boolForKey:@"pubg_vehicle_hp"];
@@ -1588,7 +1603,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
     CGFloat panelW = (ds_active_game() == 1) ? 300.0 : MIN((CGFloat)312.0, MAX((CGFloat)260.0, boundsW - 28.0));
-    CGFloat panelH = (ds_active_game() == 1) ? 328.0 : 311.0;
+    CGFloat panelH = (ds_active_game() == 1) ? 355.0 : 311.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
     CGFloat defaultPanelY = MIN((CGFloat)82.0,
         MAX((CGFloat)10.0, boundsH - panelH - 10.0));
@@ -1783,8 +1798,16 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _pubgArrowSwitch.hidden = NO;
             layoutCardSwitch(_pubgArrowSwitch, col2X + cardW, y3 + cardH0 * 0.5);
 
-            CGFloat y4 = 230.0;
-            _scanCard.frame = CGRectMake(col1X, y4, panelW - 24.0, 48.0);
+            CGFloat y4 = 228.0;
+            _pubgGrenadeCard.frame = CGRectMake(col1X, y4, panelW - 24.0, cardH0);
+            _pubgGrenadeCard.hidden = NO;
+            _pubgGrenadeLabel.frame = CGRectMake(col1X + 8.0, y4 + 4.0, panelW - 24.0 - 54.0, 20.0);
+            _pubgGrenadeLabel.hidden = NO;
+            _pubgGrenadeSwitch.hidden = NO;
+            layoutCardSwitch(_pubgGrenadeSwitch, col1X + (panelW - 24.0), y4 + cardH0 * 0.5);
+
+            CGFloat y5 = 260.0;
+            _scanCard.frame = CGRectMake(col1X, y5, panelW - 24.0, 48.0);
             _scanCard.hidden = NO;
             _zoomLabel.text = (g_pubgLanguage == 1) ? @"Enemy ESP Distance" : @"Khoảng cách hiện địch";
             _zoomLabel.textColor = [UIColor colorWithWhite:0.9 alpha:1.0];
@@ -1795,9 +1818,9 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _zoomValueLabel.hidden = NO;
             _zoomSlider.hidden = NO;
             _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-            _zoomLabel.frame = CGRectMake(col1X + 10.0, y4 + 3.0, 160.0, 18.0);
-            _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y4 + 3.0, 78.0, 18.0);
-            _zoomSlider.frame = CGRectMake(col1X + 8.0, y4 + 21.0, panelW - 40.0, 22.0);
+            _zoomLabel.frame = CGRectMake(col1X + 10.0, y5 + 3.0, 160.0, 18.0);
+            _zoomValueLabel.frame = CGRectMake(panelW - 90.0, y5 + 3.0, 78.0, 18.0);
+            _zoomSlider.frame = CGRectMake(col1X + 8.0, y5 + 21.0, panelW - 40.0, 22.0);
         } else if (_pubgCurrentTab == 1) {
             setTabBtnActive(_pubgTabButtonItems,
                             [UIColor colorWithRed:255/255.0 green:215/255.0 blue:0/255.0 alpha:0.18],
@@ -1816,6 +1839,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _pubgDistLabel.hidden = YES; _pubgDistSwitch.hidden = YES;
             _pubgBotLabel.hidden = YES; _pubgBotSwitch.hidden = YES;
             _pubgArrowLabel.hidden = YES; _pubgArrowSwitch.hidden = YES;
+            _pubgGrenadeCard.hidden = YES; _pubgGrenadeLabel.hidden = YES; _pubgGrenadeSwitch.hidden = YES;
             _scanCard.hidden = YES; _zoomLabel.hidden = YES; _zoomValueLabel.hidden = YES; _zoomSlider.hidden = YES;
 
             // Hide Tab 2 (Settings)
@@ -1914,6 +1938,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _pubgDistLabel.hidden = YES; _pubgDistSwitch.hidden = YES;
             _pubgBotLabel.hidden = YES; _pubgBotSwitch.hidden = YES;
             _pubgArrowLabel.hidden = YES; _pubgArrowSwitch.hidden = YES;
+            _pubgGrenadeCard.hidden = YES; _pubgGrenadeLabel.hidden = YES; _pubgGrenadeSwitch.hidden = YES;
             _scanCard.hidden = YES; _zoomLabel.hidden = YES; _zoomValueLabel.hidden = YES; _zoomSlider.hidden = YES;
 
             // Hide Tab 1 (Items)
@@ -1961,11 +1986,12 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
         // Reset button
         _resetButton.hidden = NO;
-        _resetButton.frame = CGRectMake(12.0, 286.0, panelW - 24.0, 26.0);
+        _resetButton.frame = CGRectMake(12.0, 316.0, panelW - 24.0, 26.0);
         [_panelView bringSubviewToFront:_resetButton];
     } else {
         _masterCard.hidden = YES;
         for (int ci = 0; ci < 8; ci++) _pubgCards[ci].hidden = YES;
+        _pubgGrenadeCard.hidden = YES;
         _scanCard.hidden = YES;
         _espLabel.text = @"ESP";
         _espLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
@@ -1989,6 +2015,8 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgBotSwitch.hidden = YES;
         _pubgArrowLabel.hidden = YES;
         _pubgArrowSwitch.hidden = YES;
+        _pubgGrenadeLabel.hidden = YES;
+        _pubgGrenadeSwitch.hidden = YES;
         _pubgVehicleLabel.hidden = YES;
         _pubgVehicleSwitch.hidden = YES;
         _pubgVehicleHpLabel.hidden = YES;
@@ -2216,6 +2244,11 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_arrow"];
 }
 
+- (void)dsPubgGrenadeChanged:(UISwitch *)sender {
+    g_pubgEspGrenade = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_grenade"];
+}
+
 - (void)dsPubgVehicleChanged:(UISwitch *)sender {
     g_pubgEspVehicle = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
@@ -2305,6 +2338,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _pubgDistLabel.text = isEn ? @"Distance" : @"Khoảng Cách";
     _pubgBotLabel.text = isEn ? @"Show Bots AI" : @"Hiện Bot AI";
     _pubgArrowLabel.text = isEn ? @"360° Arrow" : @"Mũi Tên";
+    _pubgGrenadeLabel.text = isEn ? @"Grenade Alert" : @"Cảnh Báo Bom";
     _zoomLabel.text = isEn ? @"Enemy ESP Distance" : @"Khoảng cách hiện địch";
 
     // Tab 1: Items
@@ -2394,6 +2428,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [_pubgDistSwitch setOn:YES animated:YES];
         [_pubgBotSwitch setOn:YES animated:YES];
         [_pubgArrowSwitch setOn:YES animated:YES];
+        [_pubgGrenadeSwitch setOn:YES animated:YES];
         [_zoomSlider setValue:400.0f animated:YES];
         g_pubgEspBox = YES;
         g_pubgEspSkeleton = YES;
@@ -2403,6 +2438,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         g_pubgEspDist = YES;
         g_pubgEspBot = YES;
         g_pubgEspArrow = YES;
+        g_pubgEspGrenade = YES;
         g_dspubgMaxDistance = 400.0f;
 
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -2414,6 +2450,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [defaults setBool:YES forKey:@"pubg_dist"];
         [defaults setBool:YES forKey:@"pubg_bot"];
         [defaults setBool:YES forKey:@"pubg_arrow"];
+        [defaults setBool:YES forKey:@"pubg_grenade"];
 
         [_pubgVehicleSwitch setOn:YES animated:YES];
         [_pubgVehicleHpSwitch setOn:YES animated:YES];
@@ -3700,6 +3737,10 @@ static CATextLayer *g_hostedPUBGWeaponLabels[kDSPUBGMaxPlayers] = {};
 static CAShapeLayer *g_hostedPUBGArrowLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGArrowTextLayers[kDSPUBGMaxPlayers] = {};
 static CATextLayer *g_hostedPUBGItemLabels[kDSPUBGMaxItems] = {};
+static CAShapeLayer *g_hostedPUBGGrenadeTrajLayers[kDSPUBGMaxGrenades] = {};
+static CAShapeLayer *g_hostedPUBGGrenadeCircleLayers[kDSPUBGMaxGrenades] = {};
+static CATextLayer *g_hostedPUBGGrenadeLabels[kDSPUBGMaxGrenades] = {};
+static CATextLayer *g_hostedPUBGGrenadeDangerBanner = nil;
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 
@@ -3719,6 +3760,12 @@ static void ds_hosted_pubg_hide_all(void) {
     for (int i = 0; i < kDSPUBGMaxItems; i++) {
         if (g_hostedPUBGItemLabels[i] && !g_hostedPUBGItemLabels[i].hidden) g_hostedPUBGItemLabels[i].hidden = YES;
     }
+    for (int i = 0; i < kDSPUBGMaxGrenades; i++) {
+        if (g_hostedPUBGGrenadeTrajLayers[i] && !g_hostedPUBGGrenadeTrajLayers[i].hidden) g_hostedPUBGGrenadeTrajLayers[i].hidden = YES;
+        if (g_hostedPUBGGrenadeCircleLayers[i] && !g_hostedPUBGGrenadeCircleLayers[i].hidden) g_hostedPUBGGrenadeCircleLayers[i].hidden = YES;
+        if (g_hostedPUBGGrenadeLabels[i] && !g_hostedPUBGGrenadeLabels[i].hidden) g_hostedPUBGGrenadeLabels[i].hidden = YES;
+    }
+    if (g_hostedPUBGGrenadeDangerBanner && !g_hostedPUBGGrenadeDangerBanner.hidden) g_hostedPUBGGrenadeDangerBanner.hidden = YES;
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
 }
@@ -4492,6 +4539,187 @@ static void ds_hosted_apply_pubg(void) {
             lbl.hidden = NO;
         }
     }
+
+    // --- GRENADE WARNING RENDERING (Line & Circle) ---
+    DSPUBGProjectedGrenade grenades[kDSPUBGMaxGrenades];
+    uint64_t grenadeEpoch = 0;
+    int grenadeCount = ds_pubg_copy_projected_grenades(grenades, &grenadeEpoch);
+
+    bool anyDanger = false;
+    float closestDangerDist = 999.0f;
+
+    for (int i = 0; i < kDSPUBGMaxGrenades; i++) {
+        CAShapeLayer *trajLayer = g_hostedPUBGGrenadeTrajLayers[i];
+        CAShapeLayer *circleLayer = g_hostedPUBGGrenadeCircleLayers[i];
+        CATextLayer *badgeLbl = g_hostedPUBGGrenadeLabels[i];
+
+        if (i >= grenadeCount || !g_pubgEspGrenade || !g_hostedESPEnabled) {
+            if (trajLayer) trajLayer.hidden = YES;
+            if (circleLayer) circleLayer.hidden = YES;
+            if (badgeLbl) badgeLbl.hidden = YES;
+            continue;
+        }
+
+        const DSPUBGProjectedGrenade &g = grenades[i];
+        if (!g.isVisible && g.trajCount == 0) {
+            if (trajLayer) trajLayer.hidden = YES;
+            if (circleLayer) circleLayer.hidden = YES;
+            if (badgeLbl) badgeLbl.hidden = YES;
+            continue;
+        }
+
+        UIColor *baseColor = nil;
+        switch (g.type) {
+            case DSPUBGGrenadeTypeFrag:
+                baseColor = [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0]; // Bright Red
+                break;
+            case DSPUBGGrenadeTypeBurn:
+                baseColor = [UIColor colorWithRed:255/255.0 green:140/255.0 blue:0/255.0 alpha:1.0]; // Orange
+                break;
+            case DSPUBGGrenadeTypeSmoke:
+                baseColor = [UIColor colorWithWhite:0.92 alpha:1.0]; // White
+                break;
+            case DSPUBGGrenadeTypeStun:
+                baseColor = [UIColor colorWithRed:255/255.0 green:220/255.0 blue:20/255.0 alpha:1.0]; // Yellow
+                break;
+            default:
+                baseColor = [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0];
+                break;
+        }
+
+        if (g.isLocalInDanger) {
+            anyDanger = true;
+            if (g.distanceMeters < closestDangerDist) closestDangerDist = g.distanceMeters;
+        }
+
+        // 1. Line bom ném ra (Trajectory line & Snapline)
+        if (trajLayer) {
+            UIBezierPath *linePath = [UIBezierPath bezierPath];
+            bool hasLine = false;
+
+            // Flight trajectory curve
+            if (g.trajCount > 1) {
+                [linePath moveToPoint:g.trajPoints[0]];
+                for (int t = 1; t < g.trajCount; t++) {
+                    [linePath addLineToPoint:g.trajPoints[t]];
+                }
+                if (g.isVisible) {
+                    [linePath addLineToPoint:CGPointMake(g.screenX, g.screenY)];
+                }
+                hasLine = true;
+            }
+
+            // Snapline from screen top/thrower directly to grenade
+            if (g.isVisible) {
+                CGFloat originX = g.hasStart ? g.startX : (width * 0.5f);
+                CGFloat originY = g.hasStart ? g.startY : 25.0f;
+                [linePath moveToPoint:CGPointMake(originX, originY)];
+                [linePath addLineToPoint:CGPointMake(g.screenX, g.screenY)];
+                hasLine = true;
+            }
+
+            if (hasLine) {
+                trajLayer.path = linePath.CGPath;
+                trajLayer.strokeColor = baseColor.CGColor;
+                trajLayer.lineWidth = fmaxf(1.5f, g_pubgEspThickness + 0.6f);
+                trajLayer.hidden = NO;
+            } else {
+                trajLayer.hidden = YES;
+            }
+        }
+
+        // 2. Vòng tròn sát thương quả bom (Damage Radius 3D Circle)
+        if (circleLayer) {
+            UIBezierPath *circlePath = [UIBezierPath bezierPath];
+            bool firstPoint = true;
+            int validCount = 0;
+            for (int k = 0; k < g.circlePointCount; k++) {
+                if (g.circlePointsValid[k]) {
+                    validCount++;
+                    if (firstPoint) {
+                        [circlePath moveToPoint:g.circlePoints[k]];
+                        firstPoint = false;
+                    } else {
+                        [circlePath addLineToPoint:g.circlePoints[k]];
+                    }
+                }
+            }
+
+            if (validCount >= 3) {
+                if (validCount == g.circlePointCount) {
+                    [circlePath closePath];
+                }
+                circleLayer.path = circlePath.CGPath;
+                if (g.isLocalInDanger) {
+                    circleLayer.strokeColor = [UIColor colorWithRed:255/255.0 green:0 blue:0 alpha:1.0].CGColor;
+                    circleLayer.fillColor = [UIColor colorWithRed:255/255.0 green:0 blue:0 alpha:0.32].CGColor;
+                    circleLayer.lineWidth = fmaxf(2.0f, g_pubgEspThickness + 1.2f);
+                } else {
+                    circleLayer.strokeColor = [baseColor colorWithAlphaComponent:0.85].CGColor;
+                    circleLayer.fillColor = [baseColor colorWithAlphaComponent:0.14].CGColor;
+                    circleLayer.lineWidth = fmaxf(1.2f, g_pubgEspThickness);
+                }
+                circleLayer.hidden = NO;
+            } else {
+                circleLayer.hidden = YES;
+            }
+        }
+
+        // 3. Text Badge (Tên bom & khoảng cách)
+        if (badgeLbl && g.isVisible) {
+            NSString *titleStr = [NSString stringWithUTF8String:g.name];
+            NSString *fullBadge = nil;
+            if (g.isLocalInDanger) {
+                fullBadge = [NSString stringWithFormat:@"⚠️ NGUY HIỂM: %@ (%.1fm)", titleStr, g.distanceMeters];
+            } else {
+                fullBadge = [NSString stringWithFormat:@"💣 %@ (%.1fm)", titleStr, g.distanceMeters];
+            }
+
+            UIColor *badgeTextColor = g.isLocalInDanger ? [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0] : baseColor;
+            NSAttributedString *badgeAttr = [[NSAttributedString alloc] initWithString:fullBadge attributes:@{
+                NSFontAttributeName: [UIFont systemFontOfSize:9.5 weight:UIFontWeightHeavy],
+                NSForegroundColorAttributeName: badgeTextColor,
+                NSStrokeColorAttributeName: [UIColor blackColor],
+                NSStrokeWidthAttributeName: @(-2.2),
+                NSParagraphStyleAttributeName: s_centerStyle
+            }];
+
+            CGFloat bw = 150.0f;
+            CGFloat bh = 16.0f;
+            badgeLbl.frame = CGRectMake(g.screenX - bw * 0.5f, g.screenY - bh - 4.0f, bw, bh);
+            badgeLbl.backgroundColor = UIColor.clearColor.CGColor;
+            badgeLbl.string = badgeAttr;
+            badgeLbl.hidden = NO;
+        } else if (badgeLbl) {
+            badgeLbl.hidden = YES;
+        }
+    }
+
+    // 4. Center Screen Danger Banner (khi người chơi nằm trong vùng sát thương)
+    if (g_hostedPUBGGrenadeDangerBanner) {
+        if (anyDanger && g_pubgEspGrenade && g_hostedESPEnabled) {
+            bool isEn = (g_pubgLanguage == 1);
+            NSString *bannerText = isEn
+                ? [NSString stringWithFormat:@"⚠️ WARNING: IN GRENADE BLAST ZONE! (%.1fm) ⚠️", closestDangerDist]
+                : [NSString stringWithFormat:@"⚠️ CẢNH BÁO: BẠN ĐANG TRONG TẦM BOM NỔ! (%.1fm) ⚠️", closestDangerDist];
+
+            NSAttributedString *bannerAttr = [[NSAttributedString alloc] initWithString:bannerText attributes:@{
+                NSFontAttributeName: [UIFont systemFontOfSize:12.5 weight:UIFontWeightHeavy],
+                NSForegroundColorAttributeName: [UIColor colorWithRed:255/255.0 green:40/255.0 blue:40/255.0 alpha:1.0],
+                NSStrokeColorAttributeName: [UIColor blackColor],
+                NSStrokeWidthAttributeName: @(-2.5),
+                NSParagraphStyleAttributeName: s_centerStyle
+            }];
+
+            CGFloat bannerW = 320.0f;
+            CGFloat bannerH = 22.0f;
+            g_hostedPUBGGrenadeDangerBanner.frame = CGRectMake((width - bannerW) * 0.5f, 60.0f, bannerW, bannerH);
+            g_hostedPUBGGrenadeDangerBanner.string = bannerAttr;
+            g_hostedPUBGGrenadeDangerBanner.hidden = NO;
+        } else {
+            g_hostedPUBGGrenadeDangerBanner.hidden = YES;
+        }
+    }
 }
 
 static void ds_hosted_consume_render_snapshot(bool fallback,
@@ -4923,6 +5151,48 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [g_hostedLayer addSublayer:itemLbl];
                 g_hostedPUBGItemLabels[i] = itemLbl;
             }
+
+            for (int i = 0; i < kDSPUBGMaxGrenades; i++) {
+                CAShapeLayer *traj = [CAShapeLayer layer];
+                traj.actions = noAnim;
+                traj.contentsScale = scale;
+                traj.fillColor = UIColor.clearColor.CGColor;
+                traj.lineCap = kCALineCapRound;
+                traj.lineJoin = kCALineJoinRound;
+                traj.lineWidth = 1.5;
+                traj.hidden = YES;
+                [g_hostedLayer addSublayer:traj];
+                g_hostedPUBGGrenadeTrajLayers[i] = traj;
+
+                CAShapeLayer *circ = [CAShapeLayer layer];
+                circ.actions = noAnim;
+                circ.contentsScale = scale;
+                circ.lineWidth = 1.5;
+                circ.hidden = YES;
+                [g_hostedLayer addSublayer:circ];
+                g_hostedPUBGGrenadeCircleLayers[i] = circ;
+
+                CATextLayer *gLbl = [CATextLayer layer];
+                gLbl.actions = noAnim;
+                gLbl.contentsScale = scale;
+                gLbl.alignmentMode = kCAAlignmentCenter;
+                gLbl.wrapped = NO;
+                gLbl.shadowColor = UIColor.blackColor.CGColor;
+                gLbl.shadowRadius = 0.0;
+                gLbl.shadowOpacity = 0.0;
+                gLbl.hidden = YES;
+                [g_hostedLayer addSublayer:gLbl];
+                g_hostedPUBGGrenadeLabels[i] = gLbl;
+            }
+
+            CATextLayer *dangerBanner = [CATextLayer layer];
+            dangerBanner.actions = noAnim;
+            dangerBanner.contentsScale = scale;
+            dangerBanner.alignmentMode = kCAAlignmentCenter;
+            dangerBanner.wrapped = NO;
+            dangerBanner.hidden = YES;
+            [g_hostedLayer addSublayer:dangerBanner];
+            g_hostedPUBGGrenadeDangerBanner = dangerBanner;
 
             CAShapeLayer *topBg = [CAShapeLayer layer];
             topBg.actions = noAnim;
