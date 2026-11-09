@@ -2609,9 +2609,90 @@ static const char* ds_pubg_get_debug_status(void) {
                  "PUBG: In Match (0 Enemies | %d Actors)", g_dspubgLastActorsCount);
     } else {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: In Match (Waiting for Spawns)");
+                 "PUBG: In Lobby (Waiting for Match)");
     }
     return g_dspubgStatusBuf;
+}
+
+static bool ds_pubg_is_in_match(uint64_t world, uint64_t playerController, uint64_t localPawn) {
+    if (!world || !ds_pubg_valid(world)) return false;
+
+    // 1. World and PersistentLevel Name check (rejects Lobby_Menu, MainCity, Frontend maps)
+    char worldName[64] = {0};
+    if (ds_pubg_get_actor_name(world, worldName, sizeof(worldName))) {
+        if (strcasestr(worldName, "Lobby") || strcasestr(worldName, "MainCity") ||
+            strcasestr(worldName, "Frontend") || strcasestr(worldName, "Hall") ||
+            strcasestr(worldName, "Login") || strcasestr(worldName, "Menu")) {
+            return false;
+        }
+    }
+
+    uint64_t level = ds_pubg_read_ptr(world + 0x30ULL); // PersistentLevel
+    if (level && ds_pubg_valid(level)) {
+        char levelName[64] = {0};
+        if (ds_pubg_get_actor_name(level, levelName, sizeof(levelName))) {
+            if (strcasestr(levelName, "Lobby") || strcasestr(levelName, "MainCity") ||
+                strcasestr(levelName, "Frontend") || strcasestr(levelName, "Hall") ||
+                strcasestr(levelName, "Login") || strcasestr(levelName, "Menu")) {
+                return false;
+            }
+        }
+    }
+
+    // 2. NetDriver -> ServerConnection check (Exact matching metalbiew.txt)
+    // In match, GWorld->NetDriver is connected to a dedicated game server.
+    // In lobby, NetDriver is either NULL or ServerConnection is NULL.
+    uint64_t netDriver = ds_pubg_read_ptr(world + 0x38ULL); // UWorld.NetDriver
+    if (netDriver && ds_pubg_valid(netDriver)) {
+        uint64_t serverConn = ds_pubg_read_ptr(netDriver + 0x78ULL); // UNetDriver.ServerConnection
+        if (!serverConn || !ds_pubg_valid(serverConn)) {
+            serverConn = ds_pubg_read_ptr(netDriver + 0x70ULL);
+        }
+        if (!serverConn || !ds_pubg_valid(serverConn)) {
+            serverConn = ds_pubg_read_ptr(netDriver + 0x80ULL);
+        }
+        if (!serverConn || !ds_pubg_valid(serverConn)) {
+            return false; // Not connected to any match server -> In Lobby
+        }
+    } else {
+        return false; // No NetDriver -> In Lobby
+    }
+
+    // 3. PlayerController check
+    if (playerController && ds_pubg_valid(playerController)) {
+        char ctrlName[64] = {0};
+        if (ds_pubg_get_actor_name(playerController, ctrlName, sizeof(ctrlName))) {
+            if (strcasestr(ctrlName, "Lobby") || strcasestr(ctrlName, "MainCity") ||
+                strcasestr(ctrlName, "UIController")) {
+                return false;
+            }
+        }
+    }
+
+    // 4. LocalPawn check
+    if (localPawn && ds_pubg_valid(localPawn)) {
+        char pawnName[64] = {0};
+        if (ds_pubg_get_actor_name(localPawn, pawnName, sizeof(pawnName))) {
+            if (strcasestr(pawnName, "Lobby") || strcasestr(pawnName, "MainCity")) {
+                return false;
+            }
+        }
+    }
+
+    // 5. GameState check
+    uint64_t gs = ds_pubg_read_ptr(world + kDSPUBGWorldGameStateOffset);
+    if (!gs || !ds_pubg_valid(gs)) gs = ds_pubg_read_ptr(world + 0x140ULL);
+    if (!gs || !ds_pubg_valid(gs)) gs = ds_pubg_read_ptr(world + 0x120ULL);
+    if (gs && ds_pubg_valid(gs)) {
+        char gsName[64] = {0};
+        if (ds_pubg_get_actor_name(gs, gsName, sizeof(gsName))) {
+            if (strcasestr(gsName, "MainCity") || strcasestr(gsName, "Lobby")) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 static void ds_pubg_tick(void) {
@@ -2715,6 +2796,23 @@ static void ds_pubg_tick(void) {
 
     uint64_t localPawn = playerController ? ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerPawnOffset) : 0;
     g_dspubgLocalPawn = localPawn;
+
+    // Check if player is actually in an active match (filters out Lobby, MainCity, Frontend)
+    if (!ds_pubg_is_in_match(world, playerController, localPawn)) {
+        g_dspubgPlayerCount = 0;
+        g_dspubgItemCount = 0;
+        g_dspubgGrenadeCount = 0;
+        g_dspubgLastActorsCount = 0;
+        g_dspubgLastEnemyCount = 0;
+        g_dspubgLastBotCount = 0;
+        g_dspubgLast360EnemyCount = 0;
+        g_dspubgLast360BotCount = 0;
+        ++g_dspubgPlayerEpoch;
+        ++g_dspubgItemEpoch;
+        ++g_dspubgGrenadeEpoch;
+        return;
+    }
+
     uint64_t cameraManager = playerController ? ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerCameraMgrOffset) : 0;
 
     DSPUBGVector camLoc = {};
@@ -2849,7 +2947,9 @@ static void ds_pubg_tick(void) {
                 strcasestr(pawnName, "Sound") || strcasestr(pawnName, "Zone") || strcasestr(pawnName, "Fog") ||
                 strcasestr(pawnName, "Shell") || strcasestr(pawnName, "Cartridge") || strcasestr(pawnName, "Trace") ||
                 strcasestr(pawnName, "Grenade") || strcasestr(pawnName, "Smoke") || strcasestr(pawnName, "Explosion") ||
-                strcasestr(pawnName, "Shoulei") || strcasestr(pawnName, "Molotov") || strcasestr(pawnName, "Burn")) {
+                strcasestr(pawnName, "Shoulei") || strcasestr(pawnName, "Molotov") || strcasestr(pawnName, "Burn") ||
+                strcasestr(pawnName, "Lobby") || strcasestr(pawnName, "MainCity") || strcasestr(pawnName, "PetAvatar") ||
+                strcasestr(pawnName, "LobbyModel") || strcasestr(pawnName, "Avatar") || strcasestr(pawnName, "Preview")) {
                 return false;
             }
         }
@@ -3580,6 +3680,14 @@ static void ds_pubg_tick(void) {
             uint64_t inst = ds_pubg_read_ptr(actor + 0x138ULL);
             uint64_t own = ds_pubg_read_ptr(actor + 0x140ULL);
             if (inst == localPawn || own == localPawn) {
+                return;
+            }
+        }
+
+        char actorName[64] = {0};
+        if (ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
+            if (strcasestr(actorName, "Lobby") || strcasestr(actorName, "MainCity") ||
+                strcasestr(actorName, "Preview") || strcasestr(actorName, "Avatar")) {
                 return;
             }
         }
