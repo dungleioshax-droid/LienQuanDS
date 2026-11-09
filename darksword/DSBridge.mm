@@ -1007,7 +1007,8 @@ typedef enum {
 } DSPUBGGrenadeType;
 
 static const int kDSPUBGMaxGrenades = 8;
-static const int kDSPUBGCirclePoints = 24;
+static const int kDSPUBGCirclePoints = 36;
+static const int kDSPUBGMaxTrajPoints = 36;
 
 typedef struct {
     float screenX;
@@ -1019,12 +1020,8 @@ typedef struct {
     float damageRadiusMeters;
     bool isLocalInDanger;
 
-    float startX;
-    float startY;
-    bool hasStart;
-
     int trajCount;
-    CGPoint trajPoints[32];
+    CGPoint trajPoints[kDSPUBGMaxTrajPoints];
 
     int circlePointCount;
     CGPoint circlePoints[kDSPUBGCirclePoints];
@@ -1039,8 +1036,6 @@ typedef struct {
     bool hasBox;
     CGPoint boxCorners[8];
     bool boxCornersValid[8];
-
-    bool isCooking;
 } DSPUBGProjectedGrenade;
 
 static const int kDSPUBGMaxPlayers = 96;

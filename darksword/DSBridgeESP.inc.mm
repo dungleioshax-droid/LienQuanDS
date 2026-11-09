@@ -4552,7 +4552,6 @@ static void ds_hosted_apply_pubg(void) {
     int grenadeCount = ds_pubg_copy_projected_grenades(grenades, &grenadeEpoch);
 
     bool anyDanger = false;
-    bool closestIsCooking = false;
     DSPUBGGrenadeType closestDangerType = DSPUBGGrenadeTypeFrag;
     float closestDangerDist = 999.0f;
 
@@ -4581,7 +4580,6 @@ static void ds_hosted_apply_pubg(void) {
             if (g.distanceMeters < closestDangerDist) {
                 closestDangerDist = g.distanceMeters;
                 closestDangerType = g.type;
-                closestIsCooking = g.isCooking;
             }
         }
 
@@ -4622,7 +4620,7 @@ static void ds_hosted_apply_pubg(void) {
                 break;
         }
 
-        // 1. Line bom ném ra (Đường bay & quỹ đạo của quả bom nối từ bom ra phía trước)
+        // 1. Line bom ném ra (Đường bay & quỹ đạo hình vòng cung của quả bom từ bom ra phía trước)
         if (trajLayer) {
             if (g.trajCount >= 2) {
                 UIBezierPath *linePath = [UIBezierPath bezierPath];
@@ -4632,34 +4630,35 @@ static void ds_hosted_apply_pubg(void) {
                 }
                 trajLayer.path = linePath.CGPath;
                 trajLayer.strokeColor = baseColor.CGColor;
-                trajLayer.lineWidth = fmaxf(2.0f, g_pubgEspThickness + 0.8f);
+                trajLayer.lineWidth = fmaxf(2.2f, g_pubgEspThickness + 1.0f);
+                trajLayer.lineCap = kCALineCapRound;
+                trajLayer.lineJoin = kCALineJoinRound;
                 trajLayer.hidden = NO;
             } else {
                 trajLayer.hidden = YES;
             }
         }
 
-        // Helper lambda to build circle path
+        // Helper lambda to build smooth circle path
         auto buildCirclePath = [&](const CGPoint *pts, const bool *validPts, int count) -> UIBezierPath * {
             UIBezierPath *p = [UIBezierPath bezierPath];
-            bool first = true;
-            int vCount = 0;
-            for (int k = 0; k < count; k++) {
-                if (validPts[k]) {
-                    vCount++;
-                    if (first) {
-                        [p moveToPoint:pts[k]];
-                        first = false;
+            int validCount = 0;
+            bool inSubpath = false;
+            for (int k = 0; k <= count; k++) {
+                int idx = k % count;
+                if (validPts[idx]) {
+                    if (!inSubpath) {
+                        [p moveToPoint:pts[idx]];
+                        inSubpath = true;
                     } else {
-                        [p addLineToPoint:pts[k]];
+                        [p addLineToPoint:pts[idx]];
                     }
+                    validCount++;
+                } else {
+                    inSubpath = false;
                 }
             }
-            if (vCount >= 3) {
-                if (vCount == count) [p closePath];
-                return p;
-            }
-            return nil;
+            return validCount >= 3 ? p : nil;
         };
 
         // 2. 3 Concentric Circles matching metalbiew.txt:
@@ -4669,7 +4668,9 @@ static void ds_hosted_apply_pubg(void) {
             if (cp) {
                 circleOutLayer.path = cp.CGPath;
                 circleOutLayer.strokeColor = [UIColor whiteColor].CGColor;
-                circleOutLayer.lineWidth = fmaxf(1.4f, g_pubgEspThickness);
+                circleOutLayer.lineWidth = fmaxf(1.6f, g_pubgEspThickness);
+                circleOutLayer.lineCap = kCALineCapRound;
+                circleOutLayer.lineJoin = kCALineJoinRound;
                 circleOutLayer.hidden = NO;
             } else {
                 circleOutLayer.hidden = YES;
@@ -4682,7 +4683,9 @@ static void ds_hosted_apply_pubg(void) {
             if (cp) {
                 circleMidLayer.path = cp.CGPath;
                 circleMidLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f].CGColor;
-                circleMidLayer.lineWidth = fmaxf(1.5f, g_pubgEspThickness);
+                circleMidLayer.lineWidth = fmaxf(1.8f, g_pubgEspThickness + 0.2f);
+                circleMidLayer.lineCap = kCALineCapRound;
+                circleMidLayer.lineJoin = kCALineJoinRound;
                 circleMidLayer.hidden = NO;
             } else {
                 circleMidLayer.hidden = YES;
@@ -4695,7 +4698,9 @@ static void ds_hosted_apply_pubg(void) {
             if (cp) {
                 circleInLayer.path = cp.CGPath;
                 circleInLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f].CGColor;
-                circleInLayer.lineWidth = fmaxf(1.8f, g_pubgEspThickness + 0.6f);
+                circleInLayer.lineWidth = fmaxf(2.0f, g_pubgEspThickness + 0.5f);
+                circleInLayer.lineCap = kCALineCapRound;
+                circleInLayer.lineJoin = kCALineJoinRound;
                 circleInLayer.hidden = NO;
             } else {
                 circleInLayer.hidden = YES;
@@ -4727,6 +4732,8 @@ static void ds_hosted_apply_pubg(void) {
                 boxLayer.path = bp.CGPath;
                 boxLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f].CGColor;
                 boxLayer.lineWidth = 1.3f;
+                boxLayer.lineCap = kCALineCapRound;
+                boxLayer.lineJoin = kCALineJoinRound;
                 boxLayer.hidden = NO;
             } else {
                 boxLayer.hidden = YES;
@@ -4762,25 +4769,21 @@ static void ds_hosted_apply_pubg(void) {
         if (anyDanger && g_pubgEspGrenade && g_hostedEspEnabled) {
             NSString *bannerText = nil;
             UIColor *bannerColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f];
-            if (closestIsCooking) {
-                bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN: ĐỊCH ĐANG RÚT CHỐT BOM !! (%.1fm) ⚠️", closestDangerDist];
-            } else {
-                switch (closestDangerType) {
-                    case DSPUBGGrenadeTypeFrag:
-                        bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN BOM !! (%.1fm) ⚠️", closestDangerDist];
-                        break;
-                    case DSPUBGGrenadeTypeBurn:
-                        bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.1fm) 🔥", closestDangerDist];
-                        break;
-                    case DSPUBGGrenadeTypeSmoke:
-                        bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.1fm)", closestDangerDist];
-                        bannerColor = [UIColor colorWithWhite:0.95 alpha:1.0f];
-                        break;
-                    case DSPUBGGrenadeTypeStun:
-                        bannerText = [NSString stringWithFormat:@"⚡ !! CẨN THẬN BOM CHOÁNG !! (%.1fm) ⚡", closestDangerDist];
-                        bannerColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f];
-                        break;
-                }
+            switch (closestDangerType) {
+                case DSPUBGGrenadeTypeFrag:
+                    bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN BOM !! (%.1fm) ⚠️", closestDangerDist];
+                    break;
+                case DSPUBGGrenadeTypeBurn:
+                    bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.1fm) 🔥", closestDangerDist];
+                    break;
+                case DSPUBGGrenadeTypeSmoke:
+                    bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.1fm)", closestDangerDist];
+                    bannerColor = [UIColor colorWithWhite:0.95 alpha:1.0f];
+                    break;
+                case DSPUBGGrenadeTypeStun:
+                    bannerText = [NSString stringWithFormat:@"⚡ !! CẨN THẬN BOM CHOÁNG !! (%.1fm) ⚡", closestDangerDist];
+                    bannerColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f];
+                    break;
             }
 
             NSAttributedString *bannerAttr = [[NSAttributedString alloc] initWithString:bannerText attributes:@{
@@ -5248,6 +5251,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circOut.actions = noAnim;
                 circOut.contentsScale = scale;
                 circOut.fillColor = UIColor.clearColor.CGColor;
+                circOut.lineCap = kCALineCapRound;
+                circOut.lineJoin = kCALineJoinRound;
                 circOut.lineWidth = 1.5;
                 circOut.hidden = YES;
                 [g_hostedLayer addSublayer:circOut];
@@ -5257,6 +5262,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circMid.actions = noAnim;
                 circMid.contentsScale = scale;
                 circMid.fillColor = UIColor.clearColor.CGColor;
+                circMid.lineCap = kCALineCapRound;
+                circMid.lineJoin = kCALineJoinRound;
                 circMid.lineWidth = 1.5;
                 circMid.hidden = YES;
                 [g_hostedLayer addSublayer:circMid];
@@ -5266,6 +5273,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circIn.actions = noAnim;
                 circIn.contentsScale = scale;
                 circIn.fillColor = UIColor.clearColor.CGColor;
+                circIn.lineCap = kCALineCapRound;
+                circIn.lineJoin = kCALineJoinRound;
                 circIn.lineWidth = 1.8;
                 circIn.hidden = YES;
                 [g_hostedLayer addSublayer:circIn];
@@ -5275,6 +5284,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 box.actions = noAnim;
                 box.contentsScale = scale;
                 box.fillColor = UIColor.clearColor.CGColor;
+                box.lineCap = kCALineCapRound;
+                box.lineJoin = kCALineJoinRound;
                 box.lineWidth = 1.3;
                 box.hidden = YES;
                 [g_hostedLayer addSublayer:box];
