@@ -3543,14 +3543,28 @@ static void ds_pubg_tick(void) {
         } else if (gType == DSPUBGGrenadeTypeBurn) {
             maxFuse = 5.0f;
         } else if (gType == DSPUBGGrenadeTypeSmoke) {
-            maxFuse = 5.0f;
+            maxFuse = 25.0f; // Smoke canister duration (~25s)
         }
         pg.totalFuseSeconds = maxFuse;
 
         // Remaining cook time in seconds counting down
         double nowTime = CACurrentMediaTime();
         double elapsed = (histSlot >= 0 && s_grenadeHistories[histSlot].firstSeenTimestamp > 0.0) ? (nowTime - s_grenadeHistories[histSlot].firstSeenTimestamp) : 0.0;
-        float fuseLeft = maxFuse - (float)elapsed;
+
+        // Check cook time in hand from UAEProjectile.SpawnSeconds (0x5A8) and STExtraGrenadeBase.GrenadeExplodeStartTime (0x6A8)
+        float cookedInHand = 0.0f;
+        if (gType == DSPUBGGrenadeTypeFrag) {
+            float spawnSec = ds_pubg_read_float(actor + 0x5A8ULL);
+            float expStart = ds_pubg_read_float(actor + 0x6A8ULL);
+            if (spawnSec > 0.0f && expStart > 0.0f && spawnSec >= expStart) {
+                float diff = spawnSec - expStart;
+                if (diff >= 0.0f && diff < maxFuse) {
+                    cookedInHand = diff;
+                }
+            }
+        }
+
+        float fuseLeft = maxFuse - cookedInHand - (float)elapsed;
         if (fuseLeft < 0.0f) fuseLeft = 0.0f;
         pg.cookSeconds = fuseLeft;
 

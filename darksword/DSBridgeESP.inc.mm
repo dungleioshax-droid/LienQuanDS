@@ -3745,6 +3745,10 @@ static CAShapeLayer *g_hostedPUBGGrenadeBoxLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeLabels[kDSPUBGMaxGrenades] = {};
 static CAShapeLayer *g_hostedPUBGGrenadeDropLineLayers[kDSPUBGMaxGrenades] = {};
 static CALayer *g_hostedPUBGGrenadeMarkerLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeFragLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeSmokeLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeBurnLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeStunLayers[kDSPUBGMaxGrenades] = {};
 static CALayer *g_hostedPUBGGrenadeMarkerBgLayers[kDSPUBGMaxGrenades] = {};
 static CALayer *g_hostedPUBGGrenadeMarkerFillLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeDangerBanner = nil;
@@ -3792,8 +3796,12 @@ static void ds_hosted_apply_pubg(void) {
     }
     UIInterfaceOrientation orientation = ds_active_orientation();
     if (!UIInterfaceOrientationIsLandscape(orientation)) {
-        ds_hosted_pubg_hide_all();
-        return;
+        if (ds_pubg_has_render_source()) {
+            orientation = UIInterfaceOrientationLandscapeRight;
+        } else {
+            ds_hosted_pubg_hide_all();
+            return;
+        }
     }
 
     DSPUBGProjectedPlayer players[kDSPUBGMaxPlayers] = {};
@@ -4654,23 +4662,12 @@ static void ds_hosted_apply_pubg(void) {
         if (circleMidLayer) circleMidLayer.hidden = YES;
         if (circleInLayer) circleInLayer.hidden = YES;
 
-        // 3. Altitude Drop Line to Ground (Đường line vàng thẳng đứng hạ từ quả bom xuống mặt đất + tâm tròn)
+        // 3. Altitude Drop Line to Ground (Đường line vàng thẳng đứng hạ từ quả bom xuống mặt đất)
         if (dropLineLayer) {
             if (g.hasDropLine && g.isVisible) {
                 UIBezierPath *dp = [UIBezierPath bezierPath];
                 [dp moveToPoint:CGPointMake(g.screenX, g.screenY + 12.0f)];
                 [dp addLineToPoint:g.groundPoint];
-
-                // Reticle circle on ground
-                CGFloat gr = 7.0f;
-                [dp moveToPoint:CGPointMake(g.groundPoint.x + gr, g.groundPoint.y)];
-                [dp addArcWithCenter:g.groundPoint radius:gr startAngle:0 endAngle:2 * M_PI clockwise:YES];
-
-                // Center crosshair ticks
-                [dp moveToPoint:CGPointMake(g.groundPoint.x - 4.0f, g.groundPoint.y)];
-                [dp addLineToPoint:CGPointMake(g.groundPoint.x + 4.0f, g.groundPoint.y)];
-                [dp moveToPoint:CGPointMake(g.groundPoint.x, g.groundPoint.y - 4.0f)];
-                [dp addLineToPoint:CGPointMake(g.groundPoint.x, g.groundPoint.y + 4.0f)];
 
                 dropLineLayer.path = dp.CGPath;
                 dropLineLayer.strokeColor = [UIColor colorWithRed:0.92f green:1.0f blue:0.12f alpha:1.0f].CGColor;
@@ -4681,28 +4678,57 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // 4. 3D Bomb Marker Icon with Dynamic Yellow-to-Red Countdown
+        // 4. Distinct 3D Throwable Icons (Frag, Smoke, Burn, Stun)
         if (markerLayer) {
             if (g.isVisible) {
                 markerLayer.position = CGPointMake(g.screenX, g.screenY);
                 markerLayer.hidden = NO;
 
-                float total = (g.totalFuseSeconds > 0.1f) ? g.totalFuseSeconds : 5.0f;
-                float progress = 1.0f - (g.cookSeconds / total);
-                if (progress < 0.0f) progress = 0.0f;
-                if (progress > 1.0f) progress = 1.0f;
+                CALayer *fragL = g_hostedPUBGGrenadeFragLayers[i];
+                CALayer *smokeL = g_hostedPUBGGrenadeSmokeLayers[i];
+                CALayer *burnL = g_hostedPUBGGrenadeBurnLayers[i];
+                CALayer *stunL = g_hostedPUBGGrenadeStunLayers[i];
 
-                CALayer *redFill = g_hostedPUBGGrenadeMarkerFillLayers[i];
-                CALayer *bgYellow = g_hostedPUBGGrenadeMarkerBgLayers[i];
-                if (redFill) {
-                    CGFloat redH = 22.0f * progress;
-                    redFill.frame = CGRectMake(0, 22.0f - redH, 22.0f, redH);
-                }
-                if (bgYellow) {
-                    if (progress >= 0.85f) {
-                        bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.40f blue:0.05f alpha:1.0f].CGColor;
-                    } else {
-                        bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.95f blue:0.05f alpha:1.0f].CGColor;
+                if (g.type == DSPUBGGrenadeTypeSmoke) {
+                    if (fragL) fragL.hidden = YES;
+                    if (smokeL) smokeL.hidden = NO;
+                    if (burnL) burnL.hidden = YES;
+                    if (stunL) stunL.hidden = YES;
+                } else if (g.type == DSPUBGGrenadeTypeBurn) {
+                    if (fragL) fragL.hidden = YES;
+                    if (smokeL) smokeL.hidden = YES;
+                    if (burnL) burnL.hidden = NO;
+                    if (stunL) stunL.hidden = YES;
+                } else if (g.type == DSPUBGGrenadeTypeStun) {
+                    if (fragL) fragL.hidden = YES;
+                    if (smokeL) smokeL.hidden = YES;
+                    if (burnL) burnL.hidden = YES;
+                    if (stunL) stunL.hidden = NO;
+                } else {
+                    if (fragL) fragL.hidden = NO;
+                    if (smokeL) smokeL.hidden = YES;
+                    if (burnL) burnL.hidden = YES;
+                    if (stunL) stunL.hidden = YES;
+
+                    float total = (g.totalFuseSeconds > 0.1f) ? g.totalFuseSeconds : 5.0f;
+                    float progress = 1.0f - (g.cookSeconds / total);
+                    if (progress < 0.0f) progress = 0.0f;
+                    if (progress > 1.0f) progress = 1.0f;
+
+                    CALayer *redFill = g_hostedPUBGGrenadeMarkerFillLayers[i];
+                    CALayer *bgYellow = g_hostedPUBGGrenadeMarkerBgLayers[i];
+                    if (redFill) {
+                        CGFloat redH = 22.0f * progress;
+                        redFill.frame = CGRectMake(0, 22.0f - redH, 22.0f, redH);
+                    }
+                    if (bgYellow) {
+                        if (progress >= 0.92f) {
+                            bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.30f blue:0.05f alpha:1.0f].CGColor;
+                        } else if (progress >= 0.75f) {
+                            bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.70f blue:0.05f alpha:1.0f].CGColor;
+                        } else {
+                            bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.95f blue:0.05f alpha:1.0f].CGColor;
+                        }
                     }
                 }
             } else {
@@ -4795,7 +4821,13 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    ds_hosted_apply_orientation(ds_active_orientation());
+    UIInterfaceOrientation renderOri = ds_active_orientation();
+    if (ds_active_game() == 1 && !UIInterfaceOrientationIsLandscape(renderOri)) {
+        if (ds_pubg_has_render_source()) {
+            renderOri = UIInterfaceOrientationLandscapeRight;
+        }
+    }
+    ds_hosted_apply_orientation(renderOri);
     if (ds_active_game() == 1) {
         ds_hosted_lq_hide_all();
         ds_hosted_apply_pubg();
@@ -5253,23 +5285,27 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [g_hostedLayer addSublayer:dropLine];
                 g_hostedPUBGGrenadeDropLineLayers[i] = dropLine;
 
-                // Dynamic Vector Bomb Marker (32x32 pt)
+                // Container for Distinct Throwable 3D Markers (32x32 pt)
                 CALayer *markerContainer = [CALayer layer];
                 markerContainer.actions = noAnim;
                 markerContainer.contentsScale = scale;
                 markerContainer.bounds = CGRectMake(0, 0, 32.0, 32.0);
                 markerContainer.hidden = YES;
 
-                // 1. Fuse Pin on top-right
+                // --- 1. FRAG GRENADE GROUP (Lựu Đạn: Circular bomb with dynamic yellow-to-red countdown) ---
+                CALayer *fragGroup = [CALayer layer];
+                fragGroup.actions = noAnim;
+                fragGroup.contentsScale = scale;
+                fragGroup.frame = CGRectMake(0, 0, 32.0, 32.0);
+
                 CALayer *fusePin = [CALayer layer];
                 fusePin.actions = noAnim;
                 fusePin.contentsScale = scale;
                 fusePin.frame = CGRectMake(20.5, 2.5, 5.0, 5.5);
                 fusePin.cornerRadius = 1.0;
                 fusePin.backgroundColor = [UIColor colorWithRed:0.85f green:1.0f blue:0.20f alpha:1.0f].CGColor;
-                [markerContainer addSublayer:fusePin];
+                [fragGroup addSublayer:fusePin];
 
-                // 2. Circular body container (masks child layers to circle)
                 CALayer *circleBody = [CALayer layer];
                 circleBody.actions = noAnim;
                 circleBody.contentsScale = scale;
@@ -5277,10 +5313,9 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circleBody.cornerRadius = 11.0;
                 circleBody.masksToBounds = YES;
                 circleBody.backgroundColor = [UIColor colorWithRed:1.0f green:0.95f blue:0.05f alpha:1.0f].CGColor;
-                [markerContainer addSublayer:circleBody];
+                [fragGroup addSublayer:circleBody];
                 g_hostedPUBGGrenadeMarkerBgLayers[i] = circleBody;
 
-                // 3. Dynamic Red Fill inside circleBody (fills from bottom to top as fuse counts down)
                 CALayer *redFill = [CALayer layer];
                 redFill.actions = noAnim;
                 redFill.contentsScale = scale;
@@ -5289,7 +5324,6 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 [circleBody addSublayer:redFill];
                 g_hostedPUBGGrenadeMarkerFillLayers[i] = redFill;
 
-                // 4. White outer circular border
                 CAShapeLayer *borderLayer = [CAShapeLayer layer];
                 borderLayer.actions = noAnim;
                 borderLayer.contentsScale = scale;
@@ -5298,9 +5332,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 borderLayer.fillColor = UIColor.clearColor.CGColor;
                 borderLayer.strokeColor = UIColor.whiteColor.CGColor;
                 borderLayer.lineWidth = 1.6;
-                [markerContainer addSublayer:borderLayer];
+                [fragGroup addSublayer:borderLayer];
 
-                // 5. Specular shine arc on top-left of circle
                 CAShapeLayer *shineLayer = [CAShapeLayer layer];
                 shineLayer.actions = noAnim;
                 shineLayer.contentsScale = scale;
@@ -5311,7 +5344,174 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 shineLayer.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
                 shineLayer.lineWidth = 1.8;
                 shineLayer.lineCap = kCALineCapRound;
-                [markerContainer addSublayer:shineLayer];
+                [fragGroup addSublayer:shineLayer];
+                [markerContainer addSublayer:fragGroup];
+                g_hostedPUBGGrenadeFragLayers[i] = fragGroup;
+
+                // --- 2. SMOKE GRENADE GROUP (Bom Khói: Canister with cyan/white band) ---
+                CALayer *smokeGroup = [CALayer layer];
+                smokeGroup.actions = noAnim;
+                smokeGroup.contentsScale = scale;
+                smokeGroup.frame = CGRectMake(0, 0, 32.0, 32.0);
+                smokeGroup.hidden = YES;
+
+                CALayer *smkCap = [CALayer layer];
+                smkCap.actions = noAnim;
+                smkCap.contentsScale = scale;
+                smkCap.frame = CGRectMake(12.0, 3.5, 8.0, 4.0);
+                smkCap.cornerRadius = 1.5;
+                smkCap.backgroundColor = [UIColor colorWithWhite:0.88 alpha:1.0].CGColor;
+                [smokeGroup addSublayer:smkCap];
+
+                CALayer *smkBody = [CALayer layer];
+                smkBody.actions = noAnim;
+                smkBody.contentsScale = scale;
+                smkBody.frame = CGRectMake(8.0, 7.0, 16.0, 21.0);
+                smkBody.cornerRadius = 3.5;
+                smkBody.masksToBounds = YES;
+                smkBody.backgroundColor = [UIColor colorWithRed:0.22f green:0.28f blue:0.35f alpha:0.95f].CGColor;
+
+                CALayer *smkStripe = [CALayer layer];
+                smkStripe.actions = noAnim;
+                smkStripe.contentsScale = scale;
+                smkStripe.frame = CGRectMake(0, 7.0, 16.0, 6.5);
+                smkStripe.backgroundColor = [UIColor colorWithRed:0.0f green:0.85f blue:0.90f alpha:1.0f].CGColor;
+                [smkBody addSublayer:smkStripe];
+                [smokeGroup addSublayer:smkBody];
+
+                CAShapeLayer *smkBorder = [CAShapeLayer layer];
+                smkBorder.actions = noAnim;
+                smkBorder.contentsScale = scale;
+                UIBezierPath *smkPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(8.0, 7.0, 16.0, 21.0) cornerRadius:3.5];
+                smkBorder.path = smkPath.CGPath;
+                smkBorder.fillColor = UIColor.clearColor.CGColor;
+                smkBorder.strokeColor = UIColor.whiteColor.CGColor;
+                smkBorder.lineWidth = 1.4;
+                [smokeGroup addSublayer:smkBorder];
+
+                CATextLayer *smkText = [CATextLayer layer];
+                smkText.actions = noAnim;
+                smkText.contentsScale = scale;
+                smkText.alignmentMode = kCAAlignmentCenter;
+                smkText.fontSize = 7.5;
+                smkText.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:7.5 weight:UIFontWeightHeavy];
+                smkText.foregroundColor = UIColor.whiteColor.CGColor;
+                smkText.frame = CGRectMake(7.0, 15.0, 18.0, 10.0);
+                smkText.string = @"SMK";
+                [smokeGroup addSublayer:smkText];
+                [markerContainer addSublayer:smokeGroup];
+                g_hostedPUBGGrenadeSmokeLayers[i] = smokeGroup;
+
+                // --- 3. BURN / MOLOTOV GROUP (Bom Lửa: Glass bottle with bright fire flames) ---
+                CALayer *burnGroup = [CALayer layer];
+                burnGroup.actions = noAnim;
+                burnGroup.contentsScale = scale;
+                burnGroup.frame = CGRectMake(0, 0, 32.0, 32.0);
+                burnGroup.hidden = YES;
+
+                CAShapeLayer *flameLayer = [CAShapeLayer layer];
+                flameLayer.actions = noAnim;
+                flameLayer.contentsScale = scale;
+                UIBezierPath *flamePath = [UIBezierPath bezierPath];
+                [flamePath moveToPoint:CGPointMake(16.0, 2.0)];
+                [flamePath addCurveToPoint:CGPointMake(20.5, 8.5) controlPoint1:CGPointMake(19.0, 4.0) controlPoint2:CGPointMake(21.0, 6.5)];
+                [flamePath addCurveToPoint:CGPointMake(16.0, 10.0) controlPoint1:CGPointMake(20.0, 10.0) controlPoint2:CGPointMake(18.0, 10.0)];
+                [flamePath addCurveToPoint:CGPointMake(11.5, 8.5) controlPoint1:CGPointMake(14.0, 10.0) controlPoint2:CGPointMake(12.0, 10.0)];
+                [flamePath addCurveToPoint:CGPointMake(16.0, 2.0) controlPoint1:CGPointMake(11.0, 6.5) controlPoint2:CGPointMake(13.0, 4.0)];
+                flameLayer.path = flamePath.CGPath;
+                flameLayer.fillColor = [UIColor colorWithRed:1.0f green:0.45f blue:0.0f alpha:1.0f].CGColor;
+                flameLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.90f blue:0.10f alpha:1.0f].CGColor;
+                flameLayer.lineWidth = 1.0;
+                [burnGroup addSublayer:flameLayer];
+
+                CALayer *bNeck = [CALayer layer];
+                bNeck.actions = noAnim;
+                bNeck.contentsScale = scale;
+                bNeck.frame = CGRectMake(13.5, 9.5, 5.0, 5.0);
+                bNeck.backgroundColor = [UIColor colorWithRed:0.50f green:0.25f blue:0.05f alpha:0.9f].CGColor;
+                [burnGroup addSublayer:bNeck];
+
+                CALayer *bBody = [CALayer layer];
+                bBody.actions = noAnim;
+                bBody.contentsScale = scale;
+                bBody.frame = CGRectMake(9.0, 14.0, 14.0, 14.5);
+                bBody.cornerRadius = 3.0;
+                bBody.masksToBounds = YES;
+                bBody.backgroundColor = [UIColor colorWithRed:0.40f green:0.18f blue:0.04f alpha:0.95f].CGColor;
+
+                CALayer *bLiquid = [CALayer layer];
+                bLiquid.actions = noAnim;
+                bLiquid.contentsScale = scale;
+                bLiquid.frame = CGRectMake(0, 5.0, 14.0, 9.5);
+                bLiquid.backgroundColor = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:0.95f].CGColor;
+                [bBody addSublayer:bLiquid];
+                [burnGroup addSublayer:bBody];
+
+                CAShapeLayer *bBorder = [CAShapeLayer layer];
+                bBorder.actions = noAnim;
+                bBorder.contentsScale = scale;
+                UIBezierPath *bBPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(9.0, 14.0, 14.0, 14.5) cornerRadius:3.0];
+                bBorder.path = bBPath.CGPath;
+                bBorder.fillColor = UIColor.clearColor.CGColor;
+                bBorder.strokeColor = UIColor.whiteColor.CGColor;
+                bBorder.lineWidth = 1.3;
+                [burnGroup addSublayer:bBorder];
+                [markerContainer addSublayer:burnGroup];
+                g_hostedPUBGGrenadeBurnLayers[i] = burnGroup;
+
+                // --- 4. STUN GRENADE GROUP (Bom Choáng: Silver-blue canister with flash icon) ---
+                CALayer *stunGroup = [CALayer layer];
+                stunGroup.actions = noAnim;
+                stunGroup.contentsScale = scale;
+                stunGroup.frame = CGRectMake(0, 0, 32.0, 32.0);
+                stunGroup.hidden = YES;
+
+                CALayer *stnCap = [CALayer layer];
+                stnCap.actions = noAnim;
+                stnCap.contentsScale = scale;
+                stnCap.frame = CGRectMake(12.0, 3.5, 8.0, 4.0);
+                stnCap.cornerRadius = 1.5;
+                stnCap.backgroundColor = [UIColor colorWithWhite:0.92 alpha:1.0].CGColor;
+                [stunGroup addSublayer:stnCap];
+
+                CALayer *stnBody = [CALayer layer];
+                stnBody.actions = noAnim;
+                stnBody.contentsScale = scale;
+                stnBody.frame = CGRectMake(8.5, 7.0, 15.0, 21.0);
+                stnBody.cornerRadius = 3.0;
+                stnBody.masksToBounds = YES;
+                stnBody.backgroundColor = [UIColor colorWithRed:0.30f green:0.38f blue:0.52f alpha:0.95f].CGColor;
+
+                CALayer *stnStripe = [CALayer layer];
+                stnStripe.actions = noAnim;
+                stnStripe.contentsScale = scale;
+                stnStripe.frame = CGRectMake(0, 6.0, 15.0, 8.0);
+                stnStripe.backgroundColor = [UIColor colorWithRed:0.75f green:0.80f blue:0.90f alpha:1.0f].CGColor;
+                [stnBody addSublayer:stnStripe];
+                [stunGroup addSublayer:stnBody];
+
+                CAShapeLayer *stnBorder = [CAShapeLayer layer];
+                stnBorder.actions = noAnim;
+                stnBorder.contentsScale = scale;
+                UIBezierPath *stnPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(8.5, 7.0, 15.0, 21.0) cornerRadius:3.0];
+                stnBorder.path = stnPath.CGPath;
+                stnBorder.fillColor = UIColor.clearColor.CGColor;
+                stnBorder.strokeColor = UIColor.whiteColor.CGColor;
+                stnBorder.lineWidth = 1.4;
+                [stunGroup addSublayer:stnBorder];
+
+                CATextLayer *stnText = [CATextLayer layer];
+                stnText.actions = noAnim;
+                stnText.contentsScale = scale;
+                stnText.alignmentMode = kCAAlignmentCenter;
+                stnText.fontSize = 8.5;
+                stnText.font = (__bridge CFTypeRef)[UIFont boldSystemFontOfSize:8.5];
+                stnText.foregroundColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.10f alpha:1.0f].CGColor;
+                stnText.frame = CGRectMake(6.0, 14.5, 20.0, 11.0);
+                stnText.string = @"⚡";
+                [stunGroup addSublayer:stnText];
+                [markerContainer addSublayer:stunGroup];
+                g_hostedPUBGGrenadeStunLayers[i] = stunGroup;
 
                 [g_hostedLayer addSublayer:markerContainer];
                 g_hostedPUBGGrenadeMarkerLayers[i] = markerContainer;
@@ -5406,10 +5606,19 @@ static void ds_hosted_overlay_frame(void) {
     // FBSOrientationObserver follows the actual foreground application. While
     // Home is portrait, stop touching the suspended game's mapped pages; the
     // same reader state resumes when its landscape scene becomes active again.
+    // However, in PUBG external mode, allow tick to continue even on SpringBoard
+    // if the game process is running and connected.
     UIInterfaceOrientation activeOrientation = ds_active_orientation();
     if (UIInterfaceOrientationIsPortrait(activeOrientation)) {
-        ds_hosted_publish_render_snapshot(snapshot);
-        return;
+        if (ds_active_game() == 1) {
+            if (!ds_pubg_has_render_source()) {
+                ds_hosted_publish_render_snapshot(snapshot);
+                return;
+            }
+        } else {
+            ds_hosted_publish_render_snapshot(snapshot);
+            return;
+        }
     }
 
     if (ds_active_game() == 1) {
@@ -5450,6 +5659,12 @@ static void ds_hosted_overlay_start(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         unsigned contextId = ds_hosted_overlay_setup_on_main();
         unsigned menuContextId = ds_hosted_menu_setup_on_main();
+        if (g_hostedMenuWindow) {
+            g_hostedMenuWindow.hidden = NO;
+        }
+        if (g_hostedMenuViewController) {
+            [g_hostedMenuViewController dsApplyOrientation];
+        }
         if (contextId || menuContextId) {
             dispatch_async(ds_bridge_queue(), ^{
                 if (contextId) ds_hosted_overlay_register(contextId);

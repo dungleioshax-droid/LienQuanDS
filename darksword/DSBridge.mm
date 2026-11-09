@@ -1626,6 +1626,14 @@ static void ds_finish_enable(void) {
         ds_set_error(@"");
         notify_post(NOTIFY_LAUNCHED_HUD);
         ds_post_progress();
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (g_hostedMenuWindow) {
+                g_hostedMenuWindow.hidden = NO;
+            }
+            if (g_hostedMenuViewController) {
+                [g_hostedMenuViewController dsApplyOrientation];
+            }
+        });
         ds_hosted_overlay_start();
         return;
     }
