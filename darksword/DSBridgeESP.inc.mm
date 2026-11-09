@@ -4771,17 +4771,17 @@ static void ds_hosted_apply_pubg(void) {
             UIColor *bannerColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f];
             switch (closestDangerType) {
                 case DSPUBGGrenadeTypeFrag:
-                    bannerText = [NSString stringWithFormat:@"⚠️ !! CẨN THẬN BOM !! (%.1fm) ⚠️", closestDangerDist];
+                    bannerText = [NSString stringWithFormat:@"⚠️ MOVE! MOVE! MOVE! (%.0fm) ⚠️", closestDangerDist];
                     break;
                 case DSPUBGGrenadeTypeBurn:
-                    bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.1fm) 🔥", closestDangerDist];
+                    bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.0fm) 🔥", closestDangerDist];
                     break;
                 case DSPUBGGrenadeTypeSmoke:
-                    bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.1fm)", closestDangerDist];
+                    bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.0fm)", closestDangerDist];
                     bannerColor = [UIColor colorWithWhite:0.95 alpha:1.0f];
                     break;
                 case DSPUBGGrenadeTypeStun:
-                    bannerText = [NSString stringWithFormat:@"⚡ !! CẨN THẬN BOM CHOÁNG !! (%.1fm) ⚡", closestDangerDist];
+                    bannerText = [NSString stringWithFormat:@"⚡ MOVE! MOVE! MOVE! (%.0fm) ⚡", closestDangerDist];
                     bannerColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f];
                     break;
             }

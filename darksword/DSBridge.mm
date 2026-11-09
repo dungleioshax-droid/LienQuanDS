@@ -1007,8 +1007,8 @@ typedef enum {
 } DSPUBGGrenadeType;
 
 static const int kDSPUBGMaxGrenades = 8;
-static const int kDSPUBGCirclePoints = 36;
-static const int kDSPUBGMaxTrajPoints = 36;
+static const int kDSPUBGCirclePoints = 32;
+static const int kDSPUBGMaxTrajPoints = 32;
 
 typedef struct {
     float screenX;
