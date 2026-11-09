@@ -2799,17 +2799,20 @@ static void ds_pubg_tick(void) {
 
     // Check if player is actually in an active match (filters out Lobby, MainCity, Frontend)
     if (!ds_pubg_is_in_match(world, playerController, localPawn)) {
+        os_unfair_lock_lock(&g_dspubgSnapshotLock);
         g_dspubgPlayerCount = 0;
         g_dspubgItemCount = 0;
         g_dspubgGrenadeCount = 0;
+        g_dspubgTotalEnemies = 0;
+        g_dspubgTotalBots = 0;
+        ++g_dspubgEpoch;
+        ++g_dspubgItemEpoch;
+        ++g_dspubgGrenadeEpoch;
+        os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+
         g_dspubgLastActorsCount = 0;
         g_dspubgLastEnemyCount = 0;
         g_dspubgLastBotCount = 0;
-        g_dspubgLast360EnemyCount = 0;
-        g_dspubgLast360BotCount = 0;
-        ++g_dspubgPlayerEpoch;
-        ++g_dspubgItemEpoch;
-        ++g_dspubgGrenadeEpoch;
         return;
     }
 
@@ -3215,6 +3218,7 @@ static void ds_pubg_tick(void) {
                             float dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
                             return sqrtf(dx * dx + dy * dy + dz * dz);
                         };
+                        (void)dist3D;
 
                         int bHead = 6, bNeck = 5, bPelvis = 1;
                         int bUprR = -1, bLwrR = -1, bHandR = -1;
