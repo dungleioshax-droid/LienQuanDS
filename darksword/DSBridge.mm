@@ -1036,6 +1036,10 @@ typedef struct {
     bool hasBox;
     CGPoint boxCorners[8];
     bool boxCornersValid[8];
+
+    float cookSeconds;
+    bool hasDropLine;
+    CGPoint groundPoint;
 } DSPUBGProjectedGrenade;
 
 static const int kDSPUBGMaxPlayers = 96;

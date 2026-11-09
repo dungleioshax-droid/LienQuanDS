@@ -145,6 +145,8 @@ struct DSPUBGGrenadeHistory {
     DSPUBGGrenadeType type;
     uint64_t lastSeenTick;
     double lastTimestamp;
+    double firstSeenTimestamp;
+    float groundZ;
     DSPUBGVector lastLoc;
     int trailCount;
     DSPUBGVector trail[32];
@@ -3379,6 +3381,8 @@ static void ds_pubg_tick(void) {
                     s_grenadeHistories[h].type = gType;
                     s_grenadeHistories[h].lastLoc = rootLoc;
                     s_grenadeHistories[h].lastTimestamp = CACurrentMediaTime();
+                    s_grenadeHistories[h].firstSeenTimestamp = s_grenadeHistories[h].lastTimestamp;
+                    s_grenadeHistories[h].groundZ = (basis.lz - 90.0f);
                     break;
                 }
             }
@@ -3409,6 +3413,10 @@ static void ds_pubg_tick(void) {
                     hist.trail[29] = rootLoc;
                 }
             }
+            if (hist.firstSeenTimestamp == 0.0) hist.firstSeenTimestamp = CACurrentMediaTime();
+            if (hist.trailCount == 0 && hist.groundZ == 0.0f) {
+                hist.groundZ = rootLoc.Z - 140.0f;
+            }
             hist.lastLoc = rootLoc;
             hist.lastTimestamp = CACurrentMediaTime();
         }
@@ -3429,6 +3437,26 @@ static void ds_pubg_tick(void) {
         pg.isLocalInDanger = (dist3D <= 18.0f);
         pg.trajCount = 0;
         pg.circlePointCount = kDSPUBGCirclePoints;
+
+        // Remaining cook time in seconds (standard fuse 6.0s / 5.0s counting down)
+        double nowTime = CACurrentMediaTime();
+        double elapsed = (histSlot >= 0 && s_grenadeHistories[histSlot].firstSeenTimestamp > 0.0) ? (nowTime - s_grenadeHistories[histSlot].firstSeenTimestamp) : 0.0;
+        float fuseLeft = 6.0f - (float)elapsed;
+        if (fuseLeft < 0.0f) fuseLeft = 0.0f;
+        pg.cookSeconds = fuseLeft;
+
+        // Altitude Drop Line to ground
+        float gZ = (histSlot >= 0 && s_grenadeHistories[histSlot].groundZ != 0.0f) ? s_grenadeHistories[histSlot].groundZ : (basis.lz - 90.0f);
+        pg.hasDropLine = false;
+        pg.groundPoint = CGPointZero;
+        if (rootLoc.Z > (gZ + 25.0f)) {
+            DSPUBGVector gPt = { rootLoc.X, rootLoc.Y, gZ };
+            float gsx = 0, gsy = 0, gdist = 0;
+            if (ds_pubg_cam_basis_project(basis, gPt, gsx, gsy, gdist)) {
+                pg.hasDropLine = true;
+                pg.groundPoint = CGPointMake(gsx, gsy);
+            }
+        }
 
         // Real Flight Trail: Only tracks actual positions when grenade moves in the air
         if (histSlot >= 0) {

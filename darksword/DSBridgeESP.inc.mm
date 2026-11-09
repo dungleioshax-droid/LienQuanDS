@@ -3743,6 +3743,11 @@ static CAShapeLayer *g_hostedPUBGGrenadeCircleMidLayers[kDSPUBGMaxGrenades] = {}
 static CAShapeLayer *g_hostedPUBGGrenadeCircleInnerLayers[kDSPUBGMaxGrenades] = {};
 static CAShapeLayer *g_hostedPUBGGrenadeBoxLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeLabels[kDSPUBGMaxGrenades] = {};
+static CAShapeLayer *g_hostedPUBGGrenadeDropLineLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeMarkerLayers[kDSPUBGMaxGrenades] = {};
+static CAShapeLayer *g_hostedPUBGGrenadeHudBgLayers[kDSPUBGMaxGrenades] = {};
+static CALayer *g_hostedPUBGGrenadeHudIconLayers[kDSPUBGMaxGrenades] = {};
+static CATextLayer *g_hostedPUBGGrenadeHudTimerLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeDangerBanner = nil;
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
@@ -3770,10 +3775,103 @@ static void ds_hosted_pubg_hide_all(void) {
         if (g_hostedPUBGGrenadeCircleInnerLayers[i] && !g_hostedPUBGGrenadeCircleInnerLayers[i].hidden) g_hostedPUBGGrenadeCircleInnerLayers[i].hidden = YES;
         if (g_hostedPUBGGrenadeBoxLayers[i] && !g_hostedPUBGGrenadeBoxLayers[i].hidden) g_hostedPUBGGrenadeBoxLayers[i].hidden = YES;
         if (g_hostedPUBGGrenadeLabels[i] && !g_hostedPUBGGrenadeLabels[i].hidden) g_hostedPUBGGrenadeLabels[i].hidden = YES;
+        if (g_hostedPUBGGrenadeDropLineLayers[i] && !g_hostedPUBGGrenadeDropLineLayers[i].hidden) g_hostedPUBGGrenadeDropLineLayers[i].hidden = YES;
+        if (g_hostedPUBGGrenadeMarkerLayers[i] && !g_hostedPUBGGrenadeMarkerLayers[i].hidden) g_hostedPUBGGrenadeMarkerLayers[i].hidden = YES;
+        if (g_hostedPUBGGrenadeHudBgLayers[i] && !g_hostedPUBGGrenadeHudBgLayers[i].hidden) g_hostedPUBGGrenadeHudBgLayers[i].hidden = YES;
+        if (g_hostedPUBGGrenadeHudIconLayers[i] && !g_hostedPUBGGrenadeHudIconLayers[i].hidden) g_hostedPUBGGrenadeHudIconLayers[i].hidden = YES;
+        if (g_hostedPUBGGrenadeHudTimerLayers[i] && !g_hostedPUBGGrenadeHudTimerLayers[i].hidden) g_hostedPUBGGrenadeHudTimerLayers[i].hidden = YES;
     }
     if (g_hostedPUBGGrenadeDangerBanner && !g_hostedPUBGGrenadeDangerBanner.hidden) g_hostedPUBGGrenadeDangerBanner.hidden = YES;
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
+}
+
+static UIImage *s_pubgBombMarkerImage = nil;
+static UIImage *s_pubgGrenadeBadgeIconImage = nil;
+
+static void ds_pubg_ensure_grenade_images(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        CGFloat scale = [UIScreen mainScreen].scale;
+
+        // 1. 3D Bomb Marker Icon (size: 32x32 pt)
+        {
+            CGSize sz = CGSizeMake(32.0, 32.0);
+            UIGraphicsBeginImageContextWithOptions(sz, NO, scale);
+            CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+            CGFloat cx = 15.0, cy = 17.0, r = 11.0;
+
+            // Fuse pin at top-right
+            CGFloat fx = cx + r * 0.65;
+            CGFloat fy = cy - r * 0.65;
+            CGContextSetRGBFillColor(ctx, 0.85, 1.0, 0.2, 1.0); // lime green
+            CGContextFillRect(ctx, CGRectMake(fx - 1.0, fy - 5.5, 5.5, 5.5));
+            CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 1.0);
+            CGContextSetLineWidth(ctx, 1.0);
+            CGContextStrokeRect(ctx, CGRectMake(fx - 1.0, fy - 5.5, 5.5, 5.5));
+
+            // Circle body (clipped)
+            CGContextSaveGState(ctx);
+            CGContextAddArc(ctx, cx, cy, r, 0, 2 * M_PI, 0);
+            CGContextClip(ctx);
+
+            // Yellow upper body
+            CGContextSetRGBFillColor(ctx, 1.0, 0.95, 0.0, 1.0);
+            CGContextFillRect(ctx, CGRectMake(cx - r, cy - r, 2 * r, 2 * r));
+
+            // Red bottom 35%
+            CGContextSetRGBFillColor(ctx, 0.94, 0.08, 0.08, 1.0);
+            CGContextFillRect(ctx, CGRectMake(cx - r, cy + 3.0, 2 * r, r + 2.0));
+            CGContextRestoreGState(ctx);
+
+            // White outer border
+            CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 1.0);
+            CGContextSetLineWidth(ctx, 1.6);
+            CGContextStrokeEllipseInRect(ctx, CGRectMake(cx - r, cy - r, 2 * r, 2 * r));
+
+            // White specular shine arc
+            CGContextSetRGBStrokeColor(ctx, 1.0, 1.0, 1.0, 0.9);
+            CGContextSetLineWidth(ctx, 1.8);
+            CGContextSetLineCap(ctx, kCGLineCapRound);
+            CGContextAddArc(ctx, cx, cy, r - 2.8, 3.4, 4.3, 0);
+            CGContextStrokePath(ctx);
+
+            s_pubgBombMarkerImage = UIGraphicsGetImageFromCurrentImageContext();
+            UIGraphicsEndImageContext();
+        }
+
+        // 2. Orange Grenade Icon for HUD Diamond (size: 20x20 pt)
+        {
+            CGSize sz = CGSizeMake(20.0, 20.0);
+            UIGraphicsBeginImageContextWithOptions(sz, NO, scale);
+            CGContextRef ctx = UIGraphicsGetCurrentContext();
+
+            CGFloat gcx = 10.0, gcy = 11.0;
+            // Oval body
+            CGContextSetRGBFillColor(ctx, 1.0, 0.65, 0.1, 1.0); // orange
+            CGContextFillEllipseInRect(ctx, CGRectMake(gcx - 5.5, gcy - 6.5, 11.0, 13.0));
+
+            // Grooves
+            CGContextSetRGBStrokeColor(ctx, 0.15, 0.18, 0.22, 0.8);
+            CGContextSetLineWidth(ctx, 0.8);
+            CGContextMoveToPoint(ctx, gcx - 4.5, gcy - 2.0); CGContextAddLineToPoint(ctx, gcx + 4.5, gcy - 2.0);
+            CGContextMoveToPoint(ctx, gcx - 4.5, gcy + 2.0); CGContextAddLineToPoint(ctx, gcx + 4.5, gcy + 2.0);
+            CGContextMoveToPoint(ctx, gcx, gcy - 5.5); CGContextAddLineToPoint(ctx, gcx, gcy + 5.5);
+            CGContextStrokePath(ctx);
+
+            // Neck & handle
+            CGContextSetRGBFillColor(ctx, 1.0, 0.65, 0.1, 1.0);
+            CGContextFillRect(ctx, CGRectMake(gcx - 2.5, gcy - 9.5, 5.0, 3.5));
+            CGContextSetRGBStrokeColor(ctx, 1.0, 0.65, 0.1, 1.0);
+            CGContextSetLineWidth(ctx, 1.5);
+            CGContextMoveToPoint(ctx, gcx + 1.5, gcy - 9.0); CGContextAddLineToPoint(ctx, gcx + 4.5, gcy - 4.5);
+            CGContextStrokePath(ctx);
+
+            s_pubgGrenadeBadgeIconImage = UIGraphicsGetImageFromCurrentImageContext();
+            UIGraphicsEndImageContext();
+        }
+    });
 }
 
 static void ds_hosted_apply_pubg(void) {
@@ -4546,14 +4644,11 @@ static void ds_hosted_apply_pubg(void) {
         }
     }
 
-    // --- GRENADE WARNING RENDERING (3 Circles, 3D Box, Line, Danger Alert) ---
+    // --- GRENADE WARNING RENDERING (Flight Line, 3D Bomb Icon, Drop Line, Damage Circle, HUD Badge) ---
+    ds_pubg_ensure_grenade_images();
     DSPUBGProjectedGrenade grenades[kDSPUBGMaxGrenades];
     uint64_t grenadeEpoch = 0;
     int grenadeCount = ds_pubg_copy_projected_grenades(grenades, &grenadeEpoch);
-
-    bool anyDanger = false;
-    DSPUBGGrenadeType closestDangerType = DSPUBGGrenadeTypeFrag;
-    float closestDangerDist = 999.0f;
 
     for (int i = 0; i < kDSPUBGMaxGrenades; i++) {
         CAShapeLayer *trajLayer = g_hostedPUBGGrenadeTrajLayers[i];
@@ -4562,6 +4657,11 @@ static void ds_hosted_apply_pubg(void) {
         CAShapeLayer *circleInLayer = g_hostedPUBGGrenadeCircleInnerLayers[i];
         CAShapeLayer *boxLayer = g_hostedPUBGGrenadeBoxLayers[i];
         CATextLayer *badgeLbl = g_hostedPUBGGrenadeLabels[i];
+        CAShapeLayer *dropLineLayer = g_hostedPUBGGrenadeDropLineLayers[i];
+        CALayer *markerLayer = g_hostedPUBGGrenadeMarkerLayers[i];
+        CAShapeLayer *hudBgLayer = g_hostedPUBGGrenadeHudBgLayers[i];
+        CALayer *hudIconLayer = g_hostedPUBGGrenadeHudIconLayers[i];
+        CATextLayer *hudTimerLayer = g_hostedPUBGGrenadeHudTimerLayers[i];
 
         if (i >= grenadeCount || !g_pubgEspGrenade || !g_hostedEspEnabled) {
             if (trajLayer) trajLayer.hidden = YES;
@@ -4570,18 +4670,15 @@ static void ds_hosted_apply_pubg(void) {
             if (circleInLayer) circleInLayer.hidden = YES;
             if (boxLayer) boxLayer.hidden = YES;
             if (badgeLbl) badgeLbl.hidden = YES;
+            if (dropLineLayer) dropLineLayer.hidden = YES;
+            if (markerLayer) markerLayer.hidden = YES;
+            if (hudBgLayer) hudBgLayer.hidden = YES;
+            if (hudIconLayer) hudIconLayer.hidden = YES;
+            if (hudTimerLayer) hudTimerLayer.hidden = YES;
             continue;
         }
 
         const DSPUBGProjectedGrenade &g = grenades[i];
-
-        if (g.isLocalInDanger) {
-            anyDanger = true;
-            if (g.distanceMeters < closestDangerDist) {
-                closestDangerDist = g.distanceMeters;
-                closestDangerType = g.type;
-            }
-        }
 
         bool hasCircleOnScreen = false;
         for (int k = 0; k < g.circlePointCount; k++) {
@@ -4598,29 +4695,15 @@ static void ds_hosted_apply_pubg(void) {
             if (circleInLayer) circleInLayer.hidden = YES;
             if (boxLayer) boxLayer.hidden = YES;
             if (badgeLbl) badgeLbl.hidden = YES;
+            if (dropLineLayer) dropLineLayer.hidden = YES;
+            if (markerLayer) markerLayer.hidden = YES;
+            if (hudBgLayer) hudBgLayer.hidden = YES;
+            if (hudIconLayer) hudIconLayer.hidden = YES;
+            if (hudTimerLayer) hudTimerLayer.hidden = YES;
             continue;
         }
 
-        UIColor *baseColor = nil;
-        switch (g.type) {
-            case DSPUBGGrenadeTypeFrag:
-                baseColor = [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0]; // Bright Red
-                break;
-            case DSPUBGGrenadeTypeBurn:
-                baseColor = [UIColor colorWithRed:255/255.0 green:140/255.0 blue:0/255.0 alpha:1.0]; // Orange
-                break;
-            case DSPUBGGrenadeTypeSmoke:
-                baseColor = [UIColor colorWithWhite:0.92 alpha:1.0]; // White
-                break;
-            case DSPUBGGrenadeTypeStun:
-                baseColor = [UIColor colorWithRed:255/255.0 green:220/255.0 blue:20/255.0 alpha:1.0]; // Yellow
-                break;
-            default:
-                baseColor = [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0];
-                break;
-        }
-
-        // 1. Line bom ném ra (Đường bay & quỹ đạo hình vòng cung của quả bom từ bom ra phía trước)
+        // 1. Line bom ném ra (Đường bay & vệt quỹ đạo bay màu trắng mờ mượt mà phía sau quả bom)
         if (trajLayer) {
             if (g.trajCount >= 2) {
                 UIBezierPath *linePath = [UIBezierPath bezierPath];
@@ -4629,8 +4712,8 @@ static void ds_hosted_apply_pubg(void) {
                     [linePath addLineToPoint:g.trajPoints[t]];
                 }
                 trajLayer.path = linePath.CGPath;
-                trajLayer.strokeColor = baseColor.CGColor;
-                trajLayer.lineWidth = fmaxf(2.2f, g_pubgEspThickness + 1.0f);
+                trajLayer.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.75].CGColor;
+                trajLayer.lineWidth = 2.0f;
                 trajLayer.lineCap = kCALineCapRound;
                 trajLayer.lineJoin = kCALineJoinRound;
                 trajLayer.hidden = NO;
@@ -4654,14 +4737,13 @@ static void ds_hosted_apply_pubg(void) {
             return validSegments >= 3 ? p : nil;
         };
 
-        // 2. 3 Concentric Circles matching metalbiew.txt:
-        // Outer Circle: 360 units -> White
+        // 2. 3D Damage Circle (Vòng tròn sát thương 3D màu vàng chanh sáng rõ nét như trong ảnh)
         if (circleOutLayer) {
             UIBezierPath *cp = buildCirclePath(g.circlePoints, g.circlePointsValid, g.circlePointCount);
             if (cp) {
                 circleOutLayer.path = cp.CGPath;
-                circleOutLayer.strokeColor = [UIColor whiteColor].CGColor;
-                circleOutLayer.lineWidth = fmaxf(1.6f, g_pubgEspThickness);
+                circleOutLayer.strokeColor = [UIColor colorWithRed:0.90f green:1.0f blue:0.10f alpha:1.0f].CGColor;
+                circleOutLayer.lineWidth = 1.8f;
                 circleOutLayer.lineCap = kCALineCapRound;
                 circleOutLayer.lineJoin = kCALineJoinRound;
                 circleOutLayer.hidden = NO;
@@ -4669,54 +4751,93 @@ static void ds_hosted_apply_pubg(void) {
                 circleOutLayer.hidden = YES;
             }
         }
+        if (circleMidLayer) circleMidLayer.hidden = YES;
+        if (circleInLayer) circleInLayer.hidden = YES;
 
-        // Mid Circle: 260 units -> Yellow
-        if (circleMidLayer) {
-            UIBezierPath *cp = buildCirclePath(g.circlePointsMid, g.circlePointsMidValid, g.circlePointCount);
-            if (cp) {
-                circleMidLayer.path = cp.CGPath;
-                circleMidLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f].CGColor;
-                circleMidLayer.lineWidth = fmaxf(1.8f, g_pubgEspThickness + 0.2f);
-                circleMidLayer.lineCap = kCALineCapRound;
-                circleMidLayer.lineJoin = kCALineJoinRound;
-                circleMidLayer.hidden = NO;
+        // 3. Altitude Drop Line to Ground (Đường line vàng thẳng đứng hạ từ quả bom xuống mặt đất + tâm tròn)
+        if (dropLineLayer) {
+            if (g.hasDropLine && g.isVisible) {
+                UIBezierPath *dp = [UIBezierPath bezierPath];
+                [dp moveToPoint:CGPointMake(g.screenX, g.screenY + 12.0f)];
+                [dp addLineToPoint:g.groundPoint];
+
+                // Reticle circle on ground
+                CGFloat gr = 7.0f;
+                [dp moveToPoint:CGPointMake(g.groundPoint.x + gr, g.groundPoint.y)];
+                [dp addArcWithCenter:g.groundPoint radius:gr startAngle:0 endAngle:2 * M_PI clockwise:YES];
+
+                // Center crosshair ticks
+                [dp moveToPoint:CGPointMake(g.groundPoint.x - 4.0f, g.groundPoint.y)];
+                [dp addLineToPoint:CGPointMake(g.groundPoint.x + 4.0f, g.groundPoint.y)];
+                [dp moveToPoint:CGPointMake(g.groundPoint.x, g.groundPoint.y - 4.0f)];
+                [dp addLineToPoint:CGPointMake(g.groundPoint.x, g.groundPoint.y + 4.0f)];
+
+                dropLineLayer.path = dp.CGPath;
+                dropLineLayer.strokeColor = [UIColor colorWithRed:0.92f green:1.0f blue:0.12f alpha:1.0f].CGColor;
+                dropLineLayer.lineWidth = 1.6f;
+                dropLineLayer.hidden = NO;
             } else {
-                circleMidLayer.hidden = YES;
+                dropLineLayer.hidden = YES;
             }
         }
 
-        // Inner Circle: 180 units -> Red
-        if (circleInLayer) {
-            UIBezierPath *cp = buildCirclePath(g.circlePointsInner, g.circlePointsInnerValid, g.circlePointCount);
-            if (cp) {
-                circleInLayer.path = cp.CGPath;
-                circleInLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f].CGColor;
-                circleInLayer.lineWidth = fmaxf(2.0f, g_pubgEspThickness + 0.5f);
-                circleInLayer.lineCap = kCALineCapRound;
-                circleInLayer.lineJoin = kCALineJoinRound;
-                circleInLayer.hidden = NO;
+        // 4. 3D Bomb Marker Icon (Icon quả bom nửa vàng nửa đỏ có chốt xanh như trong ảnh)
+        if (markerLayer) {
+            if (g.isVisible) {
+                markerLayer.position = CGPointMake(g.screenX, g.screenY);
+                markerLayer.hidden = NO;
             } else {
-                circleInLayer.hidden = YES;
+                markerLayer.hidden = YES;
             }
         }
 
-        // 3. 3D Bounding Box around grenade (< 13m) matching metalbiew.txt
+        // 5. Top HUD Diamond Badge with Grenade Icon & Timer (Hình thoi viền vàng + icon quả bom + đếm giây như trong ảnh)
+        if (hudBgLayer && hudIconLayer && hudTimerLayer) {
+            CGFloat badgeCx = width * 0.5f - 20.0f + (i * 90.0f);
+            CGFloat badgeCy = 125.0f;
+            CGFloat dR = 14.0f;
+
+            UIBezierPath *bp = [UIBezierPath bezierPath];
+            CGRect boxRect = CGRectMake(badgeCx + dR * 0.4f, badgeCy - 11.0f, 44.0f, 22.0f);
+            UIBezierPath *boxPath = [UIBezierPath bezierPathWithRoundedRect:boxRect cornerRadius:4.0f];
+            [bp appendPath:boxPath];
+
+            [bp moveToPoint:CGPointMake(badgeCx, badgeCy - dR)];
+            [bp addLineToPoint:CGPointMake(badgeCx + dR, badgeCy)];
+            [bp addLineToPoint:CGPointMake(badgeCx, badgeCy + dR)];
+            [bp addLineToPoint:CGPointMake(badgeCx - dR, badgeCy)];
+            [bp closePath];
+
+            hudBgLayer.path = bp.CGPath;
+            hudBgLayer.fillColor = [UIColor colorWithRed:0.12f green:0.15f blue:0.20f alpha:0.85f].CGColor;
+            hudBgLayer.strokeColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.20f alpha:1.0f].CGColor;
+            hudBgLayer.lineWidth = 1.5f;
+            hudBgLayer.hidden = NO;
+
+            hudIconLayer.position = CGPointMake(badgeCx, badgeCy);
+            hudIconLayer.hidden = NO;
+
+            int secLeft = (int)ceilf(g.cookSeconds);
+            if (secLeft < 0) secLeft = 0;
+            hudTimerLayer.string = [NSString stringWithFormat:@"%d s", secLeft];
+            hudTimerLayer.frame = CGRectMake(boxRect.origin.x + 2.0f, boxRect.origin.y + 2.0f, boxRect.size.width - 4.0f, 18.0f);
+            hudTimerLayer.hidden = NO;
+        }
+
+        // 6. 3D Bounding Box around grenade (< 13m)
         if (boxLayer) {
             if (g.hasBox) {
                 UIBezierPath *bp = [UIBezierPath bezierPath];
-                // Bottom square: 0 -> 1 -> 2 -> 3 -> 0
                 [bp moveToPoint:g.boxCorners[0]];
                 [bp addLineToPoint:g.boxCorners[1]];
                 [bp addLineToPoint:g.boxCorners[2]];
                 [bp addLineToPoint:g.boxCorners[3]];
                 [bp closePath];
-                // Top square: 4 -> 5 -> 6 -> 7 -> 4
                 [bp moveToPoint:g.boxCorners[4]];
                 [bp addLineToPoint:g.boxCorners[5]];
                 [bp addLineToPoint:g.boxCorners[6]];
                 [bp addLineToPoint:g.boxCorners[7]];
                 [bp closePath];
-                // Pillars: 0-4, 1-5, 2-6, 3-7
                 [bp moveToPoint:g.boxCorners[0]]; [bp addLineToPoint:g.boxCorners[4]];
                 [bp moveToPoint:g.boxCorners[1]]; [bp addLineToPoint:g.boxCorners[5]];
                 [bp moveToPoint:g.boxCorners[2]]; [bp addLineToPoint:g.boxCorners[6]];
@@ -4733,7 +4854,7 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // 4. Text Label at (Location.X, Location.Y + 34) matching metalbiew.txt
+        // 7. Distance tag
         if (badgeLbl && g.isVisible) {
             NSString *titleStr = [NSString stringWithUTF8String:g.name];
             NSString *fullBadge = [NSString stringWithFormat:@"%@ [%.0fm]", titleStr, g.distanceMeters];
@@ -4748,7 +4869,7 @@ static void ds_hosted_apply_pubg(void) {
 
             CGFloat bw = 160.0f;
             CGFloat bh = 18.0f;
-            badgeLbl.frame = CGRectMake(g.screenX - bw * 0.5f, g.screenY + 34.0f, bw, bh);
+            badgeLbl.frame = CGRectMake(g.screenX - bw * 0.5f, g.screenY + 22.0f, bw, bh);
             badgeLbl.backgroundColor = UIColor.clearColor.CGColor;
             badgeLbl.string = badgeAttr;
             badgeLbl.hidden = NO;
@@ -4757,44 +4878,9 @@ static void ds_hosted_apply_pubg(void) {
         }
     }
 
-    // 5. Center Screen Danger Warning Banner (screenHeight / 3) matching metalbiew.txt
+    // Banner removed per user request: "không cần làm cái thông báo địch rút bom đâu xoá đi cho tôi"
     if (g_hostedPUBGGrenadeDangerBanner) {
-        if (anyDanger && g_pubgEspGrenade && g_hostedEspEnabled) {
-            NSString *bannerText = nil;
-            UIColor *bannerColor = [UIColor colorWithRed:1.0f green:0.2f blue:0.2f alpha:1.0f];
-            switch (closestDangerType) {
-                case DSPUBGGrenadeTypeFrag:
-                    bannerText = [NSString stringWithFormat:@"⚠️ MOVE! MOVE! MOVE! (%.0fm) ⚠️", closestDangerDist];
-                    break;
-                case DSPUBGGrenadeTypeBurn:
-                    bannerText = [NSString stringWithFormat:@"🔥 !! CẨN THẬN BOM LỬA !! (%.0fm) 🔥", closestDangerDist];
-                    break;
-                case DSPUBGGrenadeTypeSmoke:
-                    bannerText = [NSString stringWithFormat:@"💨 AN TOÀN BOM KHÓI (%.0fm)", closestDangerDist];
-                    bannerColor = [UIColor colorWithWhite:0.95 alpha:1.0f];
-                    break;
-                case DSPUBGGrenadeTypeStun:
-                    bannerText = [NSString stringWithFormat:@"⚡ MOVE! MOVE! MOVE! (%.0fm) ⚡", closestDangerDist];
-                    bannerColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.0f alpha:1.0f];
-                    break;
-            }
-
-            NSAttributedString *bannerAttr = [[NSAttributedString alloc] initWithString:bannerText attributes:@{
-                NSFontAttributeName: [UIFont systemFontOfSize:18.0 weight:UIFontWeightHeavy],
-                NSForegroundColorAttributeName: bannerColor,
-                NSStrokeColorAttributeName: [UIColor blackColor],
-                NSStrokeWidthAttributeName: @(-2.8),
-                NSParagraphStyleAttributeName: s_centerStyle
-            }];
-
-            CGFloat bannerW = 380.0f;
-            CGFloat bannerH = 30.0f;
-            g_hostedPUBGGrenadeDangerBanner.frame = CGRectMake((width - bannerW) * 0.5f, height * 0.33f - bannerH * 0.5f, bannerW, bannerH);
-            g_hostedPUBGGrenadeDangerBanner.string = bannerAttr;
-            g_hostedPUBGGrenadeDangerBanner.hidden = NO;
-        } else {
-            g_hostedPUBGGrenadeDangerBanner.hidden = YES;
-        }
+        g_hostedPUBGGrenadeDangerBanner.hidden = YES;
     }
 }
 
@@ -5231,6 +5317,7 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 g_hostedPUBGItemLabels[i] = itemLbl;
             }
 
+            ds_pubg_ensure_grenade_images();
             for (int i = 0; i < kDSPUBGMaxGrenades; i++) {
                 CAShapeLayer *traj = [CAShapeLayer layer];
                 traj.actions = noAnim;
@@ -5238,7 +5325,7 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 traj.fillColor = UIColor.clearColor.CGColor;
                 traj.lineCap = kCALineCapRound;
                 traj.lineJoin = kCALineJoinRound;
-                traj.lineWidth = 1.5;
+                traj.lineWidth = 2.0;
                 traj.hidden = YES;
                 [g_hostedLayer addSublayer:traj];
                 g_hostedPUBGGrenadeTrajLayers[i] = traj;
@@ -5249,7 +5336,7 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circOut.fillColor = UIColor.clearColor.CGColor;
                 circOut.lineCap = kCALineCapRound;
                 circOut.lineJoin = kCALineJoinRound;
-                circOut.lineWidth = 1.5;
+                circOut.lineWidth = 1.8;
                 circOut.hidden = YES;
                 [g_hostedLayer addSublayer:circOut];
                 g_hostedPUBGGrenadeCircleLayers[i] = circOut;
@@ -5258,9 +5345,6 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circMid.actions = noAnim;
                 circMid.contentsScale = scale;
                 circMid.fillColor = UIColor.clearColor.CGColor;
-                circMid.lineCap = kCALineCapRound;
-                circMid.lineJoin = kCALineJoinRound;
-                circMid.lineWidth = 1.5;
                 circMid.hidden = YES;
                 [g_hostedLayer addSublayer:circMid];
                 g_hostedPUBGGrenadeCircleMidLayers[i] = circMid;
@@ -5269,12 +5353,59 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 circIn.actions = noAnim;
                 circIn.contentsScale = scale;
                 circIn.fillColor = UIColor.clearColor.CGColor;
-                circIn.lineCap = kCALineCapRound;
-                circIn.lineJoin = kCALineJoinRound;
-                circIn.lineWidth = 1.8;
                 circIn.hidden = YES;
                 [g_hostedLayer addSublayer:circIn];
                 g_hostedPUBGGrenadeCircleInnerLayers[i] = circIn;
+
+                CAShapeLayer *dropLine = [CAShapeLayer layer];
+                dropLine.actions = noAnim;
+                dropLine.contentsScale = scale;
+                dropLine.fillColor = UIColor.clearColor.CGColor;
+                dropLine.lineCap = kCALineCapRound;
+                dropLine.lineJoin = kCALineJoinRound;
+                dropLine.lineWidth = 1.6;
+                dropLine.hidden = YES;
+                [g_hostedLayer addSublayer:dropLine];
+                g_hostedPUBGGrenadeDropLineLayers[i] = dropLine;
+
+                CALayer *marker = [CALayer layer];
+                marker.actions = noAnim;
+                marker.contentsScale = scale;
+                marker.bounds = CGRectMake(0, 0, 32.0, 32.0);
+                marker.contents = (id)s_pubgBombMarkerImage.CGImage;
+                marker.hidden = YES;
+                [g_hostedLayer addSublayer:marker];
+                g_hostedPUBGGrenadeMarkerLayers[i] = marker;
+
+                CAShapeLayer *hudBg = [CAShapeLayer layer];
+                hudBg.actions = noAnim;
+                hudBg.contentsScale = scale;
+                hudBg.fillColor = [UIColor colorWithRed:0.12f green:0.15f blue:0.20f alpha:0.85f].CGColor;
+                hudBg.strokeColor = [UIColor colorWithRed:1.0f green:0.85f blue:0.20f alpha:1.0f].CGColor;
+                hudBg.lineWidth = 1.5;
+                hudBg.hidden = YES;
+                [g_hostedLayer addSublayer:hudBg];
+                g_hostedPUBGGrenadeHudBgLayers[i] = hudBg;
+
+                CALayer *hudIcon = [CALayer layer];
+                hudIcon.actions = noAnim;
+                hudIcon.contentsScale = scale;
+                hudIcon.bounds = CGRectMake(0, 0, 20.0, 20.0);
+                hudIcon.contents = (id)s_pubgGrenadeBadgeIconImage.CGImage;
+                hudIcon.hidden = YES;
+                [g_hostedLayer addSublayer:hudIcon];
+                g_hostedPUBGGrenadeHudIconLayers[i] = hudIcon;
+
+                CATextLayer *hudTimer = [CATextLayer layer];
+                hudTimer.actions = noAnim;
+                hudTimer.contentsScale = scale;
+                hudTimer.alignmentMode = kCAAlignmentCenter;
+                hudTimer.fontSize = 12.0;
+                hudTimer.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightHeavy];
+                hudTimer.foregroundColor = UIColor.whiteColor.CGColor;
+                hudTimer.hidden = YES;
+                [g_hostedLayer addSublayer:hudTimer];
+                g_hostedPUBGGrenadeHudTimerLayers[i] = hudTimer;
 
                 CAShapeLayer *box = [CAShapeLayer layer];
                 box.actions = noAnim;
