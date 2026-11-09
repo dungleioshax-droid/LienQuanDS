@@ -900,64 +900,94 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
     return DSPUBGItemCategoryNone;
 }
 
-static bool ds_pubg_classify_grenade(const char *name, DSPUBGGrenadeType *outType, char *outDisplay, size_t outCap, float *outRadius) {
-    if (!name || !outType || !outDisplay || outCap < 8) return false;
+static inline uint32_t ds_pubg_read_grenade_id(uint64_t actor) {
+    // In ASTExtraGrenadeBase, ItemDefineID is at 0x678(0x18)
+    // FItemDefineID has Type at 0x0(0x4), TypeSpecificID at 0x4(0x4) -> 0x67C
+    uint32_t id = ds_pubg_read_u32(actor + 0x67CULL);
+    if (id == 602004 || id == 602003 || id == 602002 || id == 602001 || id == 602005) return id;
+    id = ds_pubg_read_u32(actor + 0x678ULL);
+    if (id == 602004 || id == 602003 || id == 602002 || id == 602001 || id == 602005) return id;
+    id = ds_pubg_read_u32(actor + 0x680ULL);
+    if (id == 602004 || id == 602003 || id == 602002 || id == 602001 || id == 602005) return id;
+    id = ds_pubg_read_u32(actor + 0x674ULL);
+    if (id == 602004 || id == 602003 || id == 602002 || id == 602001 || id == 602005) return id;
+    return 0;
+}
 
-    // Filter out pickup wrappers, visual effects, audio, cameras, and characters
-    if (strcasestr(name, "PickUp") ||
-        strcasestr(name, "Particle") || strcasestr(name, "Emitter") || strcasestr(name, "Effect") ||
-        strcasestr(name, "Decal") || strcasestr(name, "Sound") ||
-        strcasestr(name, "Audio") || strcasestr(name, "Camera") || strcasestr(name, "Character") ||
-        strcasestr(name, "Pawn")) {
-        return false;
-    }
-
+static bool ds_pubg_identify_grenade(uint64_t actor, DSPUBGGrenadeType *outType, char *outDisplay, size_t outCap, float *outRadius) {
+    if (!actor || !outType || !outDisplay || outCap < 8) return false;
     bool isEn = (g_pubgLanguage == 1);
 
-    // 1. Frag Grenade (Lựu đạn nổ) - Shoulei / Frag / Grenade
-    if (strcasestr(name, "Shoulei") || strcasestr(name, "Frag") || strcasestr(name, "ProjFrag") ||
-        strcasestr(name, "ProjGrenade_Shoulei") || strcasestr(name, "BP_Grenade_Shoulei") ||
-        strcasestr(name, "Grenade_Shoulei")) {
-        *outType = DSPUBGGrenadeTypeFrag;
-        snprintf(outDisplay, outCap, isEn ? "FRAG GRENADE" : "LỰU ĐẠN NỔ");
-        if (outRadius) *outRadius = 9.0f; // 9 meters damage radius
-        return true;
+    // 1. Direct ItemDefineID check (exact internal logic from metalbiew.txt)
+    uint32_t idbom = ds_pubg_read_grenade_id(actor);
+    if (idbom != 0) {
+        switch (idbom) {
+            case 602004: // Frag Grenade
+                *outType = DSPUBGGrenadeTypeFrag;
+                snprintf(outDisplay, outCap, isEn ? "LỰU ĐẠN" : "LỰU ĐẠN");
+                if (outRadius) *outRadius = 9.0f;
+                return true;
+            case 602003: // Molotov
+                *outType = DSPUBGGrenadeTypeBurn;
+                snprintf(outDisplay, outCap, isEn ? "BOM LỬA" : "BOM LỬA");
+                if (outRadius) *outRadius = 4.5f;
+                return true;
+            case 602002: // Smoke
+                *outType = DSPUBGGrenadeTypeSmoke;
+                snprintf(outDisplay, outCap, isEn ? "BOM KHÓI" : "BOM KHÓI");
+                if (outRadius) *outRadius = 6.0f;
+                return true;
+            case 602001: // Stun
+            case 602005:
+                *outType = DSPUBGGrenadeTypeStun;
+                snprintf(outDisplay, outCap, isEn ? "BOM CHOÁNG" : "BOM CHOÁNG");
+                if (outRadius) *outRadius = 8.0f;
+                return true;
+        }
     }
 
-    // 2. Molotov / Burn Grenade (Bom lửa) - Burn / Molotov / Fire / RanShaoPing
-    if (strcasestr(name, "Burn") || strcasestr(name, "Molotov") || strcasestr(name, "Fire") ||
-        strcasestr(name, "ProjBurn") || strcasestr(name, "BP_Molotov") || strcasestr(name, "RanShaoPing")) {
-        *outType = DSPUBGGrenadeTypeBurn;
-        snprintf(outDisplay, outCap, isEn ? "MOLOTOV" : "BOM LỬA");
-        if (outRadius) *outRadius = 4.5f; // 4.5 meters burn radius
-        return true;
-    }
+    // 2. Class name and Actor name fallback
+    char actorName[64] = {0};
+    if (ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
+        if (strcasestr(actorName, "PickUp") || strcasestr(actorName, "Character") ||
+            strcasestr(actorName, "Pawn") || strcasestr(actorName, "Camera")) {
+            return false;
+        }
 
-    // 3. Smoke Grenade (Bom khói) - Smoke / YanWuDan
-    if (strcasestr(name, "Smoke") || strcasestr(name, "ProjSmoke") ||
-        strcasestr(name, "BP_Grenade_Smoke") || strcasestr(name, "YanWuDan")) {
-        *outType = DSPUBGGrenadeTypeSmoke;
-        snprintf(outDisplay, outCap, isEn ? "SMOKE" : "BOM KHÓI");
-        if (outRadius) *outRadius = 6.0f; // 6 meters smoke radius
-        return true;
-    }
-
-    // 4. Stun Grenade (Bom choáng) - Stun / Flash / ZhenBaoDan
-    if (strcasestr(name, "Stun") || strcasestr(name, "Flash") || strcasestr(name, "ProjStun") ||
-        strcasestr(name, "BP_Grenade_Stun") || strcasestr(name, "ZhenBaoDan")) {
-        *outType = DSPUBGGrenadeTypeStun;
-        snprintf(outDisplay, outCap, isEn ? "STUN" : "BOM CHOÁNG");
-        if (outRadius) *outRadius = 8.0f; // 8 meters flash radius
-        return true;
-    }
-
-    // 5. Generic Projectile Grenade / Throwable
-    if (strcasestr(name, "Grenade") || strcasestr(name, "Throwable") ||
-        strcasestr(name, "ProjGrenade") || strcasestr(name, "ProjectileBase")) {
-        *outType = DSPUBGGrenadeTypeFrag;
-        snprintf(outDisplay, outCap, isEn ? "GRENADE" : "LỰU ĐẠN");
-        if (outRadius) *outRadius = 9.0f;
-        return true;
+        if (strcasestr(actorName, "Shoulei") || strcasestr(actorName, "Frag") ||
+            strcasestr(actorName, "ProjFrag") || strcasestr(actorName, "BP_Grenade_Shoulei")) {
+            *outType = DSPUBGGrenadeTypeFrag;
+            snprintf(outDisplay, outCap, isEn ? "LỰU ĐẠN" : "LỰU ĐẠN");
+            if (outRadius) *outRadius = 9.0f;
+            return true;
+        }
+        if (strcasestr(actorName, "Burn") || strcasestr(actorName, "Molotov") ||
+            strcasestr(actorName, "RanShaoPing") || strcasestr(actorName, "ProjBurn")) {
+            *outType = DSPUBGGrenadeTypeBurn;
+            snprintf(outDisplay, outCap, isEn ? "BOM LỬA" : "BOM LỬA");
+            if (outRadius) *outRadius = 4.5f;
+            return true;
+        }
+        if (strcasestr(actorName, "Smoke") || strcasestr(actorName, "YanWuDan") ||
+            strcasestr(actorName, "ProjSmoke")) {
+            *outType = DSPUBGGrenadeTypeSmoke;
+            snprintf(outDisplay, outCap, isEn ? "BOM KHÓI" : "BOM KHÓI");
+            if (outRadius) *outRadius = 6.0f;
+            return true;
+        }
+        if (strcasestr(actorName, "Stun") || strcasestr(actorName, "Flash") ||
+            strcasestr(actorName, "ZhenBaoDan") || strcasestr(actorName, "ProjStun")) {
+            *outType = DSPUBGGrenadeTypeStun;
+            snprintf(outDisplay, outCap, isEn ? "BOM CHOÁNG" : "BOM CHOÁNG");
+            if (outRadius) *outRadius = 8.0f;
+            return true;
+        }
+        if (strcasestr(actorName, "STExtraGrenadeBase") || strcasestr(actorName, "STProjectileBase")) {
+            *outType = DSPUBGGrenadeTypeFrag;
+            snprintf(outDisplay, outCap, isEn ? "LỰU ĐẠN" : "LỰU ĐẠN");
+            if (outRadius) *outRadius = 9.0f;
+            return true;
+        }
     }
 
     return false;
@@ -3274,23 +3304,18 @@ static void ds_pubg_tick(void) {
         }
         if (!hasLoc) return false;
 
-        // 2. Early Distance check (grenades only exist within 150m)
+        // 2. Early Distance check (grenades only exist within 100m, exactly as in metalbiew)
         float dx = (rootLoc.X - basis.lx) * 0.01f;
         float dy = (rootLoc.Y - basis.ly) * 0.01f;
         float dz = (rootLoc.Z - basis.lz) * 0.01f;
         float dist3D = sqrtf(dx * dx + dy * dy + dz * dz);
-        if (dist3D > 150.0f) return false;
+        if (dist3D > 100.0f) return false;
 
-        // 3. Name check (only executed for actors within 150m)
-        char actorName[64] = {0};
-        if (!ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
-            return false;
-        }
-
+        // 3. Grenade Identification (ItemDefineID first, then Class/Actor name fallback)
         DSPUBGGrenadeType gType = DSPUBGGrenadeTypeFrag;
         char gDisplayName[32] = {0};
         float dmgRadius = 9.0f;
-        if (!ds_pubg_classify_grenade(actorName, &gType, gDisplayName, sizeof(gDisplayName), &dmgRadius)) {
+        if (!ds_pubg_identify_grenade(actor, &gType, gDisplayName, sizeof(gDisplayName), &dmgRadius)) {
             return false;
         }
 
@@ -3340,7 +3365,7 @@ static void ds_pubg_tick(void) {
         strncpy(pg.name, gDisplayName, sizeof(pg.name) - 1);
         pg.name[sizeof(pg.name) - 1] = '\0';
         pg.damageRadiusMeters = dmgRadius;
-        pg.isLocalInDanger = (dist3D <= dmgRadius);
+        pg.isLocalInDanger = (dist3D < 13.0f); // In metalbiew.txt: gDistance < 13.f triggers danger alert
         pg.hasStart = false;
         pg.startX = screenW * 0.5f;
         pg.startY = 25.0f;
@@ -3389,22 +3414,75 @@ static void ds_pubg_tick(void) {
             pg.trajCount = projectedTraj;
         }
 
-        float radUnits = dmgRadius * 100.0f;
+        // 3 Concentric Circles matching metalbiew.txt:
+        // Outer: 360 units (3.6m), Mid: 260 units (2.6m), Inner: 180 units (1.8m)
+        const float rOuter = 360.0f;
+        const float rMid = 260.0f;
+        const float rInner = 180.0f;
         for (int k = 0; k < kDSPUBGCirclePoints; k++) {
             float angle = (float)k * (2.0f * (float)M_PI / (float)kDSPUBGCirclePoints);
-            DSPUBGVector cpt = {
-                rootLoc.X + radUnits * cosf(angle),
-                rootLoc.Y + radUnits * sinf(angle),
-                rootLoc.Z
-            };
+            float ca = cosf(angle);
+            float sa = sinf(angle);
+
+            // Outer circle (White)
+            DSPUBGVector cptOut = { rootLoc.X + rOuter * ca, rootLoc.Y + rOuter * sa, rootLoc.Z };
             float csx = 0, csy = 0, cdist = 0;
-            if (ds_pubg_cam_basis_project(basis, cpt, csx, csy, cdist)) {
+            if (ds_pubg_cam_basis_project(basis, cptOut, csx, csy, cdist)) {
                 pg.circlePoints[k] = CGPointMake(csx, csy);
                 pg.circlePointsValid[k] = true;
             } else {
                 pg.circlePoints[k] = CGPointMake(-9999.0f, -9999.0f);
                 pg.circlePointsValid[k] = false;
             }
+
+            // Mid circle (Yellow)
+            DSPUBGVector cptMid = { rootLoc.X + rMid * ca, rootLoc.Y + rMid * sa, rootLoc.Z };
+            if (ds_pubg_cam_basis_project(basis, cptMid, csx, csy, cdist)) {
+                pg.circlePointsMid[k] = CGPointMake(csx, csy);
+                pg.circlePointsMidValid[k] = true;
+            } else {
+                pg.circlePointsMid[k] = CGPointMake(-9999.0f, -9999.0f);
+                pg.circlePointsMidValid[k] = false;
+            }
+
+            // Inner circle (Red)
+            DSPUBGVector cptIn = { rootLoc.X + rInner * ca, rootLoc.Y + rInner * sa, rootLoc.Z };
+            if (ds_pubg_cam_basis_project(basis, cptIn, csx, csy, cdist)) {
+                pg.circlePointsInner[k] = CGPointMake(csx, csy);
+                pg.circlePointsInnerValid[k] = true;
+            } else {
+                pg.circlePointsInner[k] = CGPointMake(-9999.0f, -9999.0f);
+                pg.circlePointsInnerValid[k] = false;
+            }
+        }
+
+        // 3D Bounding Box when distance < 13.0m (matching metalbiew.txt bbExtends(10, 10, 10))
+        if (dist3D < 13.0f) {
+            float ext = 12.0f; // 12cm half-extent
+            DSPUBGVector corners[8] = {
+                { rootLoc.X - ext, rootLoc.Y - ext, rootLoc.Z - ext }, // 0
+                { rootLoc.X + ext, rootLoc.Y - ext, rootLoc.Z - ext }, // 1
+                { rootLoc.X + ext, rootLoc.Y + ext, rootLoc.Z - ext }, // 2
+                { rootLoc.X - ext, rootLoc.Y + ext, rootLoc.Z - ext }, // 3
+                { rootLoc.X - ext, rootLoc.Y - ext, rootLoc.Z + ext }, // 4
+                { rootLoc.X + ext, rootLoc.Y - ext, rootLoc.Z + ext }, // 5
+                { rootLoc.X + ext, rootLoc.Y + ext, rootLoc.Z + ext }, // 6
+                { rootLoc.X - ext, rootLoc.Y + ext, rootLoc.Z + ext }, // 7
+            };
+            bool allValid = true;
+            for (int b = 0; b < 8; b++) {
+                float bsx = 0, bsy = 0, bdist = 0;
+                if (ds_pubg_cam_basis_project(basis, corners[b], bsx, bsy, bdist)) {
+                    pg.boxCorners[b] = CGPointMake(bsx, bsy);
+                    pg.boxCornersValid[b] = true;
+                } else {
+                    pg.boxCornersValid[b] = false;
+                    allValid = false;
+                }
+            }
+            pg.hasBox = allValid;
+        } else {
+            pg.hasBox = false;
         }
 
         return true;

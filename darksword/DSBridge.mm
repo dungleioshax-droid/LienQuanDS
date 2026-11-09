@@ -1029,6 +1029,16 @@ typedef struct {
     int circlePointCount;
     CGPoint circlePoints[kDSPUBGCirclePoints];
     bool circlePointsValid[kDSPUBGCirclePoints];
+
+    CGPoint circlePointsMid[kDSPUBGCirclePoints];
+    bool circlePointsMidValid[kDSPUBGCirclePoints];
+
+    CGPoint circlePointsInner[kDSPUBGCirclePoints];
+    bool circlePointsInnerValid[kDSPUBGCirclePoints];
+
+    bool hasBox;
+    CGPoint boxCorners[8];
+    bool boxCornersValid[8];
 } DSPUBGProjectedGrenade;
 
 static const int kDSPUBGMaxPlayers = 96;
