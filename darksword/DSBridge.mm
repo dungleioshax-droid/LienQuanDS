@@ -9,6 +9,9 @@
 #import "SpringBoardServices.h"
 #import "FBSOrientationObserver.h"
 #import "FBSOrientationUpdate.h"
+#import "BackboardServices.h"
+#import "AXEventRepresentation.h"
+#import "TSEventFetcher.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -1081,7 +1084,6 @@ static void ds_pubg_overlay_reset(void);
 #include "DSBridgeESP.inc.mm"
 #include "DSBridgeLienQuan.inc.mm"
 #include "DSBridgePUBG.inc.mm"
-#include "DSBridgeImGui.inc.mm"
 
 // The HUD lives in its own UIWindow anchored to SBMainWorkspace.mainWindowScene
 // Adding to whatever keyWindow we can find is
@@ -1496,7 +1498,6 @@ static void ds_finish_disable(void) {
     // Pause (not stop): keep the local window + CAContext + the SpringBoard
     // registration alive so the next enable needs no channel at all.
     ds_hosted_overlay_pause();
-    ds_imgui_pause();
     g_hudActive.store(false);
     // Keep the SpringBoard RemoteCall channel alive across toggles (DarkPlay
     // pattern). RemoteCall init/destroy and every remote_msg are
@@ -1719,20 +1720,15 @@ static void ds_finish_enable(void) {
     // inside SpringBoard while the ESP runs (the long-run panic source).
     __block unsigned hostedContextId = 0;
     __block unsigned menuContextId = 0;
-    __block unsigned imguiContextId = 0;
     ds_dispatch_main_sync(^{
         hostedContextId = ds_hosted_overlay_setup_on_main();
         menuContextId = ds_hosted_menu_setup_on_main();
-        imguiContextId = ds_imgui_setup_on_main();
     });
     if (hostedContextId) {
         ds_hosted_overlay_register(hostedContextId);
     }
     if (menuContextId) {
         ds_hosted_menu_register(menuContextId);
-    }
-    if (imguiContextId) {
-        ds_hosted_overlay_register(imguiContextId);
     }
     if (g_hostedRemoteController && g_hostedMenuRemoteController) {
         RemoteCall *process = g_springBoard;
@@ -1779,7 +1775,6 @@ void DSBridgeTeardownForTermination(void) {
     g_hostedMenuExpanded = NO;
     g_hostedMenuWindow.hidden = YES;
     g_hostedWindow.hidden = YES;
-    ds_imgui_pause();
     [CATransaction flush];
     // Called from applicationWillTerminate: on the main thread. The keepalive
     // keeps us background-RUNNING (not suspended), so this really fires on a

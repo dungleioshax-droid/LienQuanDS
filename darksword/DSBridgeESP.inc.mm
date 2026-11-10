@@ -2574,6 +2574,47 @@ static void ds_hosted_menu_register(unsigned contextId) {
     }
 }
 
+static bool g_menuHIDRegistered = false;
+
+static void ds_menu_hid_callback(void *target, void *refcon, IOHIDServiceRef service, IOHIDEventRef event) {
+    if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) return;
+
+    static Class AXEventRepresentationCls = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/AccessibilityUtilities.framework"] load];
+        AXEventRepresentationCls = objc_getClass("AXEventRepresentation");
+    });
+    if (!AXEventRepresentationCls) return;
+
+    AXEventRepresentation *rep = [AXEventRepresentationCls representationWithHIDEvent:event hidStreamIdentifier:@"UIApplicationEvents"];
+    if (!rep) return;
+
+    CGPoint loc = [rep location];
+    UITouchPhase phase = UITouchPhaseEnded;
+    if ([rep isTouchDown])
+        phase = UITouchPhaseBegan;
+    else if ([rep isMove])
+        phase = UITouchPhaseMoved;
+    else if ([rep isCancel])
+        phase = UITouchPhaseCancelled;
+    else if ([rep isLift] || [rep isInRange] || [rep isInRangeLift])
+        phase = UITouchPhaseEnded;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) return;
+        UIView *hit = [g_hostedMenuWindow hitTest:loc withEvent:nil];
+        if (hit) {
+            NSInteger pointerId = [[[[rep handInfo] paths] firstObject] pathIdentity];
+            [TSEventFetcher receiveAXEventID:MIN(MAX(pointerId, 1), 98)
+                          atGlobalCoordinate:loc
+                              withTouchPhase:phase
+                                    inWindow:g_hostedMenuWindow
+                                      onView:hit];
+        }
+    });
+}
+
 // Main thread, all local UIKit. Returns the window's render-server context id.
 static unsigned ds_hosted_menu_setup_on_main(void) {
     if (g_hostedMenuWindow) {
@@ -2602,6 +2643,12 @@ static unsigned ds_hosted_menu_setup_on_main(void) {
     g_hostedMenuViewController = rootVC;
     g_hostedMenuContextId = contextId;
     ds_hosted_menu_set_expanded(g_hostedMenuExpanded);
+
+    if (!g_menuHIDRegistered) {
+        BKSHIDEventRegisterEventCallback(ds_menu_hid_callback);
+        g_menuHIDRegistered = true;
+    }
+
     return contextId;
 }
 
@@ -4840,7 +4887,7 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
     ds_hosted_apply_orientation(renderOri);
     if (ds_active_game() == 1) {
         ds_hosted_lq_hide_all();
-        ds_hosted_pubg_hide_all();
+        ds_hosted_apply_pubg();
     } else {
         ds_hosted_pubg_hide_all();
         ds_hosted_apply_lq();
@@ -5618,23 +5665,15 @@ static void ds_hosted_overlay_frame(void) {
     // same reader state resumes when its landscape scene becomes active again.
     // However, in PUBG external mode, allow tick to continue even on SpringBoard
     // if the game process is running and connected.
-    UIInterfaceOrientation activeOrientation = ds_active_orientation();
-    if (UIInterfaceOrientationIsPortrait(activeOrientation)) {
-        if (ds_active_game() == 1) {
-            if (!ds_pubg_has_render_source()) {
-                ds_hosted_publish_render_snapshot(snapshot);
-                return;
-            }
-        } else {
-            ds_hosted_publish_render_snapshot(snapshot);
-            return;
-        }
-    }
-
     if (ds_active_game() == 1) {
         ds_pubg_tick();
         snapshot.lqRenderSourceReady = ds_pubg_has_render_source();
     } else {
+        UIInterfaceOrientation activeOrientation = ds_active_orientation();
+        if (UIInterfaceOrientationIsPortrait(activeOrientation)) {
+            ds_hosted_publish_render_snapshot(snapshot);
+            return;
+        }
         ds_lq_tick();
         snapshot.lqRenderSourceReady = ds_lq_has_render_source();
     }
@@ -5670,7 +5709,7 @@ static void ds_hosted_overlay_start(void) {
         unsigned contextId = ds_hosted_overlay_setup_on_main();
         unsigned menuContextId = ds_hosted_menu_setup_on_main();
         if (g_hostedMenuWindow) {
-            g_hostedMenuWindow.hidden = (ds_active_game() == 1) ? YES : NO;
+            g_hostedMenuWindow.hidden = NO;
         }
         if (g_hostedMenuViewController) {
             [g_hostedMenuViewController dsApplyOrientation];
