@@ -1056,7 +1056,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [_toggleButton addTarget:self action:@selector(dsToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
     UIPanGestureRecognizer *menuPan = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(dsMenuButtonPanned:)];
-    menuPan.cancelsTouchesInView = NO;
     [_toggleButton addGestureRecognizer:menuPan];
     [_contentView addSubview:_toggleButton];
 
@@ -1558,9 +1557,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
         [defaults setDouble:_buttonAnchorUnit.x forKey:kDSHostedMenuAnchorXKey];
         [defaults setDouble:_buttonAnchorUnit.y forKey:kDSHostedMenuAnchorYKey];
-        if (distance < 6.0) {
-            [self dsToggleTapped:_toggleButton];
-        }
     }
 }
 
@@ -1935,75 +1931,7 @@ static void ds_hosted_menu_register(unsigned contextId) {
     }
 }
 
-static bool g_menuHIDRegistered = false;
-static UIView *g_activeMenuHitView = nil;
-static NSInteger g_activeMenuPointerId = 0;
 
-static void ds_menu_hid_callback(void *target, void *refcon, IOHIDServiceRef service, IOHIDEventRef event) {
-    if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) return;
-
-    static Class AXEventRepresentationCls = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/AccessibilityUtilities.framework"] load];
-        AXEventRepresentationCls = objc_getClass("AXEventRepresentation");
-    });
-    if (!AXEventRepresentationCls) return;
-
-    AXEventRepresentation *rep = [AXEventRepresentationCls representationWithHIDEvent:event hidStreamIdentifier:@"UIApplicationEvents"];
-    if (!rep) return;
-
-    CGPoint loc = [rep location];
-    UITouchPhase phase = UITouchPhaseEnded;
-    if ([rep isTouchDown])
-        phase = UITouchPhaseBegan;
-    else if ([rep isMove])
-        phase = UITouchPhaseMoved;
-    else if ([rep isCancel])
-        phase = UITouchPhaseCancelled;
-    else if ([rep isLift] || [rep isInRange] || [rep isInRangeLift])
-        phase = UITouchPhaseEnded;
-
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) {
-            g_activeMenuHitView = nil;
-            g_activeMenuPointerId = 0;
-            return;
-        }
-
-        NSInteger pointerId = [[[[rep handInfo] paths] firstObject] pathIdentity];
-        if (pointerId <= 0) return;
-
-        if (phase == UITouchPhaseBegan) {
-            UIView *hit = [g_hostedMenuWindow hitTest:loc withEvent:nil];
-            if (hit) {
-                g_activeMenuHitView = hit;
-                g_activeMenuPointerId = pointerId;
-                [TSEventFetcher receiveAXEventID:MIN(MAX(pointerId, 1), 98)
-                              atGlobalCoordinate:loc
-                                  withTouchPhase:phase
-                                        inWindow:g_hostedMenuWindow
-                                          onView:hit];
-            } else {
-                if (g_activeMenuPointerId == pointerId) {
-                    g_activeMenuHitView = nil;
-                    g_activeMenuPointerId = 0;
-                }
-            }
-        } else if (g_activeMenuHitView && g_activeMenuPointerId == pointerId) {
-            UIView *targetView = g_activeMenuHitView;
-            if (phase == UITouchPhaseEnded || phase == UITouchPhaseCancelled) {
-                g_activeMenuHitView = nil;
-                g_activeMenuPointerId = 0;
-            }
-            [TSEventFetcher receiveAXEventID:MIN(MAX(pointerId, 1), 98)
-                          atGlobalCoordinate:loc
-                              withTouchPhase:phase
-                                    inWindow:g_hostedMenuWindow
-                                      onView:targetView];
-        }
-    });
-}
 
 // Main thread, all local UIKit. Returns the window's render-server context id.
 static unsigned ds_hosted_menu_setup_on_main(void) {
@@ -2034,10 +1962,7 @@ static unsigned ds_hosted_menu_setup_on_main(void) {
     g_hostedMenuContextId = contextId;
     ds_hosted_menu_set_expanded(g_hostedMenuExpanded);
 
-    if (!g_menuHIDRegistered) {
-        BKSHIDEventRegisterEventCallback(ds_menu_hid_callback);
-        g_menuHIDRegistered = true;
-    }
+
 
     return contextId;
 }
