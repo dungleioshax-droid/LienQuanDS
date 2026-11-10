@@ -60,21 +60,15 @@ static ImVec2 g_floatingButtonPos = ImVec2(60.0f, 90.0f);
 static CGRect g_floatingButtonRect = CGRectMake(38.0, 68.0, 44.0, 44.0);
 static CGRect g_imguiMenuRect = CGRectZero;
 
-@class DSImGuiView;
-@class DSImGuiWindow;
-static DSImGuiView *g_imguiView = nil;
-static DSImGuiWindow *g_imguiWindow = nil;
-
-#pragma mark - Forward Declarations
-
-static void ds_imgui_render_pubg_esp(ImDrawList *draw, CGSize screenSize);
-static void ds_imgui_render_floating_button(ImDrawList *draw);
-static void ds_imgui_render_menu(void);
-
-#pragma mark - Window with Touch Pass-through
+@interface DSImGuiView : MTKView <MTKViewDelegate>
+- (void)updateOrientation;
+@end
 
 @interface DSImGuiWindow : UIWindow
 @end
+
+static DSImGuiView *g_imguiView = nil;
+static DSImGuiWindow *g_imguiWindow = nil;
 
 @implementation DSImGuiWindow
 + (BOOL)_isSystemWindow { return YES; }
@@ -112,10 +106,6 @@ static void ds_imgui_render_menu(void);
 @end
 
 #pragma mark - Metal View & Delegate
-
-@interface DSImGuiView : MTKView <MTKViewDelegate>
-- (void)updateOrientation;
-@end
 
 @implementation DSImGuiView {
     id<MTLCommandQueue> _commandQueue;
