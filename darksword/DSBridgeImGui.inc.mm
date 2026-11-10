@@ -439,8 +439,8 @@ static void ds_imgui_render_pubg_esp(ImDrawList *draw, CGSize screenSize) {
     if (localPlayerCount > 0) {
         memcpy(localPlayers, g_dspubgPlayers, localPlayerCount * sizeof(DSPUBGProjectedPlayer));
     }
-    totalEnemies = g_dspubgTotal360EnemyCount;
-    totalBots = g_dspubgTotal360BotCount;
+    totalEnemies = g_dspubgTotalEnemies;
+    totalBots = g_dspubgTotalBots;
 
     localGrenadeCount = g_dspubgGrenadeCount > kDSPUBGMaxGrenades ? kDSPUBGMaxGrenades : g_dspubgGrenadeCount;
     if (localGrenadeCount > 0) {
