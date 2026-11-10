@@ -13,6 +13,9 @@
 #include <vector>
 #include <algorithm>
 #include <atomic>
+#include <unordered_set>
+#include <mutex>
+#include <ctime>
 #include <os/lock.h>
 
 // UEPointers from DUMP/Offsets.hpp & DUMP/Logs.txt (ShadowTrackerExtra UE4)
@@ -115,11 +118,172 @@ struct DSPUBGActorCacheEntry {
     DSPUBGItemCategory itemCat;
     char itemName[36];
 };
-static const size_t kDSPUBGActorCacheSize = 4096;
+static const size_t kDSPUBGActorCacheSize = 16384;
 static DSPUBGActorCacheEntry g_dspubgActorCache[kDSPUBGActorCacheSize] = {};
 
 static inline uint32_t ds_pubg_actor_cache_hash(uint64_t actor) {
     return (uint32_t)((actor >> 4) ^ (actor >> 13)) & (uint32_t)(kDSPUBGActorCacheSize - 1);
+}
+
+// Fast check for static scenery / non-loot / non-character engine classes
+static inline bool ds_pubg_is_scenery_name(const char *name) {
+    if (!name || !name[0]) return false;
+    return (strstr(name, "StaticMesh") || strstr(name, "Foliage") ||
+            strstr(name, "Landscape") || strstr(name, "Building") ||
+            strstr(name, "House") || strstr(name, "Tree") ||
+            strstr(name, "Rock") || strstr(name, "Wall") ||
+            strstr(name, "Fence") || strstr(name, "Door") ||
+            strstr(name, "Window") || strstr(name, "Floor") ||
+            strstr(name, "Roof") || strstr(name, "Brush") ||
+            strstr(name, "Decal") || strstr(name, "Particle") ||
+            strstr(name, "Effect") || strstr(name, "Volume") ||
+            strstr(name, "Audio") || strstr(name, "Sound") ||
+            strstr(name, "Zone") || strstr(name, "Fog") ||
+            strstr(name, "Light") || strstr(name, "Camera") ||
+            strstr(name, "Trigger") || strstr(name, "Controller") ||
+            strstr(name, "Water") || strstr(name, "Sky") ||
+            strstr(name, "Cloud") || strstr(name, "Shadow") ||
+            strstr(name, "Nav") || strstr(name, "Navigation") ||
+            strstr(name, "Spline") || strstr(name, "Occlusion") ||
+            strstr(name, "Reflection") || strstr(name, "PostProcess") ||
+            strstr(name, "Wind") || strstr(name, "Emitter") ||
+            strstr(name, "Shell") || strstr(name, "Cartridge") ||
+            strstr(name, "Trace") || strstr(name, "Lobby") ||
+            strstr(name, "MainCity") || strstr(name, "Preview") ||
+            strstr(name, "Avatar") || strstr(name, "PetAvatar") ||
+            strstr(name, "LobbyModel") || strstr(name, "DefaultPhysicsVolume"));
+}
+
+// Item logging to file for user inspect & definition tuning
+static std::unordered_set<uint64_t> s_loggedItemSet;
+static std::mutex s_itemLogMutex;
+
+static void ds_pubg_log_item(uint64_t actor, int itemId, const char *actorName, const char *displayName, DSPUBGItemCategory cat, int count, float x, float y, float z, float dist) {
+    if (!g_pubgItemLogger) return;
+
+    uint64_t key = actor ^ ((uint64_t)(itemId > 0 ? itemId : 1) << 24);
+    {
+        std::lock_guard<std::mutex> lock(s_itemLogMutex);
+        if (s_loggedItemSet.find(key) != s_loggedItemSet.end()) {
+            return;
+        }
+        s_loggedItemSet.insert(key);
+    }
+
+    const char *catStr = "None";
+    switch (cat) {
+        case DSPUBGItemCategoryVehicle: catStr = "Vehicle"; break;
+        case DSPUBGItemCategoryWeapon:  catStr = "Weapon"; break;
+        case DSPUBGItemCategoryScope:   catStr = "Scope"; break;
+        case DSPUBGItemCategoryArmor:   catStr = "Armor"; break;
+        case DSPUBGItemCategoryBag:     catStr = "Bag"; break;
+        case DSPUBGItemCategoryCrate:   catStr = "Crate"; break;
+        default: catStr = "Other"; break;
+    }
+
+    time_t rawtime;
+    struct tm *timeinfo;
+    char timeBuf[32];
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", timeinfo);
+
+    char logLine[320];
+    snprintf(logLine, sizeof(logLine), "[%s] ID: %-6d | Cat: %-7s | Name: %-18s | Count: %-2d | Actor: %-28s | Dist: %3.0fm | Pos: (%.1f, %.1f, %.1f)\n",
+             timeBuf, itemId, catStr, displayName ? displayName : "Unknown", count, actorName ? actorName : "Unknown", dist, x, y, z);
+
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    if (paths && paths.count > 0) {
+        NSString *docPath = [paths.firstObject stringByAppendingPathComponent:@"pubg_items.txt"];
+        FILE *f = fopen([docPath UTF8String], "a");
+        if (f) {
+            fputs(logLine, f);
+            fclose(f);
+        }
+    }
+
+    FILE *fTmp = fopen("/tmp/pubg_items.txt", "a");
+    if (fTmp) {
+        fputs(logLine, fTmp);
+        fclose(fTmp);
+    }
+}
+
+// Precomputes RGBA color and priority for 120 FPS zero-overhead rendering
+static inline void ds_pubg_compute_item_props(DSPUBGItemCategory cat, const char *name, uint32_t &outColor, bool &outPriority) {
+    outPriority = false;
+    if (cat == DSPUBGItemCategoryVehicle) {
+        outColor = 0xFFD60AFF; // Yellow-gold
+        return;
+    }
+    if (cat == DSPUBGItemCategoryCrate || (name && (strstr(name, "THÍNH") || strstr(name, "Xác")))) {
+        outColor = 0xFF4B4BFF; // Red
+        outPriority = true;
+        return;
+    }
+    if (!name || !name[0]) {
+        outColor = 0x4CD964FF; // Default Green
+        return;
+    }
+    if (strstr(name, "M416") || strstr(name, "AWM") || strstr(name, "Groza") ||
+        strstr(name, "AUG") || strstr(name, "Mk14") || strstr(name, "MG3") ||
+        strstr(name, "AMR") || strstr(name, "P90") || strstr(name, "M762") ||
+        strstr(name, "Flare") || strstr(name, "Kar98") || strstr(name, "M24")) {
+        outColor = 0xFF2323FF; // Bright Red
+        outPriority = true;
+        return;
+    }
+    if (strstr(name, "5.56")) {
+        outColor = 0x00E676FF; // Bright Green
+        return;
+    }
+    if (strstr(name, "7.62")) {
+        outColor = 0xFFA000FF; // Gold-orange
+        return;
+    }
+    if (strstr(name, ".300")) {
+        outColor = 0xFF3232FF; // Red
+        outPriority = true;
+        return;
+    }
+    if (strstr(name, "9mm") || strstr(name, "45ACP") || strstr(name, "12G")) {
+        outColor = 0x38B6FFFF; // Sky blue
+        return;
+    }
+    if (cat == DSPUBGItemCategoryArmor || cat == DSPUBGItemCategoryBag ||
+        strstr(name, "Armor") || strstr(name, "Helmet") || strstr(name, "Bag") ||
+        strstr(name, "Giáp") || strstr(name, "Mũ") || strstr(name, "Balo")) {
+        outColor = 0x00E5FFFF; // Cyan
+        if (strstr(name, "3") || strstr(name, "Lv3") || strstr(name, "Cấp 3")) outPriority = true;
+        return;
+    }
+    if (strstr(name, "Kit") || strstr(name, "Painkiller") || strstr(name, "Drink") ||
+        strstr(name, "Adrenaline") || strstr(name, "First Aid") || strstr(name, "Med Kit") ||
+        strstr(name, "Nước") || strstr(name, "Giảm Đau")) {
+        outColor = 0x4DD0E1FF; // Light cyan / teal
+        return;
+    }
+    if (strstr(name, "Grenade") || strstr(name, "Molotof") || strstr(name, "Smoke") ||
+        strstr(name, "Lựu") || strstr(name, "Bom") || strstr(name, "Choáng")) {
+        outColor = 0xFF4081FF; // Magenta
+        return;
+    }
+    if (cat == DSPUBGItemCategoryScope || strstr(name, "Scope") || strstr(name, "Holo") ||
+        strstr(name, "RedDot") || strstr(name, "Sight") || strstr(name, "Compensator") ||
+        strstr(name, "Suppressor")) {
+        outColor = 0xBB86FCFF; // Violet
+        if (strstr(name, "8x") || strstr(name, "6x")) outPriority = true;
+        return;
+    }
+    if (strstr(name, "Token") || strstr(name, "Coin") || strstr(name, "Xu")) {
+        outColor = 0xFFD60AFF; // Gold
+        return;
+    }
+    if (cat == DSPUBGItemCategoryWeapon) {
+        outColor = 0x4CD964FF; // Green
+        return;
+    }
+    outColor = 0x4CD964FF; // Default Green
 }
 
 // Vector and Rotator types for projection
@@ -1545,15 +1709,44 @@ struct CrateItemInfo {
     int priority;
 };
 
+struct DSPUBGCachedCrate {
+    uint64_t actor;
+    CFAbsoluteTime lastScanTime;
+    std::vector<CrateItemInfo> items;
+};
+static std::vector<DSPUBGCachedCrate> s_crateCache;
+
 static std::vector<CrateItemInfo> ds_pubg_get_crate_items(uint64_t crateActor) {
     std::vector<CrateItemInfo> results;
     if (!crateActor || !ds_pubg_valid(crateActor)) return results;
+
+    CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
+    for (const auto &cc : s_crateCache) {
+        if (cc.actor == crateActor) {
+            if (now - cc.lastScanTime < 0.8) {
+                return cc.items;
+            }
+            break;
+        }
+    }
 
     uint8_t isEmpty = ds_pubg_read_u8(crateActor + 0x729ULL) & 1;
     if (isEmpty) return results;
 
     std::vector<uint64_t> targets;
     targets.push_back(crateActor);
+
+    // SDK Direct chain resolution:
+    // 1. AirDropBoxActor.DeadInventoryBoxTemplate at 0x598
+    uint64_t tomb = ds_pubg_read_ptr(crateActor + 0x598ULL);
+    if (tomb && ds_pubg_valid(tomb)) {
+        targets.push_back(tomb);
+        uint64_t wrap = ds_pubg_read_ptr(tomb + 0x658ULL);
+        if (wrap && ds_pubg_valid(wrap)) targets.push_back(wrap);
+    }
+    // 2. PlayerTombBox.CustomPickListWrapperClass at 0x658
+    uint64_t wrap = ds_pubg_read_ptr(crateActor + 0x658ULL);
+    if (wrap && ds_pubg_valid(wrap)) targets.push_back(wrap);
 
     // Look for attached wrappers or inventory components
     static const uint64_t kCompOffsets[] = {
@@ -1606,78 +1799,96 @@ static std::vector<CrateItemInfo> ds_pubg_get_crate_items(uint64_t crateActor) {
         results.push_back(info);
     };
 
+    // Fast direct check for PickUpListWrapperActor.PickUpDataList (offset 0x968, stride 0x38, ID at +0x4)
     for (uint64_t target : targets) {
         if (!target || !ds_pubg_valid(target)) continue;
-
-        for (uint64_t off = 0x580ULL; off <= 0x980ULL; off += 8ULL) {
-            uint64_t dataPtr = ds_pubg_read_ptr(target + off);
-            if (!dataPtr || !ds_pubg_valid(dataPtr)) continue;
-
-            uint32_t count = ds_pubg_read_u32(target + off + 8ULL);
-            if (count == 0 || count > 64) continue;
-            uint32_t max = ds_pubg_read_u32(target + off + 12ULL);
-            if (max < count || max > 128) continue;
-
-            // Test if pointer array
-            int validItemsPtr = 0;
-            int testLimit = (count > 6) ? 6 : (int)count;
-            for (int t = 0; t < testLimit; t++) {
-                uint64_t obj = ds_pubg_read_ptr(dataPtr + t * 8ULL);
-                if (obj && ds_pubg_valid(obj)) {
-                    int id = ds_pubg_read_i32(obj + 0x5FCULL);
-                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x758ULL);
-                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x2F4ULL);
-                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0xCCULL);
-                    if (id >= 101001 && id <= 699999) validItemsPtr++;
-                }
+        uint64_t dataPtr = ds_pubg_read_ptr(target + 0x968ULL);
+        uint32_t count = ds_pubg_read_u32(target + 0x970ULL);
+        if (dataPtr && ds_pubg_valid(dataPtr) && count > 0 && count <= 64) {
+            for (uint32_t i = 0; i < count; i++) {
+                uint64_t elem = dataPtr + i * 0x38ULL;
+                int id = ds_pubg_read_i32(elem + 0x4ULL);
+                int qty = ds_pubg_read_i32(elem + 0x18ULL);
+                addItem(id, qty);
             }
-
-            if (validItemsPtr > 0) {
-                for (uint32_t i = 0; i < count; i++) {
-                    uint64_t obj = ds_pubg_read_ptr(dataPtr + i * 8ULL);
-                    if (!obj || !ds_pubg_valid(obj)) continue;
-                    int id = ds_pubg_read_i32(obj + 0x5FCULL);
-                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x758ULL);
-                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x2F4ULL);
-                    if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0xCCULL);
-                    int qty = ds_pubg_read_i32(obj + 0x618ULL);
-                    addItem(id, qty);
-                }
-                break;
-            }
-
-            // Test struct array
-            static const int kStrides[] = { 48, 56, 64, 40, 32, 72, 80 };
-            static const int kIdOffsets[] = { 4, 0, 8, 12, 16, 20 };
-            int bestStride = 0, bestIdOff = 0, bestMatchCount = 0;
-
-            for (int stride : kStrides) {
-                for (int idOff : kIdOffsets) {
-                    int matches = 0;
-                    for (int t = 0; t < testLimit; t++) {
-                        int id = ds_pubg_read_i32(dataPtr + t * stride + idOff);
-                        if (id >= 101001 && id <= 699999) matches++;
-                    }
-                    if (matches > bestMatchCount) {
-                        bestMatchCount = matches;
-                        bestStride = stride;
-                        bestIdOff = idOff;
-                    }
-                }
-                if (bestMatchCount >= 2 || (count == 1 && bestMatchCount == 1)) break;
-            }
-
-            if (bestMatchCount > 0) {
-                for (uint32_t i = 0; i < count; i++) {
-                    uint64_t elem = dataPtr + i * bestStride;
-                    int id = ds_pubg_read_i32(elem + bestIdOff);
-                    int qty = ds_pubg_read_i32(elem + bestIdOff + 4);
-                    addItem(id, qty);
-                }
-                break;
-            }
+            if (!results.empty()) break;
         }
-        if (!results.empty()) break;
+    }
+
+    if (results.empty()) {
+        for (uint64_t target : targets) {
+            if (!target || !ds_pubg_valid(target)) continue;
+
+            for (uint64_t off = 0x580ULL; off <= 0x980ULL; off += 8ULL) {
+                uint64_t dataPtr = ds_pubg_read_ptr(target + off);
+                if (!dataPtr || !ds_pubg_valid(dataPtr)) continue;
+
+                uint32_t count = ds_pubg_read_u32(target + off + 8ULL);
+                if (count == 0 || count > 64) continue;
+                uint32_t max = ds_pubg_read_u32(target + off + 12ULL);
+                if (max < count || max > 128) continue;
+
+                // Test if pointer array
+                int validItemsPtr = 0;
+                int testLimit = (count > 6) ? 6 : (int)count;
+                for (int t = 0; t < testLimit; t++) {
+                    uint64_t obj = ds_pubg_read_ptr(dataPtr + t * 8ULL);
+                    if (obj && ds_pubg_valid(obj)) {
+                        int id = ds_pubg_read_i32(obj + 0x5FCULL);
+                        if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x758ULL);
+                        if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x2F4ULL);
+                        if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0xCCULL);
+                        if (id >= 101001 && id <= 699999) validItemsPtr++;
+                    }
+                }
+
+                if (validItemsPtr > 0) {
+                    for (uint32_t i = 0; i < count; i++) {
+                        uint64_t obj = ds_pubg_read_ptr(dataPtr + i * 8ULL);
+                        if (!obj || !ds_pubg_valid(obj)) continue;
+                        int id = ds_pubg_read_i32(obj + 0x5FCULL);
+                        if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x758ULL);
+                        if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0x2F4ULL);
+                        if (id < 101001 || id > 699999) id = ds_pubg_read_i32(obj + 0xCCULL);
+                        int qty = ds_pubg_read_i32(obj + 0x618ULL);
+                        addItem(id, qty);
+                    }
+                    break;
+                }
+
+                // Test struct array
+                static const int kStrides[] = { 56, 48, 64, 40, 32, 72, 80 };
+                static const int kIdOffsets[] = { 4, 0, 8, 12, 16, 20 };
+                int bestStride = 0, bestIdOff = 0, bestMatchCount = 0;
+
+                for (int stride : kStrides) {
+                    for (int idOff : kIdOffsets) {
+                        int matches = 0;
+                        for (int t = 0; t < testLimit; t++) {
+                            int id = ds_pubg_read_i32(dataPtr + t * stride + idOff);
+                            if (id >= 101001 && id <= 699999) matches++;
+                        }
+                        if (matches > bestMatchCount) {
+                            bestMatchCount = matches;
+                            bestStride = stride;
+                            bestIdOff = idOff;
+                        }
+                    }
+                    if (bestMatchCount >= 2 || (count == 1 && bestMatchCount == 1)) break;
+                }
+
+                if (bestMatchCount > 0) {
+                    for (uint32_t i = 0; i < count; i++) {
+                        uint64_t elem = dataPtr + i * bestStride;
+                        int id = ds_pubg_read_i32(elem + bestIdOff);
+                        int qty = ds_pubg_read_i32(elem + bestIdOff + 4);
+                        addItem(id, qty);
+                    }
+                    break;
+                }
+            }
+            if (!results.empty()) break;
+        }
     }
 
     if (!results.empty()) {
@@ -1687,6 +1898,21 @@ static std::vector<CrateItemInfo> ds_pubg_get_crate_items(uint64_t crateActor) {
         });
         if (results.size() > 10) results.resize(10);
     }
+
+    bool foundCache = false;
+    for (auto &cc : s_crateCache) {
+        if (cc.actor == crateActor) {
+            cc.items = results;
+            cc.lastScanTime = now;
+            foundCache = true;
+            break;
+        }
+    }
+    if (!foundCache) {
+        if (s_crateCache.size() > 24) s_crateCache.erase(s_crateCache.begin());
+        s_crateCache.push_back({crateActor, now, results});
+    }
+
     return results;
 }
 
@@ -2482,6 +2708,12 @@ static void ds_pubg_overlay_reset(void) {
     ++g_dspubgItemEpoch;
     ++g_dspubgGrenadeEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+
+    {
+        std::lock_guard<std::mutex> lock(s_itemLogMutex);
+        s_loggedItemSet.clear();
+    }
+    s_crateCache.clear();
 }
 
 // Ported from DarkPubg DecryptActorsArray (port logic of QBL __ZN...DecryptActorsArrayEyyi)
@@ -2987,6 +3219,11 @@ static void ds_pubg_tick(void) {
         if (isnan(health) || isinf(health) || isnan(healthMax) || isinf(healthMax)) return false;
 
         if (healthMax < 50.0f || healthMax > 2000.0f) return false;
+
+        cEntry.actor = pawn;
+        cEntry.isPawn = true;
+        cEntry.isScenery = false;
+        cEntry.itemCat = DSPUBGItemCategoryNone;
 
         bool isKnocked = false;
         // Check multiple possible GroggyHealth offsets in STExtraCharacter: 0xE68, 0xE6C, 0xE70, 0xE74
@@ -3791,7 +4028,12 @@ static void ds_pubg_tick(void) {
         } else {
             cat = ds_pubg_identify_item(actor, displayName, sizeof(displayName));
             if (cat == DSPUBGItemCategoryNone) {
-                // Non-item actors must not be cached as scenery
+                if (actorName[0] && ds_pubg_is_scenery_name(actorName)) {
+                    cEntry.actor = actor;
+                    cEntry.isScenery = true;
+                    cEntry.isPawn = false;
+                    cEntry.itemCat = DSPUBGItemCategoryNone;
+                }
                 return;
             }
             cEntry.actor = actor;
@@ -3827,6 +4069,16 @@ static void ds_pubg_tick(void) {
                     strncpy(pi.name, ci.name, sizeof(pi.name) - 1);
                     pi.name[sizeof(pi.name) - 1] = '\0';
                     pi.hp = 0.0f; pi.hpMax = 0.0f; pi.fuel = 0.0f; pi.fuelMax = 0.0f;
+
+                    uint32_t ciColor = 0;
+                    bool ciPrio = false;
+                    ds_pubg_compute_item_props(ci.category, ci.name, ciColor, ciPrio);
+                    pi.colorRGBA = ciColor;
+                    pi.isPriority = ciPrio;
+
+                    if (g_pubgItemLogger) {
+                        ds_pubg_log_item(actor, 0, "CrateItem", ci.name, ci.category, 1, rootLoc.X, rootLoc.Y, rootLoc.Z, dist3D);
+                    }
                 }
                 return;
             }
@@ -3844,6 +4096,18 @@ static void ds_pubg_tick(void) {
         pi.hpMax = 0.0f;
         pi.fuel = 0.0f;
         pi.fuelMax = 0.0f;
+
+        uint32_t cColor = 0;
+        bool cPrio = false;
+        ds_pubg_compute_item_props(cat, displayName, cColor, cPrio);
+        pi.colorRGBA = cColor;
+        pi.isPriority = cPrio;
+
+        if (g_pubgItemLogger) {
+            int targetId = ds_pubg_read_i32(actor + 0x5FCULL);
+            if (targetId <= 0) targetId = ds_pubg_read_i32(actor + 0x758ULL);
+            ds_pubg_log_item(actor, targetId, actorName, displayName, cat, 1, rootLoc.X, rootLoc.Y, rootLoc.Z, dist3D);
+        }
 
         if (cat == DSPUBGItemCategoryVehicle) {
             uint64_t vCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
@@ -3935,8 +4199,19 @@ static void ds_pubg_tick(void) {
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
 
                     uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-                    if (g_dspubgActorCache[cSlot].actor == actor && g_dspubgActorCache[cSlot].isScenery) {
-                        continue;
+                    DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+                    if (cEntry.actor == actor) {
+                        if (cEntry.isScenery) {
+                            continue;
+                        }
+                        if (cEntry.itemCat != DSPUBGItemCategoryNone) {
+                            processItemOrVehicle(actor);
+                            continue;
+                        }
+                        if (cEntry.isPawn) {
+                            processPawn(actor, 0, false);
+                            continue;
+                        }
                     }
 
                     if (!processPawn(actor, 0, false)) {
@@ -3964,6 +4239,11 @@ static void ds_pubg_tick(void) {
 
     if (itemStagingCount > 1) {
         std::sort(itemStaging, itemStaging + itemStagingCount, [](const DSPUBGProjectedItem &a, const DSPUBGProjectedItem &b) {
+            if (a.isPriority != b.isPriority) {
+                if (fabsf(a.distanceMeters - b.distanceMeters) < 70.0f) {
+                    return a.isPriority > b.isPriority;
+                }
+            }
             return a.distanceMeters < b.distanceMeters;
         });
     }

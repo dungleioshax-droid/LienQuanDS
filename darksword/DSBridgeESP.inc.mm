@@ -924,6 +924,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UILabel *_pubgItemScanValueLabel;
     UISlider *_pubgItemScanSlider;
 
+    UIView *_rowItemLogger;
+    UILabel *_pubgItemLoggerLabel;
+    UISwitch *_pubgItemLoggerSwitch;
+
     // Tab 2: Vehicle ESP Controls
     UIView *_rowVehicle;
     UILabel *_pubgVehicleLabel;
@@ -1155,7 +1159,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
     CGFloat rowW = 286.0;
     _tabContentViewPlayer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 514.0)];
-    _tabContentViewItems = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 284.0)];
+    _tabContentViewItems = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 344.0)];
     _tabContentViewVehicles = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 132.0)];
     _tabContentViewSettings = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 230.0)];
 
@@ -1184,6 +1188,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     if ([defaults objectForKey:@"pubg_scope"] != nil) g_pubgEspScope = [defaults boolForKey:@"pubg_scope"];
     if ([defaults objectForKey:@"pubg_crate"] != nil) g_pubgEspCrate = [defaults boolForKey:@"pubg_crate"];
     if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
+    if ([defaults objectForKey:@"pubg_item_logger"] != nil) g_pubgItemLogger = [defaults boolForKey:@"pubg_item_logger"];
     if ([defaults objectForKey:@"pubg_lang"] != nil) g_pubgLanguage = (int)[defaults integerForKey:@"pubg_lang"];
     if ([defaults objectForKey:@"pubg_thickness"] != nil) {
         g_pubgEspThickness = [defaults floatForKey:@"pubg_thickness"];
@@ -1301,7 +1306,11 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     ds_setup_slider_row(_rowItemScan, _pubgItemScanLabel, _pubgItemScanValueLabel, _pubgItemScanSlider,
                         @"Khoảng cách vật phẩm", 50.0f, 300.0f, g_pubgItemMaxDistance,
                         self, @selector(dsPubgItemScanSliderChanged:), rowW);
-    [_tabContentViewItems addSubview:_rowItemScan];
+    y1 += 60.0;
+    _rowItemLogger = ds_create_pill_row(y1, rowW, 40.0);
+    _pubgItemLoggerLabel = ds_create_row_label(_rowItemLogger, @"Ghi Log Vật Phẩm (File)", rowW, 40.0);
+    _pubgItemLoggerSwitch = ds_create_row_switch(_rowItemLogger, self, @selector(dsPubgItemLoggerChanged:), g_pubgItemLogger, rowW, 40.0);
+    [_tabContentViewItems addSubview:_rowItemLogger];
 
     // --- Tab 2: Vehicle ESP Controls ---
     CGFloat y2 = 0;
@@ -1438,7 +1447,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 - (void)dsUpdateTabSelection {
     UIButton *buttons[4] = { _pubgTabButtonPlayer, _pubgTabButtonItems, _pubgTabButtonVehicles, _pubgTabButtonSettings };
     UIView *views[4] = { _tabContentViewPlayer, _tabContentViewItems, _tabContentViewVehicles, _tabContentViewSettings };
-    CGFloat heights[4] = { 514.0, 284.0, 132.0, 230.0 };
+    CGFloat heights[4] = { 514.0, 344.0, 132.0, 230.0 };
 
     for (int i = 0; i < 4; i++) {
         UIButton *b = buttons[i];
@@ -1708,6 +1717,31 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [NSUserDefaults.standardUserDefaults setFloat:sender.value forKey:@"pubg_item_dist"];
 }
 
+- (void)dsPubgItemLoggerChanged:(UISwitch *)sender {
+    g_pubgItemLogger = sender.on;
+    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_item_logger"];
+    if (g_pubgItemLogger) {
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        if (paths && paths.count > 0) {
+            NSString *docPath = [paths.firstObject stringByAppendingPathComponent:@"pubg_items.txt"];
+            FILE *f = fopen([docPath UTF8String], "a");
+            if (f) {
+                fputs("\n=======================================================\n", f);
+                fputs("            DARKSWORD PUBG - ITEM LOG SESSION          \n", f);
+                fputs("=======================================================\n", f);
+                fclose(f);
+            }
+        }
+        FILE *fTmp = fopen("/tmp/pubg_items.txt", "a");
+        if (fTmp) {
+            fputs("\n=======================================================\n", fTmp);
+            fputs("            DARKSWORD PUBG - ITEM LOG SESSION          \n", fTmp);
+            fputs("=======================================================\n", fTmp);
+            fclose(fTmp);
+        }
+    }
+}
+
 - (void)dsPubgVehicleChanged:(UISwitch *)sender {
     g_pubgEspVehicle = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
@@ -1840,6 +1874,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         _pubgScopeLabel.text = @"Scopes";
         _pubgCrateLabel.text = @"Airdrops & Crates";
         _pubgItemScanLabel.text = @"Item Scan Distance";
+        _pubgItemLoggerLabel.text = @"Log Items to File";
 
         _pubgVehicleLabel.text = @"Vehicles";
         _pubgVehicleHpLabel.text = @"Vehicle HP";
@@ -1875,6 +1910,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         _pubgScopeLabel.text = @"Ống Ngắm (Scopes)";
         _pubgCrateLabel.text = @"Thùng Thính & Hòm Xác";
         _pubgItemScanLabel.text = @"Khoảng cách vật phẩm";
+        _pubgItemLoggerLabel.text = @"Ghi Log Vật Phẩm (File)";
 
         _pubgVehicleLabel.text = @"Hiện Phương Tiện (Xe)";
         _pubgVehicleHpLabel.text = @"Hiện Máu Xe";
@@ -2225,7 +2261,32 @@ static void ds_hosted_pubg_hide_all(void) {
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
 }
 
+static CGColorRef ds_pubg_cgcolor_from_rgba(uint32_t rgba) {
+    static struct CachedColor {
+        uint32_t rgba;
+        CGColorRef color;
+    } s_colorCache[24] = {};
+    static int s_colorCount = 0;
 
+    for (int i = 0; i < s_colorCount; i++) {
+        if (s_colorCache[i].rgba == rgba) {
+            return s_colorCache[i].color;
+        }
+    }
+
+    CGFloat r = ((rgba >> 24) & 0xFF) / 255.0;
+    CGFloat g = ((rgba >> 16) & 0xFF) / 255.0;
+    CGFloat b = ((rgba >> 8) & 0xFF) / 255.0;
+    CGFloat a = (rgba & 0xFF) / 255.0;
+    CGColorRef newColor = [UIColor colorWithRed:r green:g blue:b alpha:a].CGColor;
+    if (s_colorCount < 24) {
+        s_colorCache[s_colorCount].rgba = rgba;
+        s_colorCache[s_colorCount].color = CGColorRetain(newColor);
+        s_colorCount++;
+        return newColor;
+    }
+    return newColor;
+}
 
 static void ds_hosted_apply_pubg(void) {
     if (!g_hostedLayer) return;
@@ -2820,13 +2881,14 @@ static void ds_hosted_apply_pubg(void) {
     uint64_t itemEpoch = 0;
     int itemCount = ds_pubg_copy_projected_items(items, &itemEpoch);
 
-    // Anti-overlap vertical stacking for items at the same screen position (crates / loot piles)
+    // Anti-overlap vertical stacking for items at the same screen position (capped to 48 nearest items)
+    int antiOverlapCount = (itemCount > 48) ? 48 : itemCount;
     CGPoint adjustedPositions[kDSPUBGMaxItems];
     for (int i = 0; i < itemCount; i++) {
         adjustedPositions[i] = CGPointMake(items[i].screenX, items[i].screenY);
     }
 
-    for (int i = 0; i < itemCount; i++) {
+    for (int i = 0; i < antiOverlapCount; i++) {
         const DSPUBGProjectedItem &it = items[i];
         if (!it.isVisible) continue;
         for (int j = 0; j < i; j++) {
@@ -2838,22 +2900,6 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
     }
-
-    auto isBigRedWeapon = [](NSString *name) -> BOOL {
-        if (!name) return NO;
-        return ([name containsString:@"M416"] ||
-                [name containsString:@"AWM"] ||
-                [name containsString:@"Groza"] ||
-                [name containsString:@"AUG"] ||
-                [name containsString:@"Mk14"] ||
-                [name containsString:@"MG3"] ||
-                [name containsString:@"AMR"] ||
-                [name containsString:@"P90"] ||
-                [name containsString:@"M762"] ||
-                [name containsString:@"Flare"] ||
-                [name containsString:@"Kar98"] ||
-                [name containsString:@"M24"]);
-    };
 
     for (int i = 0; i < kDSPUBGMaxItems; i++) {
         CATextLayer *lbl = g_hostedPUBGItemLabels[i];
@@ -2884,12 +2930,6 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         NSString *nameStr = [NSString stringWithUTF8String:it.name];
-        if (!nameStr) {
-            nameStr = [NSString stringWithCString:it.name encoding:NSUTF8StringEncoding];
-        }
-        if (!nameStr) {
-            nameStr = [NSString stringWithCString:it.name encoding:NSISOLatin1StringEncoding];
-        }
         if (!nameStr || nameStr.length == 0) {
             nameStr = @"Vật Phẩm";
         }
@@ -2898,106 +2938,45 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat posY = adjustedPositions[i].y;
 
         if (it.category == DSPUBGItemCategoryVehicle) {
-            lbl.backgroundColor = UIColor.clearColor.CGColor;
-            lbl.shadowOpacity = 0.0f;
-            lbl.cornerRadius = 0.0f;
-            lbl.wrapped = YES;
-
-            NSMutableAttributedString *attr = [[NSMutableAttributedString alloc] init];
-
-            NSString *titleStr = [NSString stringWithFormat:@"%@ (%.0fm)", nameStr, it.distanceMeters];
-            [attr appendAttributedString:[[NSAttributedString alloc] initWithString:titleStr
-                attributes:@{
-                    NSForegroundColorAttributeName: [UIColor colorWithRed:255/255.0 green:214/255.0 blue:10/255.0 alpha:1.0],
-                    NSFontAttributeName: s_itemTitleFont,
-                    NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-2.2),
-                    NSParagraphStyleAttributeName: s_centerStyle
-                }]];
-
+            NSString *titleStr = nil;
             if ((g_pubgEspVehicleHp && it.hpMax > 0.0f) || (g_pubgEspVehicleFuel && it.fuelMax > 0.0f)) {
                 float hpVal = it.hp;
                 float fuelPct = (it.fuelMax > 0.0f) ? (it.fuel / it.fuelMax) * 100.0f : 0.0f;
                 if (fuelPct < 0.0f) fuelPct = 0.0f;
                 if (fuelPct > 100.0f) fuelPct = 100.0f;
-
-                NSString *subStr = [NSString stringWithFormat:@"\n(HP: %.0f - Fuel: %.1f%%)", hpVal, fuelPct];
-                [attr appendAttributedString:[[NSAttributedString alloc] initWithString:subStr
-                    attributes:@{
-                        NSForegroundColorAttributeName: [UIColor colorWithRed:160/255.0 green:245/255.0 blue:60/255.0 alpha:1.0],
-                        NSFontAttributeName: s_itemSubFont,
-                        NSStrokeColorAttributeName: [UIColor blackColor],
-                        NSStrokeWidthAttributeName: @(-2.0),
-                        NSParagraphStyleAttributeName: s_centerStyle
-                    }]];
+                titleStr = [NSString stringWithFormat:@"%@ (%.0fm)\nHP: %.0f | Fuel: %.0f%%", nameStr, it.distanceMeters, hpVal, fuelPct];
+                lbl.wrapped = YES;
+                lbl.fontSize = 8.5;
+            } else {
+                titleStr = [NSString stringWithFormat:@"%@ (%.0fm)", nameStr, it.distanceMeters];
+                lbl.wrapped = NO;
+                lbl.fontSize = 9.0;
             }
 
             CGFloat strW = 150.0f;
-            CGFloat strH = 26.0f;
+            CGFloat strH = lbl.wrapped ? 26.0f : 14.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
-            lbl.string = attr;
-            lbl.hidden = NO;
+            lbl.foregroundColor = ds_pubg_cgcolor_from_rgba(it.colorRGBA);
+            lbl.shadowColor = [UIColor blackColor].CGColor;
+            lbl.shadowOpacity = 1.0f;
+            lbl.shadowRadius = 1.0f;
+            lbl.shadowOffset = CGSizeZero;
+            lbl.string = titleStr;
+            if (lbl.hidden) lbl.hidden = NO;
         } else {
-            BOOL isBigRed = isBigRedWeapon(nameStr);
-            UIFont *font = isBigRed ? s_itemBigWeaponFont : s_itemFont;
-            CGFloat strokeWidth = isBigRed ? -2.5 : -2.0;
-
-            UIColor *itemColor = [UIColor colorWithRed:76/255.0 green:217/255.0 blue:100/255.0 alpha:1.0]; // Default green
-            if (isBigRed) {
-                itemColor = [UIColor colorWithRed:255/255.0 green:35/255.0 blue:35/255.0 alpha:1.0]; // Bright Red for M416, AWM, etc.
-            } else if ([nameStr containsString:@"5.56"]) {
-                itemColor = [UIColor colorWithRed:0/255.0 green:230/255.0 blue:118/255.0 alpha:1.0]; // Bright green
-            } else if ([nameStr containsString:@"7.62"]) {
-                itemColor = [UIColor colorWithRed:255/255.0 green:160/255.0 blue:0/255.0 alpha:1.0]; // Gold-orange
-            } else if ([nameStr containsString:@"9mm"] || [nameStr containsString:@"45ACP"] || [nameStr containsString:@"12G"]) {
-                itemColor = [UIColor colorWithRed:56/255.0 green:182/255.0 blue:255/255.0 alpha:1.0]; // Sky blue
-            } else if ([nameStr containsString:@".300"] || [nameStr containsString:@"Flare"]) {
-                itemColor = [UIColor colorWithRed:255/255.0 green:50/255.0 blue:50/255.0 alpha:1.0]; // Red
-            } else if (it.category == DSPUBGItemCategoryArmor || it.category == DSPUBGItemCategoryBag ||
-                       [nameStr containsString:@"Armor"] || [nameStr containsString:@"Helmet"] ||
-                       [nameStr containsString:@"Bag"] || [nameStr containsString:@"Giáp"] ||
-                       [nameStr containsString:@"Mũ"] || [nameStr containsString:@"Balo"]) {
-                itemColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0]; // Cyan
-            } else if ([nameStr containsString:@"Kit"] || [nameStr containsString:@"Painkiller"] ||
-                       [nameStr containsString:@"Drink"] || [nameStr containsString:@"Adrenaline"] ||
-                       [nameStr containsString:@"First Aid"] || [nameStr containsString:@"Med Kit"] ||
-                       [nameStr containsString:@"Nước"] || [nameStr containsString:@"Giảm Đau"]) {
-                itemColor = [UIColor colorWithRed:77/255.0 green:208/255.0 blue:225/255.0 alpha:1.0]; // Light Cyan / Teal
-            } else if ([nameStr containsString:@"Grenade"] || [nameStr containsString:@"Molotof"] ||
-                       [nameStr containsString:@"Smoke"] || [nameStr containsString:@"Lựu"] ||
-                       [nameStr containsString:@"Bom"] || [nameStr containsString:@"Choáng"]) {
-                itemColor = [UIColor colorWithRed:255/255.0 green:64/255.0 blue:129/255.0 alpha:1.0]; // Magenta / Purple
-            } else if (it.category == DSPUBGItemCategoryScope || [nameStr containsString:@"Scope"] ||
-                       [nameStr containsString:@"Holo"] || [nameStr containsString:@"RedDot"] ||
-                       [nameStr containsString:@"Sight"] || [nameStr containsString:@"Compensator"] ||
-                       [nameStr containsString:@"Suppressor"]) {
-                itemColor = [UIColor colorWithRed:187/255.0 green:134/255.0 blue:252/255.0 alpha:1.0]; // Violet
-            } else if ([nameStr containsString:@"Token"] || [nameStr containsString:@"Coin"] || [nameStr containsString:@"Xu"]) {
-                itemColor = [UIColor colorWithRed:255/255.0 green:214/255.0 blue:10/255.0 alpha:1.0]; // Gold
-            } else if (it.category == DSPUBGItemCategoryCrate || [nameStr containsString:@"THÍNH"] || [nameStr containsString:@"Xác"]) {
-                itemColor = [UIColor colorWithRed:255/255.0 green:75/255.0 blue:75/255.0 alpha:1.0]; // Red
-            } else if (it.category == DSPUBGItemCategoryWeapon) {
-                itemColor = [UIColor colorWithRed:76/255.0 green:217/255.0 blue:100/255.0 alpha:1.0]; // Green
-            }
-
             NSString *itemText = [NSString stringWithFormat:@"%@ (%.0fm)", nameStr, it.distanceMeters];
-            NSAttributedString *attrStr = [[NSAttributedString alloc] initWithString:itemText attributes:@{
-                NSFontAttributeName: font,
-                NSForegroundColorAttributeName: itemColor,
-                NSStrokeColorAttributeName: [UIColor blackColor],
-                NSStrokeWidthAttributeName: @(strokeWidth),
-                NSParagraphStyleAttributeName: s_centerStyle
-            }];
-
-            CGFloat strW = isBigRed ? 120.0f : 110.0f;
-            CGFloat strH = isBigRed ? 16.0f : 13.0f;
+            CGFloat strW = it.isPriority ? 120.0f : 110.0f;
+            CGFloat strH = it.isPriority ? 16.0f : 13.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
-            lbl.backgroundColor = UIColor.clearColor.CGColor;
-            lbl.shadowOpacity = 0.0f;
-            lbl.cornerRadius = 0.0f;
+            lbl.fontSize = it.isPriority ? 10.5 : 8.5;
+            lbl.foregroundColor = ds_pubg_cgcolor_from_rgba(it.colorRGBA);
+            lbl.shadowColor = [UIColor blackColor].CGColor;
+            lbl.shadowOpacity = 1.0f;
+            lbl.shadowRadius = 1.0f;
+            lbl.shadowOffset = CGSizeZero;
             lbl.wrapped = NO;
-            lbl.string = attrStr;
-            lbl.hidden = NO;
+            lbl.string = itemText;
+            if (lbl.hidden) lbl.hidden = NO;
         }
     }
 
@@ -3525,9 +3504,11 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 itemLbl.contentsScale = scale;
                 itemLbl.alignmentMode = kCAAlignmentCenter;
                 itemLbl.wrapped = NO;
+                itemLbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
+                itemLbl.fontSize = 8.5;
                 itemLbl.shadowColor = UIColor.blackColor.CGColor;
-                itemLbl.shadowRadius = 0.0;
-                itemLbl.shadowOpacity = 0.0;
+                itemLbl.shadowRadius = 1.0;
+                itemLbl.shadowOpacity = 1.0;
                 itemLbl.shadowOffset = CGSizeZero;
                 itemLbl.hidden = YES;
                 [g_hostedLayer addSublayer:itemLbl];

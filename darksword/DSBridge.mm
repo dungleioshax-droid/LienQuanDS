@@ -938,6 +938,8 @@ typedef struct {
     float hpMax;
     float fuel;
     float fuelMax;
+    uint32_t colorRGBA;
+    bool isPriority;
 } DSPUBGProjectedItem;
 
 typedef enum {
@@ -985,7 +987,7 @@ typedef struct {
 } DSPUBGProjectedGrenade;
 
 static const int kDSPUBGMaxPlayers = 96;
-static const int kDSPUBGMaxItems = 96;
+static const int kDSPUBGMaxItems = 64;
 static float g_dspubgMaxDistance = 400.0f;
 static float g_pubgItemMaxDistance = 150.0f;
 static int g_pubgLanguage = 0; // 0 = Tiếng Việt, 1 = English
@@ -1007,6 +1009,7 @@ static BOOL g_pubgEspArmor = YES;
 static BOOL g_pubgEspBag = YES;
 static BOOL g_pubgEspScope = YES;
 static BOOL g_pubgEspCrate = YES;
+static BOOL g_pubgItemLogger = NO;
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);
