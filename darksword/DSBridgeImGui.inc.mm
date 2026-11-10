@@ -1,11 +1,13 @@
 // DSBridgeImGui.inc.mm
 // Metal + Dear ImGui Hardware-Accelerated Overlay for DarkPubg.
 // Replaces legacy CoreAnimation CAShapeLayer/CATextLayer transactions with
-// direct 120 FPS Metal GPU rendering and touch pass-through.
+// direct 120 FPS Metal GPU rendering, landscape auto-rotation, Vietnamese fonts,
+// and full-screen touch pass-through.
 
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 #import <UIKit/UIKit.h>
+#import <CoreText/CoreText.h>
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "../imgui/imgui.h"
@@ -58,6 +60,11 @@ static ImVec2 g_floatingButtonPos = ImVec2(60.0f, 90.0f);
 static CGRect g_floatingButtonRect = CGRectMake(38.0, 68.0, 44.0, 44.0);
 static CGRect g_imguiMenuRect = CGRectZero;
 
+@class DSImGuiView;
+@class DSImGuiWindow;
+static DSImGuiView *g_imguiView = nil;
+static DSImGuiWindow *g_imguiWindow = nil;
+
 #pragma mark - Forward Declarations
 
 static void ds_imgui_render_pubg_esp(ImDrawList *draw, CGSize screenSize);
@@ -78,21 +85,28 @@ static void ds_imgui_render_menu(void);
 - (BOOL)keepContextInBackground { return YES; }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (!g_imguiView) return nil;
+
+    // Convert point from window coordinates (portrait) to g_imguiView coordinates (landscape)
+    CGPoint viewPt = [g_imguiView convertPoint:point fromView:self];
+
     // 1. If menu is open, capture touch if within the menu frame or the button
     if (g_imguiMenuOpen) {
-        if (!CGRectIsEmpty(g_imguiMenuRect) && CGRectContainsPoint(g_imguiMenuRect, point)) {
-            return [super hitTest:point withEvent:event];
+        if (!CGRectIsEmpty(g_imguiMenuRect) && CGRectContainsPoint(g_imguiMenuRect, viewPt)) {
+            return g_imguiView;
         }
-        if (CGRectContainsPoint(g_floatingButtonRect, point)) {
-            return [super hitTest:point withEvent:event];
+        if (CGRectContainsPoint(g_floatingButtonRect, viewPt)) {
+            return g_imguiView;
         }
+        // Touching outside menu passes through to game
+        return nil;
     } else {
         // 2. When menu is closed, ONLY the floating button accepts touches!
-        if (CGRectContainsPoint(g_floatingButtonRect, point)) {
-            return [super hitTest:point withEvent:event];
+        if (CGRectContainsPoint(g_floatingButtonRect, viewPt)) {
+            return g_imguiView;
         }
     }
-    // 3. Everywhere else: Return nil so touches pass straight through to PUBG Mobile!
+    // 3. Everywhere else: Return nil so touches pass straight through 100% to PUBG Mobile!
     return nil;
 }
 @end
@@ -100,6 +114,7 @@ static void ds_imgui_render_menu(void);
 #pragma mark - Metal View & Delegate
 
 @interface DSImGuiView : MTKView <MTKViewDelegate>
+- (void)updateOrientation;
 @end
 
 @implementation DSImGuiView {
@@ -107,6 +122,7 @@ static void ds_imgui_render_menu(void);
     BOOL _initialized;
     CGPoint _touchStartPos;
     BOOL _isDraggingButton;
+    int _lastOrientation;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame device:(id<MTLDevice>)device {
@@ -120,6 +136,7 @@ static void ds_imgui_render_menu(void);
         self.userInteractionEnabled = YES;
         self.multipleTouchEnabled = YES;
         self.preferredFramesPerSecond = 120; // 120 FPS on ProMotion, 60 FPS standard
+        _lastOrientation = -1;
 
         _commandQueue = [device newCommandQueue];
 
@@ -128,7 +145,42 @@ static void ds_imgui_render_menu(void);
         ImGui::CreateContext();
         ImGuiIO &io = ImGui::GetIO();
         io.IniFilename = NULL; // Disable saving imgui.ini to disk
-        io.DisplaySize = ImVec2(frame.size.width, frame.size.height);
+
+        // Load Vietnamese system font (Arial / Helvetica) with full diacritics glyph range
+        NSString *fontPath = nil;
+        UIFont *sysFont = [UIFont systemFontOfSize:15.0];
+        if (sysFont) {
+            CTFontRef ctFont = (__bridge CTFontRef)sysFont;
+            CFURLRef fontURL = (CFURLRef)CTFontCopyAttribute(ctFont, kCTFontURLAttribute);
+            if (fontURL) {
+                fontPath = [(__bridge NSURL *)fontURL path];
+                CFRelease(fontURL);
+            }
+        }
+        if (!fontPath || ![[NSFileManager defaultManager] fileExistsAtPath:fontPath]) {
+            NSArray *candidates = @[
+                @"/System/Library/Fonts/Core/Arial.ttf",
+                @"/System/Library/Fonts/Core/Helvetica.ttc",
+                @"/System/Library/Fonts/Cache/Arial.ttf",
+                @"/System/Library/Fonts/LanguageSupport/PingFang.ttc"
+            ];
+            for (NSString *c in candidates) {
+                if ([[NSFileManager defaultManager] fileExistsAtPath:c]) {
+                    fontPath = c;
+                    break;
+                }
+            }
+        }
+
+        if (fontPath && [[NSFileManager defaultManager] fileExistsAtPath:fontPath]) {
+            ImFontConfig cfg;
+            cfg.SizePixels = 15.0f;
+            cfg.OversampleH = 2;
+            cfg.OversampleV = 2;
+            io.Fonts->AddFontFromFileTTF([fontPath UTF8String], 15.0f, &cfg, io.Fonts->GetGlyphRangesVietnamese());
+        } else {
+            io.Fonts->AddFontDefault();
+        }
 
         // Dark modern styling
         ImGui::StyleColorsDark();
@@ -153,9 +205,32 @@ static void ds_imgui_render_menu(void);
         style.Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.35f, 0.70f, 1.00f, 1.00f);
 
         ImGui_ImplMetal_Init(device);
+        [self updateOrientation];
         _initialized = YES;
     }
     return self;
+}
+
+- (void)updateOrientation {
+    UIInterfaceOrientation orientation = ds_active_orientation();
+    if (!UIInterfaceOrientationIsLandscape(orientation)) {
+        orientation = UIInterfaceOrientationLandscapeRight; // Default to LandscapeRight for PUBG Mobile
+    }
+    if ((int)orientation == _lastOrientation) return;
+    _lastOrientation = (int)orientation;
+
+    CGRect screenBounds = UIScreen.mainScreen.bounds;
+    CGFloat landW = MAX(screenBounds.size.width, screenBounds.size.height);
+    CGFloat landH = MIN(screenBounds.size.width, screenBounds.size.height);
+
+    self.bounds = CGRectMake(0, 0, landW, landH);
+    self.center = CGPointMake(screenBounds.size.width * 0.5, screenBounds.size.height * 0.5);
+
+    double angle = (orientation == UIInterfaceOrientationLandscapeLeft) ? -M_PI_2 : M_PI_2;
+    self.transform = CGAffineTransformMakeRotation(angle);
+
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(landW, landH);
 }
 
 - (void)mtkView:(MTKView *)view drawableSizeWillChange:(CGSize)size {
@@ -163,6 +238,8 @@ static void ds_imgui_render_menu(void);
 
 - (void)drawInMTKView:(MTKView *)view {
     if (!_initialized) return;
+
+    [self updateOrientation];
 
     @autoreleasepool {
         id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
@@ -565,7 +642,7 @@ static void ds_imgui_render_menu(void) {
         g_imguiMenuRect = CGRectMake(pos.x, pos.y, size.x, size.y);
 
         if (ImGui::BeginTabBar("MenuTabs")) {
-            if (ImGui::BeginTabItem("ESP Người")) {
+            if (ImGui::BeginTabItem("ESP Người Chơi")) {
                 ImGui::Checkbox("Bật ESP", &g_imguiSettings.espEnabled);
                 ImGui::Separator();
                 ImGui::Checkbox("Khung (Box 2D)", &g_imguiSettings.drawBox);
@@ -573,38 +650,38 @@ static void ds_imgui_render_menu(void) {
                     ImGui::RadioButton("Khung Góc", &g_imguiSettings.boxType, 0); ImGui::SameLine();
                     ImGui::RadioButton("Khung Vuông", &g_imguiSettings.boxType, 1);
                 }
-                ImGui::Checkbox("Bộ xương (Skeleton)", &g_imguiSettings.drawSkeleton);
-                ImGui::Checkbox("Đường chỉ (Line)", &g_imguiSettings.drawLine);
+                ImGui::Checkbox("Bộ Xương (Skeleton)", &g_imguiSettings.drawSkeleton);
+                ImGui::Checkbox("Đường Kẻ (Line)", &g_imguiSettings.drawLine);
                 if (g_imguiSettings.drawLine) {
                     ImGui::RadioButton("Từ Trên", &g_imguiSettings.lineOrigin, 0); ImGui::SameLine();
                     ImGui::RadioButton("Ở Giữa", &g_imguiSettings.lineOrigin, 1); ImGui::SameLine();
                     ImGui::RadioButton("Từ Dưới", &g_imguiSettings.lineOrigin, 2);
                 }
-                ImGui::Checkbox("Thanh máu (Health)", &g_imguiSettings.drawHealth);
-                ImGui::Checkbox("Tên người chơi", &g_imguiSettings.drawName);
-                ImGui::Checkbox("Khoảng cách (Distance)", &g_imguiSettings.drawDistance);
+                ImGui::Checkbox("Thanh Máu (Health)", &g_imguiSettings.drawHealth);
+                ImGui::Checkbox("Tên Người Chơi", &g_imguiSettings.drawName);
+                ImGui::Checkbox("Khoảng Cách (Distance)", &g_imguiSettings.drawDistance);
                 ImGui::Checkbox("Team ID", &g_imguiSettings.drawTeamId);
                 ImGui::Checkbox("Hiện Bot", &g_imguiSettings.drawBot);
-                ImGui::SliderFloat("Tầm nhìn người (M)", &g_imguiSettings.playerMaxDist, 50.0f, 400.0f, "%.0f M");
+                ImGui::SliderFloat("Tầm Nhìn Người (M)", &g_imguiSettings.playerMaxDist, 50.0f, 400.0f, "%.0f M");
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Lựu Đạn")) {
                 ImGui::Checkbox("Bật ESP Bom", &g_imguiSettings.drawGrenade);
                 ImGui::Separator();
-                ImGui::Checkbox("Đường bay bom (Line)", &g_imguiSettings.drawGrenadeLine);
-                ImGui::Checkbox("Vòng tròn sát thương 3D", &g_imguiSettings.drawGrenadeCircle);
-                ImGui::Checkbox("Icon quả bom & Đếm giây", &g_imguiSettings.drawGrenadeTimer);
+                ImGui::Checkbox("Đường Bay Bom (Line)", &g_imguiSettings.drawGrenadeLine);
+                ImGui::Checkbox("Vòng Tròn Sát Thương 3D", &g_imguiSettings.drawGrenadeCircle);
+                ImGui::Checkbox("Icon Quả Bom & Đếm Giây", &g_imguiSettings.drawGrenadeTimer);
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Vật Phẩm & Xe")) {
                 ImGui::Checkbox("Hiện Vật Phẩm (Items)", &g_imguiSettings.drawItems);
                 ImGui::Checkbox("Hiện Phương Tiện (Vehicles)", &g_imguiSettings.drawVehicles);
-                ImGui::SliderFloat("Tầm nhìn vật phẩm (M)", &g_imguiSettings.itemMaxDist, 20.0f, 200.0f, "%.0f M");
+                ImGui::SliderFloat("Tầm Nhìn Vật Phẩm (M)", &g_imguiSettings.itemMaxDist, 20.0f, 200.0f, "%.0f M");
                 ImGui::EndTabItem();
             }
             if (ImGui::BeginTabItem("Cài Đặt")) {
-                ImGui::SliderFloat("Độ dày nét vẽ", &g_imguiSettings.strokeThickness, 1.0f, 3.5f, "%.1f px");
-                ImGui::SliderFloat("Cỡ chữ", &g_imguiSettings.fontSize, 10.0f, 22.0f, "%.0f px");
+                ImGui::SliderFloat("Độ Dày Nét Vẽ", &g_imguiSettings.strokeThickness, 1.0f, 3.5f, "%.1f px");
+                ImGui::SliderFloat("Cỡ Chữ", &g_imguiSettings.fontSize, 10.0f, 22.0f, "%.0f px");
                 ImGui::Separator();
                 if (ImGui::Button("Đóng Menu", ImVec2(120, 30))) {
                     g_imguiMenuOpen = false;
@@ -621,19 +698,15 @@ static void ds_imgui_render_menu(void) {
 
 #pragma mark - Window Management & SpringBoard Setup
 
-static DSImGuiWindow *g_imguiWindow = nil;
-static DSImGuiView *g_imguiView = nil;
-
 static unsigned ds_imgui_setup_on_main(void) {
     if (g_imguiWindow) {
         g_imguiWindow.hidden = NO;
         return g_imguiContextId;
     }
 
-    CGRect bounds = UIScreen.mainScreen.bounds;
-    if (CGRectGetWidth(bounds) < CGRectGetHeight(bounds)) {
-        bounds = CGRectMake(0, 0, CGRectGetHeight(bounds), CGRectGetWidth(bounds));
-    }
+    CGRect screenBounds = UIScreen.mainScreen.bounds;
+    CGFloat landW = MAX(screenBounds.size.width, screenBounds.size.height);
+    CGFloat landH = MIN(screenBounds.size.width, screenBounds.size.height);
 
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
     if (!device) {
@@ -641,18 +714,19 @@ static unsigned ds_imgui_setup_on_main(void) {
         return 0;
     }
 
-    DSImGuiWindow *window = [[DSImGuiWindow alloc] initWithFrame:bounds];
+    DSImGuiWindow *window = [[DSImGuiWindow alloc] initWithFrame:screenBounds];
     window.backgroundColor = [UIColor clearColor];
     window.windowLevel = 10000010.0;
 
     UIViewController *vc = [[UIViewController alloc] init];
-    vc.view = [[UIView alloc] initWithFrame:bounds];
+    vc.view = [[UIView alloc] initWithFrame:screenBounds];
     vc.view.backgroundColor = [UIColor clearColor];
     vc.view.userInteractionEnabled = YES;
     window.rootViewController = vc;
 
-    DSImGuiView *view = [[DSImGuiView alloc] initWithFrame:bounds device:device];
+    DSImGuiView *view = [[DSImGuiView alloc] initWithFrame:CGRectMake(0, 0, landW, landH) device:device];
     [vc.view addSubview:view];
+    [view updateOrientation];
 
     window.hidden = NO;
     [window makeKeyAndVisible];
