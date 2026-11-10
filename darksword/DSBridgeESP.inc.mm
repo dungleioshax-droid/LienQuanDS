@@ -842,12 +842,34 @@ static UIButton *ds_hosted_minimap_step_button(NSString *symbolName,
     return button;
 }
 
-@class DSESPMenuViewController;
-
 // Interactive sibling of DSESPHostedWindow: touchable, still system/secure so
 // SpringBoard can host it above the game.
 @interface DSESPMenuWindow : UIWindow
 @end
+
+@interface DSESPMenuViewController : UIViewController
+- (void)dsSetExpanded:(BOOL)expanded;
+- (void)dsApplyOrientation;
+- (BOOL)dsShouldAcceptHitView:(UIView *)hitView;
+- (UIButton *)toggleButton;
+@end
+
+static UIWindow *g_hostedMenuWindow = nil;
+static DSESPMenuViewController *g_hostedMenuViewController = nil;
+static uint64_t g_hostedMenuRemoteController = 0;
+static unsigned g_hostedMenuContextId = 0;
+static BOOL g_hostedMenuExpanded = NO;
+static int g_hostedMenuLastOrientation = 0;
+static CFAbsoluteTime g_hostedMenuLastSetupTryAt = 0;
+static CFAbsoluteTime g_hostedMenuLastRegisterTryAt = 0;
+
+static CGRect ds_hosted_menu_frame(void) {
+    // Full screen; hit testing inside the view controller decides what is
+    // touchable, everything else falls through to the game.
+    return UIScreen.mainScreen.bounds;
+}
+
+static void ds_hosted_menu_set_expanded(BOOL expanded);
 
 @implementation DSESPMenuWindow
 + (BOOL)_isSystemWindow { return YES; }
@@ -877,30 +899,6 @@ static UIButton *ds_hosted_minimap_step_button(NSString *symbolName,
     }
     return hit;
 }
-@end
-
-static UIWindow *g_hostedMenuWindow = nil;
-static DSESPMenuViewController *g_hostedMenuViewController = nil;
-static uint64_t g_hostedMenuRemoteController = 0;
-static unsigned g_hostedMenuContextId = 0;
-static BOOL g_hostedMenuExpanded = NO;
-static int g_hostedMenuLastOrientation = 0;
-static CFAbsoluteTime g_hostedMenuLastSetupTryAt = 0;
-static CFAbsoluteTime g_hostedMenuLastRegisterTryAt = 0;
-
-static CGRect ds_hosted_menu_frame(void) {
-    // Full screen; hit testing inside the view controller decides what is
-    // touchable, everything else falls through to the game.
-    return UIScreen.mainScreen.bounds;
-}
-
-static void ds_hosted_menu_set_expanded(BOOL expanded);
-
-@interface DSESPMenuViewController : UIViewController
-- (void)dsSetExpanded:(BOOL)expanded;
-- (void)dsApplyOrientation;
-- (BOOL)dsShouldAcceptHitView:(UIView *)hitView;
-- (UIButton *)toggleButton;
 @end
 
 @implementation DSESPMenuViewController {
