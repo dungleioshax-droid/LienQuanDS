@@ -717,8 +717,8 @@ static const float kDSHostedCamZoomMin = 1.0f;
 static const float kDSHostedCamZoomMax = 10.0f;
 static const float kDSHostedMinimapOffsetMin = -200.0f;
 static const float kDSHostedMinimapOffsetMax = 200.0f;
-static const CGFloat kDSHostedMenuButtonSize = 18.0;
-static const CGFloat kDSHostedMenuSymbolSize = 8.0;
+static const CGFloat kDSHostedMenuButtonSize = 38.0;
+static const CGFloat kDSHostedMenuSymbolSize = 16.0;
 enum : NSInteger {
     kDSHostedMinimapXMinusTag = 1,
     kDSHostedMinimapXPlusTag,
@@ -857,6 +857,16 @@ static UIButton *ds_hosted_minimap_step_button(NSString *symbolName,
 - (BOOL)_shouldCreateContextAsSecure { return YES; }
 - (BOOL)keepContextInBackground { return YES; }
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+    if (!g_hostedMenuExpanded && g_hostedMenuViewController) {
+        UIButton *btn = [g_hostedMenuViewController toggleButton];
+        if (btn && !btn.hidden) {
+            CGPoint ptInBtn = [self convertPoint:point toView:btn];
+            CGRect expandHitRect = CGRectInset(btn.bounds, -12.0, -12.0);
+            if (CGRectContainsPoint(expandHitRect, ptInBtn)) {
+                return btn;
+            }
+        }
+    }
     UIView *hit = [super hitTest:point withEvent:event];
     if (!hit || hit == self || hit == self.rootViewController.view) return nil;
     SEL acceptSel = NSSelectorFromString(@"dsShouldAcceptHitView:");
@@ -890,6 +900,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (void)dsSetExpanded:(BOOL)expanded;
 - (void)dsApplyOrientation;
 - (BOOL)dsShouldAcceptHitView:(UIView *)hitView;
+- (UIButton *)toggleButton;
 @end
 
 @implementation DSESPMenuViewController {
@@ -1449,28 +1460,24 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _pubgSettingInfoDescLabel.hidden = YES;
     [_panelView addSubview:_pubgSettingInfoDescLabel];
 
-    _toggleButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _toggleButton = [UIButton buttonWithType:UIButtonTypeCustom];
     _toggleButton.backgroundColor = [UIColor colorWithRed:12/255.0 green:15/255.0 blue:24/255.0 alpha:0.92];
     _toggleButton.tintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
     _toggleButton.layer.cornerRadius = kDSHostedMenuButtonSize * 0.5;
-    _toggleButton.layer.borderWidth = 1.4;
-    _toggleButton.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.8].CGColor;
-    _toggleButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.5].CGColor;
+    _toggleButton.layer.borderWidth = 1.5;
+    _toggleButton.layer.borderColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.85].CGColor;
+    _toggleButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:0.6].CGColor;
     _toggleButton.layer.shadowRadius = 8.0;
-    _toggleButton.layer.shadowOpacity = 0.8;
+    _toggleButton.layer.shadowOpacity = 0.85;
     _toggleButton.layer.shadowOffset = CGSizeZero;
     _toggleButton.layer.masksToBounds = NO;
-    UIImage *image = ds_hosted_menu_toggle_image();
-    if (image) {
-        [_toggleButton setImage:image forState:UIControlStateNormal];
-    } else {
-        [_toggleButton setTitle:@"⚡" forState:UIControlStateNormal];
-        [_toggleButton setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
-        _toggleButton.titleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold];
-    }
+    [_toggleButton setTitle:@"D3S" forState:UIControlStateNormal];
+    [_toggleButton setTitleColor:[UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0] forState:UIControlStateNormal];
+    _toggleButton.titleLabel.font = [UIFont systemFontOfSize:12.5 weight:UIFontWeightHeavy];
     [_toggleButton addTarget:self action:@selector(dsToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
     UIPanGestureRecognizer *menuPan = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(dsMenuButtonPanned:)];
+    menuPan.cancelsTouchesInView = NO;
     [_toggleButton addGestureRecognizer:menuPan];
     [_contentView addSubview:_toggleButton];
 
@@ -2106,6 +2113,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
                                        _buttonAnchorUnit.y * boundsH);
     }
     CGPoint translation = [gesture translationInView:_contentView];
+    CGFloat distance = hypot(translation.x, translation.y);
     CGPoint anchor = CGPointMake(_dragStartAnchor.x + translation.x,
                                  _dragStartAnchor.y + translation.y);
     CGFloat half = kDSHostedMenuButtonSize * 0.5;
@@ -2119,6 +2127,9 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
         [defaults setDouble:_buttonAnchorUnit.x forKey:kDSHostedMenuAnchorXKey];
         [defaults setDouble:_buttonAnchorUnit.y forKey:kDSHostedMenuAnchorYKey];
+        if (distance < 6.0) {
+            [self dsToggleTapped:_toggleButton];
+        }
     }
 }
 
@@ -2186,6 +2197,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         if (view == _panelView) return g_hostedMenuExpanded;
     }
     return NO;
+}
+
+- (UIButton *)toggleButton {
+    return _toggleButton;
 }
 
 - (void)dsEspSwitchChanged:(UISwitch *)sender {
@@ -2714,7 +2729,6 @@ static uint64_t g_hostedConsumedDisplayPulse = UINT64_MAX;
 static std::atomic<bool> g_hostedLayerReady(false);
 static CADisplayLink *g_hostedDisplayLink = nil;
 static CGFloat g_hostedPortraitNotchHeight = 0.0;
-static unsigned g_imguiContextId = 0;
 
 // Persistent AOV layer pool. Each frame only changes position, contents and
 // visibility inside a disabled-actions transaction.
@@ -3790,10 +3804,6 @@ static void ds_hosted_pubg_hide_all(void) {
 
 
 static void ds_hosted_apply_pubg(void) {
-    if (g_imguiContextId != 0) {
-        ds_hosted_pubg_hide_all();
-        return;
-    }
     if (!g_hostedLayer) return;
     if (!ds_hosted_esp_enabled()) {
         ds_hosted_pubg_hide_all();

@@ -90,8 +90,6 @@ void _HUDEventCallback(void *target, void *refcon, IOHIDServiceRef service, IOHI
                 else if ([rep isLift] || [rep isInRange] || [rep isInRangeLift])
                     phase = UITouchPhaseEnded;
 
-                DSBridgeHandleGlobalTouch([rep location], (NSInteger)phase);
-
                 NSInteger pointerId = [[[[rep handInfo] paths] firstObject] pathIdentity];
                 if (pointerId > 0)
                     [TSEventFetcher receiveAXEventID:MIN(MAX(pointerId, 1), 98) atGlobalCoordinate:[rep location] withTouchPhase:phase inWindow:keyWindow onView:keyView];

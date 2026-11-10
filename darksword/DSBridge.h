@@ -63,9 +63,6 @@ OBJC_EXTERN void DSBridgeSetActiveGame(int game);
 /// Check if PUBG Mobile process is actively attached or detected in kernel.
 OBJC_EXTERN BOOL DSBridgeIsPUBGRunning(void);
 
-/// Global touch handling for ImGui overlay (received via IOHID / BackBoardServices callback)
-OBJC_EXTERN void DSBridgeHandleGlobalTouch(CGPoint location, NSInteger phase);
-
 /// Posted on any DS progress / state change (observe on main queue).
 OBJC_EXTERN NSString * const DSBridgeProgressNotification;
 
