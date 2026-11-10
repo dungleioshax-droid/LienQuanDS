@@ -4840,7 +4840,7 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
     ds_hosted_apply_orientation(renderOri);
     if (ds_active_game() == 1) {
         ds_hosted_lq_hide_all();
-        ds_hosted_apply_pubg();
+        ds_hosted_pubg_hide_all();
     } else {
         ds_hosted_pubg_hide_all();
         ds_hosted_apply_lq();
@@ -5670,7 +5670,7 @@ static void ds_hosted_overlay_start(void) {
         unsigned contextId = ds_hosted_overlay_setup_on_main();
         unsigned menuContextId = ds_hosted_menu_setup_on_main();
         if (g_hostedMenuWindow) {
-            g_hostedMenuWindow.hidden = NO;
+            g_hostedMenuWindow.hidden = (ds_active_game() == 1) ? YES : NO;
         }
         if (g_hostedMenuViewController) {
             [g_hostedMenuViewController dsApplyOrientation];
