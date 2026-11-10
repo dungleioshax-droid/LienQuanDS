@@ -77,35 +77,14 @@ static DSImGuiWindow *g_imguiWindow = nil;
 @implementation DSImGuiWindow
 + (BOOL)_isSystemWindow { return YES; }
 - (BOOL)_isWindowServerHostingManaged { return NO; }
-- (BOOL)_ignoresHitTest { return NO; }
+// Must return YES so WindowServer / BackBoardServices passes 100% of touches straight through to PUBG Mobile
+- (BOOL)_ignoresHitTest { return YES; }
 - (BOOL)_isSecure { return YES; }
 - (BOOL)_shouldCreateContextAsSecure { return YES; }
 - (BOOL)keepContextInBackground { return YES; }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-    if (!g_imguiView) return nil;
-
-    // Convert point from window coordinates (portrait) to g_imguiView coordinates (landscape)
-    CGPoint viewPt = [g_imguiView convertPoint:point fromView:self];
-
-    // 1. If menu is open, capture touch if within the menu frame or the button
-    if (g_imguiMenuOpen) {
-        if (!CGRectIsEmpty(g_imguiMenuRect) && CGRectContainsPoint(g_imguiMenuRect, viewPt)) {
-            return g_imguiView;
-        }
-        if (CGRectContainsPoint(g_floatingButtonRect, viewPt)) {
-            return g_imguiView;
-        }
-        // Touching outside menu passes through to game
-        return nil;
-    } else {
-        // 2. When menu is closed, ONLY the floating button accepts touches!
-        if (CGRectContainsPoint(g_floatingButtonRect, viewPt)) {
-            return g_imguiView;
-        }
-    }
-    // 3. Everywhere else: Return nil so touches pass straight through 100% to PUBG Mobile!
-    return nil;
+    return nil; // Completely transparent to touch, game receives 100% inputs
 }
 @end
 
@@ -340,6 +319,100 @@ static DSImGuiWindow *g_imguiWindow = nil;
 }
 
 @end
+
+#pragma mark - Global Hardware Touch Hook (IOHID / BackBoardServices)
+
+static bool g_isDraggingButtonGlobal = false;
+static CGPoint g_globalTouchStart = CGPointZero;
+static CFAbsoluteTime g_globalTouchStartTime = 0;
+static bool g_isInteractingWithMenuGlobal = false;
+
+static void ds_imgui_toggle_menu(void) {
+    g_imguiMenuOpen = !g_imguiMenuOpen;
+}
+
+static void ds_imgui_handle_global_touch(CGPoint screenPt, NSInteger phase) {
+    if (!g_imguiView) return;
+
+    // Fast, exact landscape coordinate conversion
+    UIInterfaceOrientation orient = ds_active_orientation();
+    CGRect bounds = UIScreen.mainScreen.bounds;
+    CGFloat sw = MIN(bounds.size.width, bounds.size.height);
+    CGFloat sh = MAX(bounds.size.width, bounds.size.height);
+
+    CGPoint viewPt;
+    if (orient == UIInterfaceOrientationLandscapeLeft) {
+        viewPt = CGPointMake(sh - screenPt.y, screenPt.x);
+    } else {
+        // LandscapeRight (standard orientation for PUBG Mobile)
+        viewPt = CGPointMake(screenPt.y, sw - screenPt.x);
+    }
+
+    ImGuiIO &io = ImGui::GetIO();
+
+    if (phase == 0 /* UITouchPhaseBegan */) {
+        g_globalTouchStart = viewPt;
+        g_globalTouchStartTime = CFAbsoluteTimeGetCurrent();
+
+        // 1. Check if tap lands on Floating Button D3S
+        float dx = viewPt.x - g_floatingButtonPos.x;
+        float dy = viewPt.y - g_floatingButtonPos.y;
+        if (dx * dx + dy * dy <= 32.0f * 32.0f) {
+            g_isDraggingButtonGlobal = true;
+            return;
+        }
+
+        // 2. If menu is open, check if touch is inside menu window
+        if (g_imguiMenuOpen && !CGRectIsEmpty(g_imguiMenuRect) && CGRectContainsPoint(g_imguiMenuRect, viewPt)) {
+            g_isInteractingWithMenuGlobal = true;
+            io.AddMousePosEvent(viewPt.x, viewPt.y);
+            io.AddMouseButtonEvent(0, true);
+            return;
+        }
+
+        g_isInteractingWithMenuGlobal = false;
+
+    } else if (phase == 1 /* UITouchPhaseMoved */) {
+        if (g_isDraggingButtonGlobal) {
+            float ddx = viewPt.x - g_globalTouchStart.x;
+            float ddy = viewPt.y - g_globalTouchStart.y;
+            if (ddx * ddx + ddy * ddy > 16.0f) {
+                g_floatingButtonPos = ImVec2(viewPt.x, viewPt.y);
+                CGSize sz = g_imguiView.bounds.size;
+                if (g_floatingButtonPos.x < 25.0f) g_floatingButtonPos.x = 25.0f;
+                if (g_floatingButtonPos.x > sz.width - 25.0f) g_floatingButtonPos.x = sz.width - 25.0f;
+                if (g_floatingButtonPos.y < 25.0f) g_floatingButtonPos.y = 25.0f;
+                if (g_floatingButtonPos.y > sz.height - 25.0f) g_floatingButtonPos.y = sz.height - 25.0f;
+                g_floatingButtonRect = CGRectMake(g_floatingButtonPos.x - 22.0, g_floatingButtonPos.y - 22.0, 44.0, 44.0);
+            }
+            return;
+        }
+
+        if (g_isInteractingWithMenuGlobal) {
+            io.AddMousePosEvent(viewPt.x, viewPt.y);
+            return;
+        }
+
+    } else if (phase == 3 /* UITouchPhaseEnded */ || phase == 4 /* UITouchPhaseCancelled */) {
+        if (g_isDraggingButtonGlobal) {
+            float ddx = viewPt.x - g_globalTouchStart.x;
+            float ddy = viewPt.y - g_globalTouchStart.y;
+            if (ddx * ddx + ddy * ddy < 36.0f && (CFAbsoluteTimeGetCurrent() - g_globalTouchStartTime) < 0.8) {
+                // Tap on floating button toggles menu
+                g_imguiMenuOpen = !g_imguiMenuOpen;
+            }
+            g_isDraggingButtonGlobal = false;
+            return;
+        }
+
+        if (g_isInteractingWithMenuGlobal) {
+            io.AddMousePosEvent(viewPt.x, viewPt.y);
+            io.AddMouseButtonEvent(0, false);
+            g_isInteractingWithMenuGlobal = false;
+            return;
+        }
+    }
+}
 
 #pragma mark - Helper Drawing Functions
 
