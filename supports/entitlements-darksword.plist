@@ -2,19 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.iokit-user-client-class</key>
-	<array>
-		<string>IOSurfaceRootUserClient</string>
-		<string>AGXDeviceUserClient</string>
-		<string>AGXSharedUserClient</string>
-		<string>AGXCommandQueue</string>
-	</array>
-	<key>com.apple.private.allow-explicit-graphics-priority</key>
-	<true/>
-	<key>com.apple.developer.metal-device-observers</key>
-	<true/>
-	<key>com.apple.private.allow-stacked-hc-layers</key>
-	<true/>
 	<key>com.apple.AXMediaUtilitiesService-access</key>
 	<true/>
 	<!-- <key>com.apple.Contacts.database-allow</key> -->
@@ -224,12 +211,6 @@
 	<key>user-preference-read</key>
 	<true/>
 	<key>user-preference-write</key>
-	<true/>
-	<key>get-task-allow</key>
-	<true/>
-	<key>platform-application</key>
-	<true/>
-	<key>task_for_pid-allow</key>
 	<true/>
 </dict>
 </plist>

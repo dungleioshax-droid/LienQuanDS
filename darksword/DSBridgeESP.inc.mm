@@ -997,26 +997,24 @@ static UISwitch *ds_create_row_switch(UIView *parent, id target, SEL action, BOO
     return sw;
 }
 
-static void ds_setup_slider_row(UIView *parent, NSString *title, float minVal, float maxVal, float curVal,
-                                id target, SEL action, CGFloat width,
-                                UILabel **outTitle, UILabel **outVal, UISlider **outSlider) {
-    UILabel *tLbl = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 6.0, width - 85.0, 18.0)];
+static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UISlider *sl,
+                                NSString *title, float minVal, float maxVal, float curVal,
+                                id target, SEL action, CGFloat width) {
+    tLbl.frame = CGRectMake(12.0, 6.0, width - 85.0, 18.0);
     tLbl.text = title;
     tLbl.textColor = [UIColor colorWithRed:31/255.0 green:41/255.0 blue:55/255.0 alpha:1.0];
     tLbl.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
     tLbl.userInteractionEnabled = NO;
     [parent addSubview:tLbl];
-    if (outTitle) *outTitle = tLbl;
 
-    UILabel *vLbl = [[UILabel alloc] initWithFrame:CGRectMake(width - 75.0, 6.0, 65.0, 18.0)];
+    vLbl.frame = CGRectMake(width - 75.0, 6.0, 65.0, 18.0);
     vLbl.textColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0];
     vLbl.font = [UIFont monospacedDigitSystemFontOfSize:12.5 weight:UIFontWeightBold];
     vLbl.textAlignment = NSTextAlignmentRight;
     vLbl.userInteractionEnabled = NO;
     [parent addSubview:vLbl];
-    if (outVal) *outVal = vLbl;
 
-    UISlider *sl = [[UISlider alloc] initWithFrame:CGRectMake(10.0, 26.0, width - 20.0, 24.0)];
+    sl.frame = CGRectMake(10.0, 26.0, width - 20.0, 24.0);
     sl.minimumValue = minVal;
     sl.maximumValue = maxVal;
     sl.value = curVal;
@@ -1025,7 +1023,6 @@ static void ds_setup_slider_row(UIView *parent, NSString *title, float minVal, f
     sl.maximumTrackTintColor = [UIColor colorWithRed:226/255.0 green:232/255.0 blue:240/255.0 alpha:1.0];
     [sl addTarget:target action:action forControlEvents:UIControlEventValueChanged];
     [parent addSubview:sl];
-    if (outSlider) *outSlider = sl;
 }
 
 - (void)loadView {
@@ -1135,7 +1132,7 @@ static void ds_setup_slider_row(UIView *parent, NSString *title, float minVal, f
         [b setTitle:title forState:UIControlStateNormal];
         b.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
         [b addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [_pubgTabBar addSubview:b];
+        [self->_pubgTabBar addSubview:b];
         return b;
     };
     _pubgTabButtonPlayer = createTabBtn(@"ESP");
@@ -1258,9 +1255,12 @@ static void ds_setup_slider_row(UIView *parent, NSString *title, float minVal, f
 
     y0 += 46.0;
     _rowZoom = ds_create_pill_row(y0, rowW, 54.0);
-    ds_setup_slider_row(_rowZoom, @"Khoảng cách hiện địch", 50.0f, 500.0f, g_dspubgMaxDistance,
-                        self, @selector(dsZoomSliderChanged:), rowW,
-                        &_zoomLabel, &_zoomValueLabel, &_zoomSlider);
+    _zoomLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _zoomValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _zoomSlider = [[UISlider alloc] initWithFrame:CGRectZero];
+    ds_setup_slider_row(_rowZoom, _zoomLabel, _zoomValueLabel, _zoomSlider,
+                        @"Khoảng cách hiện địch", 50.0f, 500.0f, g_dspubgMaxDistance,
+                        self, @selector(dsZoomSliderChanged:), rowW);
     [_tabContentViewPlayer addSubview:_rowZoom];
 
     // --- Tab 1: Item ESP Controls ---
@@ -1296,9 +1296,12 @@ static void ds_setup_slider_row(UIView *parent, NSString *title, float minVal, f
 
     y1 += 46.0;
     _rowItemScan = ds_create_pill_row(y1, rowW, 54.0);
-    ds_setup_slider_row(_rowItemScan, @"Khoảng cách vật phẩm", 50.0f, 300.0f, g_pubgItemMaxDistance,
-                        self, @selector(dsPubgItemScanSliderChanged:), rowW,
-                        &_pubgItemScanLabel, &_pubgItemScanValueLabel, &_pubgItemScanSlider);
+    _pubgItemScanLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgItemScanValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgItemScanSlider = [[UISlider alloc] initWithFrame:CGRectZero];
+    ds_setup_slider_row(_rowItemScan, _pubgItemScanLabel, _pubgItemScanValueLabel, _pubgItemScanSlider,
+                        @"Khoảng cách vật phẩm", 50.0f, 300.0f, g_pubgItemMaxDistance,
+                        self, @selector(dsPubgItemScanSliderChanged:), rowW);
     [_tabContentViewItems addSubview:_rowItemScan];
 
     // --- Tab 2: Vehicle ESP Controls ---
@@ -1350,9 +1353,12 @@ static void ds_setup_slider_row(UIView *parent, NSString *title, float minVal, f
 
     y3 += 68.0;
     _rowThickness = ds_create_pill_row(y3, rowW, 54.0);
-    ds_setup_slider_row(_rowThickness, @"Độ dày nét vẽ địch", 0.8f, 3.5f, g_pubgEspThickness,
-                        self, @selector(dsPubgThicknessChanged:), rowW,
-                        &_pubgSettingThicknessLabel, &_pubgSettingThicknessValueLabel, &_pubgSettingThicknessSlider);
+    _pubgSettingThicknessLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgSettingThicknessValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    _pubgSettingThicknessSlider = [[UISlider alloc] initWithFrame:CGRectZero];
+    ds_setup_slider_row(_rowThickness, _pubgSettingThicknessLabel, _pubgSettingThicknessValueLabel, _pubgSettingThicknessSlider,
+                        @"Độ dày nét vẽ địch", 0.8f, 3.5f, g_pubgEspThickness,
+                        self, @selector(dsPubgThicknessChanged:), rowW);
     [_tabContentViewSettings addSubview:_rowThickness];
 
     y3 += 60.0;
