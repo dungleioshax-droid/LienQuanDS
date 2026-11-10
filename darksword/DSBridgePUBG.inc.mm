@@ -3472,13 +3472,23 @@ static void ds_pubg_tick(void) {
         int histSlot = -1;
         for (int h = 0; h < 16; h++) {
             if (s_grenadeHistories[h].actor == actor) {
-                histSlot = h;
+                // Verify slot is fresh and hasn't jumped across the map (prevent recycled actor pointer bug)
+                float mdx = (rootLoc.X - s_grenadeHistories[h].lastLoc.X);
+                float mdy = (rootLoc.Y - s_grenadeHistories[h].lastLoc.Y);
+                float mdz = (rootLoc.Z - s_grenadeHistories[h].lastLoc.Z);
+                float jumpDist = sqrtf(mdx * mdx + mdy * mdy + mdz * mdz);
+                if ((s_grenadeTickCounter - s_grenadeHistories[h].lastSeenTick) <= 3 && jumpDist < 1500.0f) {
+                    histSlot = h;
+                } else {
+                    // Stale slot from a previous despawned grenade reusing this heap address
+                    memset(&s_grenadeHistories[h], 0, sizeof(DSPUBGGrenadeHistory));
+                }
                 break;
             }
         }
         if (histSlot < 0) {
             for (int h = 0; h < 16; h++) {
-                if (s_grenadeHistories[h].actor == 0 || (s_grenadeTickCounter - s_grenadeHistories[h].lastSeenTick) > 30) {
+                if (s_grenadeHistories[h].actor == 0 || (s_grenadeTickCounter - s_grenadeHistories[h].lastSeenTick) > 3) {
                     histSlot = h;
                     memset(&s_grenadeHistories[h], 0, sizeof(DSPUBGGrenadeHistory));
                     s_grenadeHistories[h].actor = actor;
@@ -3486,6 +3496,7 @@ static void ds_pubg_tick(void) {
                     s_grenadeHistories[h].lastLoc = rootLoc;
                     s_grenadeHistories[h].lastTimestamp = CACurrentMediaTime();
                     s_grenadeHistories[h].firstSeenTimestamp = s_grenadeHistories[h].lastTimestamp;
+                    s_grenadeHistories[h].lastSeenTick = s_grenadeTickCounter;
                     s_grenadeHistories[h].groundZ = (basis.lz - 90.0f);
                     break;
                 }
@@ -3545,26 +3556,19 @@ static void ds_pubg_tick(void) {
         } else if (gType == DSPUBGGrenadeTypeSmoke) {
             maxFuse = 25.0f; // Smoke canister duration (~25s)
         }
+
+        // Check if UE4 set InitialLifeSpan (offset 0x158 in AActor) when cooked in hand before throwing
+        float lifeSpan = ds_pubg_read_f32(actor + 0x158ULL);
+        if (lifeSpan > 0.5f && lifeSpan <= maxFuse) {
+            maxFuse = lifeSpan;
+        }
         pg.totalFuseSeconds = maxFuse;
 
         // Remaining cook time in seconds counting down
         double nowTime = CACurrentMediaTime();
         double elapsed = (histSlot >= 0 && s_grenadeHistories[histSlot].firstSeenTimestamp > 0.0) ? (nowTime - s_grenadeHistories[histSlot].firstSeenTimestamp) : 0.0;
 
-        // Check cook time in hand from UAEProjectile.SpawnSeconds (0x5A8) and STExtraGrenadeBase.GrenadeExplodeStartTime (0x6A8)
-        float cookedInHand = 0.0f;
-        if (gType == DSPUBGGrenadeTypeFrag) {
-            float spawnSec = ds_pubg_read_f32(actor + 0x5A8ULL);
-            float expStart = ds_pubg_read_f32(actor + 0x6A8ULL);
-            if (spawnSec > 0.0f && expStart > 0.0f && spawnSec >= expStart) {
-                float diff = spawnSec - expStart;
-                if (diff >= 0.0f && diff < maxFuse) {
-                    cookedInHand = diff;
-                }
-            }
-        }
-
-        float fuseLeft = maxFuse - cookedInHand - (float)elapsed;
+        float fuseLeft = maxFuse - (float)elapsed;
         if (fuseLeft < 0.0f) fuseLeft = 0.0f;
         pg.cookSeconds = fuseLeft;
 
@@ -3982,4 +3986,11 @@ static void ds_pubg_tick(void) {
     g_dspubgGrenadeCount = copyGrenadeCount;
     ++g_dspubgGrenadeEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
+
+    // Garbage collect stale grenade histories (> 3 ticks unseen)
+    for (int h = 0; h < 16; h++) {
+        if (s_grenadeHistories[h].actor != 0 && (s_grenadeTickCounter - s_grenadeHistories[h].lastSeenTick) > 3) {
+            memset(&s_grenadeHistories[h], 0, sizeof(DSPUBGGrenadeHistory));
+        }
+    }
 }

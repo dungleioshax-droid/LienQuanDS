@@ -4722,13 +4722,10 @@ static void ds_hosted_apply_pubg(void) {
                         redFill.frame = CGRectMake(0, 22.0f - redH, 22.0f, redH);
                     }
                     if (bgYellow) {
-                        if (progress >= 0.92f) {
-                            bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.30f blue:0.05f alpha:1.0f].CGColor;
-                        } else if (progress >= 0.75f) {
-                            bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.70f blue:0.05f alpha:1.0f].CGColor;
-                        } else {
-                            bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:0.95f blue:0.05f alpha:1.0f].CGColor;
-                        }
+                        CGFloat gVal = 0.95f - (0.87f * progress);
+                        if (gVal < 0.08f) gVal = 0.08f;
+                        if (gVal > 0.95f) gVal = 0.95f;
+                        bgYellow.backgroundColor = [UIColor colorWithRed:1.0f green:gVal blue:0.05f alpha:1.0f].CGColor;
                     }
                 }
             } else {
