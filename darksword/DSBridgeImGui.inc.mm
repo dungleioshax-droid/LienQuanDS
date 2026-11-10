@@ -8,6 +8,9 @@
 #import <MetalKit/MetalKit.h>
 #import <UIKit/UIKit.h>
 #import <CoreText/CoreText.h>
+#import <dlfcn.h>
+#import "BackboardServices.h"
+#import "AXEventRepresentation.h"
 
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include "../imgui/imgui.h"
@@ -109,6 +112,8 @@ static DSImGuiWindow *g_imguiWindow = nil;
         self.userInteractionEnabled = YES;
         self.multipleTouchEnabled = YES;
         self.preferredFramesPerSecond = 120; // 120 FPS on ProMotion, 60 FPS standard
+        self.paused = YES; // Disable MTKView automatic display link which stops in background
+        self.enableSetNeedsDisplay = NO; // Driven explicitly by our high-performance background GCD timer
         _lastOrientation = -1;
 
         _commandQueue = [device newCommandQueue];
@@ -214,10 +219,15 @@ static DSImGuiWindow *g_imguiWindow = nil;
 
     [self updateOrientation];
 
+    id<CAMetalDrawable> drawable = view.currentDrawable;
+    if (!drawable) return;
+
+    MTLRenderPassDescriptor *renderPassDescriptor = view.currentRenderPassDescriptor;
+    if (!renderPassDescriptor) return;
+
     @autoreleasepool {
         id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
-        MTLRenderPassDescriptor *renderPassDescriptor = view.currentRenderPassDescriptor;
-        if (!renderPassDescriptor) return;
+        if (!commandBuffer) return;
 
         ImGuiIO &io = ImGui::GetIO();
         io.DisplaySize = ImVec2(view.bounds.size.width, view.bounds.size.height);
@@ -249,7 +259,7 @@ static DSImGuiWindow *g_imguiWindow = nil;
         [renderEncoder popDebugGroup];
         [renderEncoder endEncoding];
 
-        [commandBuffer presentDrawable:view.currentDrawable];
+        [commandBuffer presentDrawable:drawable];
         [commandBuffer commit];
     }
 }
@@ -327,10 +337,6 @@ static CGPoint g_globalTouchStart = CGPointZero;
 static CFAbsoluteTime g_globalTouchStartTime = 0;
 static bool g_isInteractingWithMenuGlobal = false;
 
-static void ds_imgui_toggle_menu(void) {
-    g_imguiMenuOpen = !g_imguiMenuOpen;
-}
-
 static void ds_imgui_handle_global_touch(CGPoint screenPt, NSInteger phase) {
     if (!g_imguiView) return;
 
@@ -354,10 +360,10 @@ static void ds_imgui_handle_global_touch(CGPoint screenPt, NSInteger phase) {
         g_globalTouchStart = viewPt;
         g_globalTouchStartTime = CFAbsoluteTimeGetCurrent();
 
-        // 1. Check if tap lands on Floating Button D3S
+        // 1. Check if tap lands on Floating Button D3S (36 pt radius)
         float dx = viewPt.x - g_floatingButtonPos.x;
         float dy = viewPt.y - g_floatingButtonPos.y;
-        if (dx * dx + dy * dy <= 32.0f * 32.0f) {
+        if (dx * dx + dy * dy <= 36.0f * 36.0f) {
             g_isDraggingButtonGlobal = true;
             return;
         }
@@ -397,8 +403,8 @@ static void ds_imgui_handle_global_touch(CGPoint screenPt, NSInteger phase) {
         if (g_isDraggingButtonGlobal) {
             float ddx = viewPt.x - g_globalTouchStart.x;
             float ddy = viewPt.y - g_globalTouchStart.y;
-            if (ddx * ddx + ddy * ddy < 36.0f && (CFAbsoluteTimeGetCurrent() - g_globalTouchStartTime) < 0.8) {
-                // Tap on floating button toggles menu
+            if (ddx * ddx + ddy * ddy < 49.0f && (CFAbsoluteTimeGetCurrent() - g_globalTouchStartTime) < 1.0) {
+                // Tap on floating button toggles menu!
                 g_imguiMenuOpen = !g_imguiMenuOpen;
             }
             g_isDraggingButtonGlobal = false;
@@ -412,6 +418,53 @@ static void ds_imgui_handle_global_touch(CGPoint screenPt, NSInteger phase) {
             return;
         }
     }
+}
+
+static void _DSImGuiHIDEventCallback(void *target, void *refcon, IOHIDServiceRef service, IOHIDEventRef event) {
+    static Class AXEventRepresentationCls = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [[NSBundle bundleWithPath:@"/System/Library/PrivateFrameworks/AccessibilityUtilities.framework"] load];
+        AXEventRepresentationCls = objc_getClass("AXEventRepresentation");
+    });
+    if (!AXEventRepresentationCls) return;
+
+    AXEventRepresentation *rep = [AXEventRepresentationCls representationWithHIDEvent:event hidStreamIdentifier:@"UIApplicationEvents"];
+    if (!rep) return;
+
+    UITouchPhase phase = UITouchPhaseEnded;
+    if ([rep isTouchDown])
+        phase = UITouchPhaseBegan;
+    else if ([rep isMove])
+        phase = UITouchPhaseMoved;
+    else if ([rep isCancel])
+        phase = UITouchPhaseCancelled;
+    else if ([rep isLift] || [rep isInRange] || [rep isInRangeLift])
+        phase = UITouchPhaseEnded;
+
+    CGPoint loc = [rep location];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        ds_imgui_handle_global_touch(loc, (NSInteger)phase);
+    });
+}
+
+static dispatch_source_t s_imguiRenderTimer = nil;
+
+static void ds_imgui_start_render_loop(void) {
+    if (s_imguiRenderTimer) return;
+    s_imguiRenderTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, dispatch_get_main_queue());
+    uint32_t maxFps = 120;
+    if (UIScreen.mainScreen.maximumFramesPerSecond > 60) {
+        maxFps = (uint32_t)UIScreen.mainScreen.maximumFramesPerSecond;
+    }
+    uint64_t interval = (uint64_t)(NSEC_PER_SEC / maxFps);
+    dispatch_source_set_timer(s_imguiRenderTimer, DISPATCH_TIME_NOW, interval, 1 * NSEC_PER_MSEC);
+    dispatch_source_set_event_handler(s_imguiRenderTimer, ^{
+        if (g_imguiView) {
+            [g_imguiView draw];
+        }
+    });
+    dispatch_resume(s_imguiRenderTimer);
 }
 
 #pragma mark - Helper Drawing Functions
@@ -768,6 +821,7 @@ static void ds_imgui_render_menu(void) {
 static unsigned ds_imgui_setup_on_main(void) {
     if (g_imguiWindow) {
         g_imguiWindow.hidden = NO;
+        ds_imgui_start_render_loop();
         return g_imguiContextId;
     }
 
@@ -807,5 +861,16 @@ static unsigned ds_imgui_setup_on_main(void) {
     g_imguiWindow = window;
     g_imguiView = view;
     g_imguiContextId = contextId;
+
+    ds_imgui_start_render_loop();
+
+    static dispatch_once_t s_hidOnce;
+    dispatch_once(&s_hidOnce, ^{
+        void *bksFunc = dlsym(RTLD_DEFAULT, "BKSHIDEventRegisterEventCallback");
+        if (bksFunc) {
+            ((void (*)(void (*)(void *, void *, IOHIDServiceRef, IOHIDEventRef)))bksFunc)(_DSImGuiHIDEventCallback);
+        }
+    });
+
     return contextId;
 }

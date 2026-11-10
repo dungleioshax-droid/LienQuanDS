@@ -66,9 +66,6 @@ OBJC_EXTERN BOOL DSBridgeIsPUBGRunning(void);
 /// Global touch handling for ImGui overlay (received via IOHID / BackBoardServices callback)
 OBJC_EXTERN void DSBridgeHandleGlobalTouch(CGPoint location, NSInteger phase);
 
-/// Toggle ImGui menu visibility
-OBJC_EXTERN void DSBridgeToggleMenu(void);
-
 /// Posted on any DS progress / state change (observe on main queue).
 OBJC_EXTERN NSString * const DSBridgeProgressNotification;
 

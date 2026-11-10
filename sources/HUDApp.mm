@@ -90,12 +90,7 @@ void _HUDEventCallback(void *target, void *refcon, IOHIDServiceRef service, IOHI
                 else if ([rep isLift] || [rep isInRange] || [rep isInRangeLift])
                     phase = UITouchPhaseEnded;
 
-                // 3-finger tap toggles ImGui menu as a convenient shortcut
-                if ([rep isTouchDown] && [[[rep handInfo] paths] count] >= 3) {
-                    DSBridgeToggleMenu();
-                } else {
-                    DSBridgeHandleGlobalTouch([rep location], (NSInteger)phase);
-                }
+                DSBridgeHandleGlobalTouch([rep location], (NSInteger)phase);
 
                 NSInteger pointerId = [[[[rep handInfo] paths] firstObject] pathIdentity];
                 if (pointerId > 0)

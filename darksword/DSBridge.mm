@@ -1895,7 +1895,3 @@ BOOL DSBridgeIsPUBGRunning(void) {
 void DSBridgeHandleGlobalTouch(CGPoint location, NSInteger phase) {
     ds_imgui_handle_global_touch(location, phase);
 }
-
-void DSBridgeToggleMenu(void) {
-    ds_imgui_toggle_menu();
-}
