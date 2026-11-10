@@ -1081,6 +1081,7 @@ static void ds_pubg_overlay_reset(void);
 #include "DSBridgeESP.inc.mm"
 #include "DSBridgeLienQuan.inc.mm"
 #include "DSBridgePUBG.inc.mm"
+#include "DSBridgeImGui.inc.mm"
 
 // The HUD lives in its own UIWindow anchored to SBMainWorkspace.mainWindowScene
 // Adding to whatever keyWindow we can find is
@@ -1717,17 +1718,23 @@ static void ds_finish_enable(void) {
     // inside SpringBoard while the ESP runs (the long-run panic source).
     __block unsigned hostedContextId = 0;
     __block unsigned menuContextId = 0;
+    __block unsigned imguiContextId = 0;
     ds_dispatch_main_sync(^{
+        imguiContextId = ds_imgui_setup_on_main();
         hostedContextId = ds_hosted_overlay_setup_on_main();
         menuContextId = ds_hosted_menu_setup_on_main();
     });
-    if (hostedContextId) {
-        ds_hosted_overlay_register(hostedContextId);
+    if (imguiContextId) {
+        ds_hosted_overlay_register(imguiContextId);
+    } else {
+        if (hostedContextId) {
+            ds_hosted_overlay_register(hostedContextId);
+        }
+        if (menuContextId) {
+            ds_hosted_menu_register(menuContextId);
+        }
     }
-    if (menuContextId) {
-        ds_hosted_menu_register(menuContextId);
-    }
-    if (g_hostedRemoteController && g_hostedMenuRemoteController) {
+    if ((g_hostedRemoteController && g_hostedMenuRemoteController) || (imguiContextId && g_hostedRemoteController)) {
         RemoteCall *process = g_springBoard;
         g_springBoard = nil;
         @try {

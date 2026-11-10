@@ -13,6 +13,7 @@ darksword/DSBridgeExploit.inc.mm
 darksword/DSBridgeESP.inc.mm
 darksword/DSBridgeLienQuan.inc.mm
 darksword/DSBridgePUBG.inc.mm
+darksword/DSBridgeImGui.inc.mm
 "
 
 cleanup() {

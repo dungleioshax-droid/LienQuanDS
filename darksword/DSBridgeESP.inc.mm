@@ -2714,6 +2714,7 @@ static uint64_t g_hostedConsumedDisplayPulse = UINT64_MAX;
 static std::atomic<bool> g_hostedLayerReady(false);
 static CADisplayLink *g_hostedDisplayLink = nil;
 static CGFloat g_hostedPortraitNotchHeight = 0.0;
+static unsigned g_imguiContextId = 0;
 
 // Persistent AOV layer pool. Each frame only changes position, contents and
 // visibility inside a disabled-actions transaction.
@@ -3789,6 +3790,10 @@ static void ds_hosted_pubg_hide_all(void) {
 
 
 static void ds_hosted_apply_pubg(void) {
+    if (g_imguiContextId != 0) {
+        ds_hosted_pubg_hide_all();
+        return;
+    }
     if (!g_hostedLayer) return;
     if (!ds_hosted_esp_enabled()) {
         ds_hosted_pubg_hide_all();
