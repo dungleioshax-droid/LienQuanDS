@@ -883,67 +883,7 @@ static CGRect ds_hud_content_frame(const DSHUDPresentation *presentation,
                       CGRectGetHeight(presentation->windowFrame));
 }
 
-static void ds_lq_tick(void);
-static bool ds_lq_has_render_source(void);
-typedef struct {
-    float u;
-    float v;
-    uint32_t configId;
-    uint32_t playerId;
-    uint64_t actor;
-    int32_t hp;
-    bool hpSampleValid;
-    int32_t ultimateCooldown;
-    int32_t talentCooldown;
-    bool ultimateCooldownValid;
-    bool talentCooldownValid;
-    bool minimapValid;
-    float minimapCenterXPx;
-    float minimapCenterYPx;
-    float minimapWidthPx;
-    float minimapHeightPx;
-    float minimapScreenWidthPx;
-    float minimapScreenHeightPx;
-    float minimapFormCameraViewport[4];
-    float minimapAnchorXPx;
-    float minimapAnchorYPx;
-    int32_t minimapStorePosMode;
-    float minimapX;
-    float minimapY;
-    int32_t minimapRoomType;
-    bool visible;
-} DSLQProjectedHero;
-typedef struct {
-    float u;
-    float v;
-    uint32_t configId;
-    uint64_t actor;
-    int32_t hp;
-    bool hpSampleValid;
-    bool minimapValid;
-    float minimapCenterXPx;
-    float minimapCenterYPx;
-    float minimapWidthPx;
-    float minimapHeightPx;
-    float minimapScreenWidthPx;
-    float minimapScreenHeightPx;
-    float minimapFormCameraViewport[4];
-    float minimapAnchorXPx;
-    float minimapAnchorYPx;
-    int32_t minimapStorePosMode;
-    float minimapX;
-    float minimapY;
-    int32_t minimapRoomType;
-    bool visible;
-} DSLQProjectedMonster;
-static const int kDSLQMaxHeroes = 10;
-static const int kDSLQMaxEnemies = 5;
-static const int kDSLQMaxMonsters = 64;
-static int ds_lq_copy_projected_heroes(DSLQProjectedHero out[5],
-                                       uint64_t *epochOut);
-static int ds_lq_copy_projected_monsters(
-    DSLQProjectedMonster out[kDSLQMaxMonsters], uint64_t *epochOut);
-static void ds_lq_overlay_reset(void);
+static void ds_lq_overlay_reset(void) {}
 
 typedef struct {
     float x;
@@ -1082,7 +1022,6 @@ static void ds_pubg_get_total_counts(int *outEnemies, int *outBots);
 static void ds_pubg_overlay_reset(void);
 
 #include "DSBridgeESP.inc.mm"
-#include "DSBridgeLienQuan.inc.mm"
 #include "DSBridgePUBG.inc.mm"
 
 // The HUD lives in its own UIWindow anchored to SBMainWorkspace.mainWindowScene
@@ -1860,21 +1799,12 @@ NSString *DSBridgeStage(void) {
 }
 
 int DSBridgeActiveGame(void) {
-    id val = [NSUserDefaults.standardUserDefaults objectForKey:@"DSActiveGame"];
-    if (!val) return 1;
-    return (int)[val integerValue];
+    return 1; // Always PUBG Mobile
 }
 
 void DSBridgeSetActiveGame(int game) {
-    [NSUserDefaults.standardUserDefaults setInteger:game forKey:@"DSActiveGame"];
-    [NSUserDefaults.standardUserDefaults synchronize];
-    if (game == 1) {
-        ds_lq_overlay_reset();
-        ds_pubg_overlay_reset();
-    } else {
-        ds_pubg_overlay_reset();
-        ds_lq_overlay_reset();
-    }
+    (void)game;
+    ds_pubg_overlay_reset();
 }
 
 BOOL DSBridgeIsPUBGRunning(void) {

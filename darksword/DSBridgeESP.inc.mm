@@ -5,8 +5,6 @@
 // vmmapremotepage, read/write helpers, Mach-O main-image identity. Reader AOV
 // nằm ở DSBridgeLienQuan.inc.mm; file này giữ hosted overlay và render loop.
 
-#import "KGVNHeroIcons/Herolib.h"
-
 static BOOL ds_debug_user_address(uint64_t address) {
     return address >= 0x100000000ULL && address < 0x300000000000ULL;
 }
@@ -19,15 +17,12 @@ typedef struct {
 
 enum class DSDebugShmemOwner : uint8_t {
     None = 0,
-    LienQuan = 1,
-    PUBG = 2,
+    PUBG = 1,
 };
 
-static NSString * const kDSActiveGameKey = @"DSActiveGame";
-
 static inline int ds_active_game(void) {
-    id val = [NSUserDefaults.standardUserDefaults objectForKey:kDSActiveGameKey];
-    if (!val) return 1; // Default to PUBG Mobile (1) in DarkPubg
+    return 1; // Pure PUBG Mobile
+}
     return (int)[val integerValue];
 }
 
@@ -690,84 +685,16 @@ static BOOL ds_debug_read_list(uint64_t vmMap, DSDebugReadRange *ranges, size_t 
 
 #pragma mark - Floating camera menu (hosted in SpringBoard, DarkSpeed pattern)
 
-// Entry points implemented in DSBridgeLienQuan.inc.mm (included after this
-// file); the menu below only drives them.
-static bool ds_lq_camera_zoom_enabled(void);
-static float ds_lq_camera_zoom_value(void);
-static void ds_lq_camera_zoom_set(bool enabled, float value);
-static void ds_lq_auto_smite_set(bool enabled);
-static void ds_lq_auto_smite_objectives_only_set(bool enabled);
-// Defined with the AOV overlay pool below; used by the ESP menu switch.
-static void ds_hosted_lq_hide_all(void);
+static void ds_hosted_pubg_hide_all(void);
 
-static NSString * const kDSHostedCamZoomEnabledKey = @"lq_camxa_enabled";
-static NSString * const kDSHostedCamZoomValueKey = @"lq_camxa_value";
-static NSString * const kDSHostedAutoSmiteEnabledKey = @"lq_auto_smite_enabled";
-static NSString * const kDSHostedAutoSmiteObjectivesOnlyKey =
-    @"lq_auto_smite_objectives_only";
-static NSString * const kDSHostedMenuAnchorXKey = @"lq_menu_anchor_x";
-static NSString * const kDSHostedMenuAnchorYKey = @"lq_menu_anchor_y";
-static NSString * const kDSHostedMenuPanelXKey = @"lq_menu_panel_x";
-static NSString * const kDSHostedMenuPanelYKey = @"lq_menu_panel_y";
-static NSString * const kDSHostedMinimapOffsetXKey = @"lq_minimap_offset_x";
-static NSString * const kDSHostedMinimapOffsetYKey = @"lq_minimap_offset_y";
-static NSString * const kDSHostedEspEnabledKey = @"lq_esp_enabled";
+static NSString * const kDSHostedMenuAnchorXKey = @"pubg_menu_anchor_x";
+static NSString * const kDSHostedMenuAnchorYKey = @"pubg_menu_anchor_y";
+static NSString * const kDSHostedMenuPanelXKey = @"pubg_menu_panel_x";
+static NSString * const kDSHostedMenuPanelYKey = @"pubg_menu_panel_y";
+static NSString * const kDSHostedEspEnabledKey = @"pubg_esp_enabled";
 static const double kDSHostedMenuLevel = 10000020.0;
-static const float kDSHostedCamZoomMin = 1.0f;
-static const float kDSHostedCamZoomMax = 10.0f;
-static const float kDSHostedMinimapOffsetMin = -200.0f;
-static const float kDSHostedMinimapOffsetMax = 200.0f;
 static const CGFloat kDSHostedMenuButtonSize = 38.0;
 static const CGFloat kDSHostedMenuSymbolSize = 16.0;
-enum : NSInteger {
-    kDSHostedMinimapXMinusTag = 1,
-    kDSHostedMinimapXPlusTag,
-    kDSHostedMinimapYMinusTag,
-    kDSHostedMinimapYPlusTag,
-};
-static std::atomic<float> g_hostedMinimapOffsetX(0.0f);
-static std::atomic<float> g_hostedMinimapOffsetY(0.0f);
-
-static void ds_hosted_minimap_load_offsets(void) {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-        float x = (float)[defaults doubleForKey:kDSHostedMinimapOffsetXKey];
-        float y = (float)[defaults doubleForKey:kDSHostedMinimapOffsetYKey];
-        if (!isfinite(x)) x = 0.0f;
-        if (!isfinite(y)) y = 0.0f;
-        g_hostedMinimapOffsetX.store(
-            fminf(fmaxf(x, kDSHostedMinimapOffsetMin),
-                  kDSHostedMinimapOffsetMax),
-            std::memory_order_release);
-        g_hostedMinimapOffsetY.store(
-            fminf(fmaxf(y, kDSHostedMinimapOffsetMin),
-                  kDSHostedMinimapOffsetMax),
-            std::memory_order_release);
-    });
-}
-
-static CGPoint ds_hosted_minimap_offset(void) {
-    ds_hosted_minimap_load_offsets();
-    return CGPointMake(
-        g_hostedMinimapOffsetX.load(std::memory_order_acquire),
-        g_hostedMinimapOffsetY.load(std::memory_order_acquire));
-}
-
-static void ds_hosted_minimap_set_offset(CGPoint offset) {
-    ds_hosted_minimap_load_offsets();
-    float x = isfinite(offset.x) ? (float)offset.x : 0.0f;
-    float y = isfinite(offset.y) ? (float)offset.y : 0.0f;
-    x = fminf(fmaxf(x, kDSHostedMinimapOffsetMin),
-              kDSHostedMinimapOffsetMax);
-    y = fminf(fmaxf(y, kDSHostedMinimapOffsetMin),
-              kDSHostedMinimapOffsetMax);
-    g_hostedMinimapOffsetX.store(x, std::memory_order_release);
-    g_hostedMinimapOffsetY.store(y, std::memory_order_release);
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setDouble:x forKey:kDSHostedMinimapOffsetXKey];
-    [defaults setDouble:y forKey:kDSHostedMinimapOffsetYKey];
-}
 
 // ESP defaults to on (the overlay always rendered before the switch existed).
 static std::atomic<bool> g_hostedEspEnabled(true);
@@ -786,8 +713,6 @@ static bool ds_hosted_esp_enabled(void) {
 }
 
 static void ds_hosted_esp_set_enabled(bool enabled) {
-    // Load the persisted value first so an explicit write below is not
-    // overwritten by the one-time defaults read.
     (void)ds_hosted_esp_enabled();
     g_hostedEspEnabled.store(enabled, std::memory_order_release);
     [NSUserDefaults.standardUserDefaults setBool:enabled
@@ -796,7 +721,7 @@ static void ds_hosted_esp_set_enabled(bool enabled) {
     void (^hideEsp)(void) = ^{
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        ds_hosted_lq_hide_all();
+        ds_hosted_pubg_hide_all();
         [CATransaction commit];
     };
     if (NSThread.isMainThread) {
@@ -909,25 +834,9 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UILabel *_titleLabel;
     UILabel *_espLabel;
     UISwitch *_espSwitch;
-    UILabel *_enableLabel;
-    UISwitch *_enableSwitch;
-    UILabel *_autoSmiteLabel;
-    UISwitch *_autoSmiteSwitch;
-    UILabel *_autoSmiteObjectivesOnlyLabel;
-    UISwitch *_autoSmiteObjectivesOnlySwitch;
     UILabel *_zoomLabel;
     UISlider *_zoomSlider;
     UILabel *_zoomValueLabel;
-    UILabel *_minimapXLabel;
-    UIButton *_minimapXMinusButton;
-    UISlider *_minimapXSlider;
-    UIButton *_minimapXPlusButton;
-    UILabel *_minimapXValueLabel;
-    UILabel *_minimapYLabel;
-    UIButton *_minimapYMinusButton;
-    UISlider *_minimapYSlider;
-    UIButton *_minimapYPlusButton;
-    UILabel *_minimapYValueLabel;
     UIButton *_resetButton;
     // Modern UI Containers
     UIView *_masterCard;
@@ -1139,146 +1048,32 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
          forControlEvents:UIControlEventValueChanged];
     [_panelView addSubview:_espSwitch];
 
-    _enableLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _enableLabel.text = @"Cam Xa";
-    _enableLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
-    _enableLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-    [_panelView addSubview:_enableLabel];
-
-    _enableSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
-    _enableSwitch.onTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-    _enableSwitch.transform = CGAffineTransformMakeScale(0.8, 0.8);
-    [_enableSwitch addTarget:self action:@selector(dsEnableSwitchChanged:)
-            forControlEvents:UIControlEventValueChanged];
-    [_panelView addSubview:_enableSwitch];
-
-    _autoSmiteLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _autoSmiteLabel.text = @"Auto TT";
-    _autoSmiteLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
-    _autoSmiteLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-    [_panelView addSubview:_autoSmiteLabel];
-
-    _autoSmiteSwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
-    _autoSmiteSwitch.onTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-    _autoSmiteSwitch.transform = CGAffineTransformMakeScale(0.8, 0.8);
-    [_autoSmiteSwitch addTarget:self action:@selector(dsAutoSmiteSwitchChanged:)
-                 forControlEvents:UIControlEventValueChanged];
-    [_panelView addSubview:_autoSmiteSwitch];
-
-    _autoSmiteObjectivesOnlyLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _autoSmiteObjectivesOnlyLabel.text = @"Chỉ Rồng/Tà";
-    _autoSmiteObjectivesOnlyLabel.textColor =
-        [UIColor colorWithWhite:1.0 alpha:0.86];
-    _autoSmiteObjectivesOnlyLabel.font =
-        [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-    [_panelView addSubview:_autoSmiteObjectivesOnlyLabel];
-
-    _autoSmiteObjectivesOnlySwitch = [[UISwitch alloc] initWithFrame:CGRectZero];
-    _autoSmiteObjectivesOnlySwitch.onTintColor =
-        [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-    _autoSmiteObjectivesOnlySwitch.transform = CGAffineTransformMakeScale(0.8, 0.8);
-    [_autoSmiteObjectivesOnlySwitch
-        addTarget:self
-           action:@selector(dsAutoSmiteObjectivesOnlySwitchChanged:)
- forControlEvents:UIControlEventValueChanged];
-    [_panelView addSubview:_autoSmiteObjectivesOnlySwitch];
-
     _zoomLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _zoomLabel.text = @"Zoom";
+    _zoomLabel.text = @"Khoảng cách hiện địch";
     _zoomLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
     _zoomLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
     [_panelView addSubview:_zoomLabel];
 
     _zoomSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    _zoomSlider.minimumValue = kDSHostedCamZoomMin;
-    _zoomSlider.maximumValue = kDSHostedCamZoomMax;
+    _zoomSlider.minimumValue = 50.0f;
+    _zoomSlider.maximumValue = 500.0f;
+    _zoomSlider.value = g_dspubgMaxDistance;
     _zoomSlider.continuous = YES;
-    _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+    _zoomSlider.minimumTrackTintColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
     _zoomSlider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
     [_zoomSlider addTarget:self action:@selector(dsZoomSliderChanged:)
           forControlEvents:UIControlEventValueChanged];
     [_panelView addSubview:_zoomSlider];
 
     _zoomValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _zoomValueLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
-    _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightMedium];
+    _zoomValueLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    _zoomValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightBold];
     _zoomValueLabel.textAlignment = NSTextAlignmentRight;
+    _zoomValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_dspubgMaxDistance];
     [_panelView addSubview:_zoomValueLabel];
 
-    _minimapXLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _minimapXLabel.text = @"Map X";
-    _minimapXLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
-    _minimapXLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-    [_panelView addSubview:_minimapXLabel];
-
-    _minimapXMinusButton = ds_hosted_minimap_step_button(
-        @"minus", kDSHostedMinimapXMinusTag, @"Decrease minimap X");
-    [_minimapXMinusButton addTarget:self
-                             action:@selector(dsMinimapStepTapped:)
-                   forControlEvents:UIControlEventTouchUpInside];
-    [_panelView addSubview:_minimapXMinusButton];
-
-    _minimapXSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    _minimapXSlider.minimumValue = kDSHostedMinimapOffsetMin;
-    _minimapXSlider.maximumValue = kDSHostedMinimapOffsetMax;
-    _minimapXSlider.continuous = YES;
-    _minimapXSlider.minimumTrackTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-    _minimapXSlider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
-    [_minimapXSlider addTarget:self action:@selector(dsMinimapOffsetChanged:)
-               forControlEvents:UIControlEventValueChanged];
-    [_panelView addSubview:_minimapXSlider];
-
-    _minimapXPlusButton = ds_hosted_minimap_step_button(
-        @"plus", kDSHostedMinimapXPlusTag, @"Increase minimap X");
-    [_minimapXPlusButton addTarget:self
-                            action:@selector(dsMinimapStepTapped:)
-                  forControlEvents:UIControlEventTouchUpInside];
-    [_panelView addSubview:_minimapXPlusButton];
-
-    _minimapXValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _minimapXValueLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
-    _minimapXValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightMedium];
-    _minimapXValueLabel.textAlignment = NSTextAlignmentRight;
-    [_panelView addSubview:_minimapXValueLabel];
-
-    _minimapYLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _minimapYLabel.text = @"Map Y";
-    _minimapYLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.86];
-    _minimapYLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-    [_panelView addSubview:_minimapYLabel];
-
-    _minimapYMinusButton = ds_hosted_minimap_step_button(
-        @"minus", kDSHostedMinimapYMinusTag, @"Decrease minimap Y");
-    [_minimapYMinusButton addTarget:self
-                             action:@selector(dsMinimapStepTapped:)
-                   forControlEvents:UIControlEventTouchUpInside];
-    [_panelView addSubview:_minimapYMinusButton];
-
-    _minimapYSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    _minimapYSlider.minimumValue = kDSHostedMinimapOffsetMin;
-    _minimapYSlider.maximumValue = kDSHostedMinimapOffsetMax;
-    _minimapYSlider.continuous = YES;
-    _minimapYSlider.minimumTrackTintColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
-    _minimapYSlider.maximumTrackTintColor = [UIColor colorWithWhite:1.0 alpha:0.22];
-    [_minimapYSlider addTarget:self action:@selector(dsMinimapOffsetChanged:)
-               forControlEvents:UIControlEventValueChanged];
-    [_panelView addSubview:_minimapYSlider];
-
-    _minimapYPlusButton = ds_hosted_minimap_step_button(
-        @"plus", kDSHostedMinimapYPlusTag, @"Increase minimap Y");
-    [_minimapYPlusButton addTarget:self
-                            action:@selector(dsMinimapStepTapped:)
-                  forControlEvents:UIControlEventTouchUpInside];
-    [_panelView addSubview:_minimapYPlusButton];
-
-    _minimapYValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _minimapYValueLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.72];
-    _minimapYValueLabel.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightMedium];
-    _minimapYValueLabel.textAlignment = NSTextAlignmentRight;
-    [_panelView addSubview:_minimapYValueLabel];
-
     _resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_resetButton setTitle:@"Reset" forState:UIControlStateNormal];
+    [_resetButton setTitle:@"Khôi phục cài đặt gốc" forState:UIControlStateNormal];
     [_resetButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     _resetButton.titleLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightSemibold];
     _resetButton.backgroundColor = [UIColor colorWithWhite:1.0 alpha:0.14];
@@ -1482,12 +1277,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     // Seed controls from persisted state so the first render uses the saved
     // camera zoom and minimap correction.
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults removeObjectForKey:@"lq_camxa_straight"];
-    _enableSwitch.on = [defaults boolForKey:kDSHostedCamZoomEnabledKey];
-    _autoSmiteSwitch.on = [defaults boolForKey:kDSHostedAutoSmiteEnabledKey];
-    _autoSmiteObjectivesOnlySwitch.on =
-        [defaults boolForKey:kDSHostedAutoSmiteObjectivesOnlyKey];
-    id storedZoom = [defaults objectForKey:kDSHostedCamZoomValueKey];
     id storedAnchorX = [defaults objectForKey:kDSHostedMenuAnchorXKey];
     id storedAnchorY = [defaults objectForKey:kDSHostedMenuAnchorYKey];
     if (storedAnchorX && storedAnchorY) {
@@ -1510,77 +1299,60 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
             _hasPanelAnchor = YES;
         }
     }
-    if (ds_active_game() == 1) {
-        _titleLabel.text = @"DARKPUBG";
-        _zoomLabel.text = @"Khoảng cách hiện địch";
-        _zoomSlider.minimumValue = 50.0f;
-        _zoomSlider.maximumValue = 500.0f;
-        _zoomSlider.value = g_dspubgMaxDistance;
-        if ([defaults objectForKey:@"pubg_box"] != nil) g_pubgEspBox = [defaults boolForKey:@"pubg_box"];
-        _pubgBoxSwitch.on = g_pubgEspBox;
-        if ([defaults objectForKey:@"pubg_skeleton"] != nil) g_pubgEspSkeleton = [defaults boolForKey:@"pubg_skeleton"];
-        _pubgSkeletonSwitch.on = g_pubgEspSkeleton;
-        if ([defaults objectForKey:@"pubg_line"] != nil) g_pubgEspLine = [defaults boolForKey:@"pubg_line"];
-        _pubgLineSwitch.on = g_pubgEspLine;
-        if ([defaults objectForKey:@"pubg_health"] != nil) g_pubgEspHealth = [defaults boolForKey:@"pubg_health"];
-        _pubgHealthSwitch.on = g_pubgEspHealth;
-        if ([defaults objectForKey:@"pubg_name"] != nil) g_pubgEspName = [defaults boolForKey:@"pubg_name"];
-        _pubgNameSwitch.on = g_pubgEspName;
-        if ([defaults objectForKey:@"pubg_dist"] != nil) g_pubgEspDist = [defaults boolForKey:@"pubg_dist"];
-        _pubgDistSwitch.on = g_pubgEspDist;
-        if ([defaults objectForKey:@"pubg_bot"] != nil) g_pubgEspBot = [defaults boolForKey:@"pubg_bot"];
-        _pubgBotSwitch.on = g_pubgEspBot;
-        if ([defaults objectForKey:@"pubg_arrow"] != nil) g_pubgEspArrow = [defaults boolForKey:@"pubg_arrow"];
-        _pubgArrowSwitch.on = g_pubgEspArrow;
-        if ([defaults objectForKey:@"pubg_grenade"] != nil) g_pubgEspGrenade = [defaults boolForKey:@"pubg_grenade"];
-        _pubgGrenadeSwitch.on = g_pubgEspGrenade;
-        if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
-        _pubgVehicleSwitch.on = g_pubgEspVehicle;
-        if ([defaults objectForKey:@"pubg_vehicle_hp"] != nil) g_pubgEspVehicleHp = [defaults boolForKey:@"pubg_vehicle_hp"];
-        _pubgVehicleHpSwitch.on = g_pubgEspVehicleHp;
-        if ([defaults objectForKey:@"pubg_vehicle_fuel"] != nil) g_pubgEspVehicleFuel = [defaults boolForKey:@"pubg_vehicle_fuel"];
-        _pubgVehicleFuelSwitch.on = g_pubgEspVehicleFuel;
-        if ([defaults objectForKey:@"pubg_weapon"] != nil) g_pubgEspWeapon = [defaults boolForKey:@"pubg_weapon"];
-        _pubgWeaponSwitch.on = g_pubgEspWeapon;
-        if ([defaults objectForKey:@"pubg_armor"] != nil) g_pubgEspArmor = [defaults boolForKey:@"pubg_armor"];
-        _pubgArmorSwitch.on = g_pubgEspArmor;
-        if ([defaults objectForKey:@"pubg_bag"] != nil) g_pubgEspBag = [defaults boolForKey:@"pubg_bag"];
-        _pubgBagSwitch.on = g_pubgEspBag;
-        if ([defaults objectForKey:@"pubg_scope"] != nil) g_pubgEspScope = [defaults boolForKey:@"pubg_scope"];
-        _pubgScopeSwitch.on = g_pubgEspScope;
-        if ([defaults objectForKey:@"pubg_crate"] != nil) g_pubgEspCrate = [defaults boolForKey:@"pubg_crate"];
-        _pubgCrateSwitch.on = g_pubgEspCrate;
-        if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
-        _pubgItemScanSlider.value = g_pubgItemMaxDistance;
-        _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_pubgItemMaxDistance];
 
-        if ([defaults objectForKey:@"pubg_lang"] != nil) g_pubgLanguage = (int)[defaults integerForKey:@"pubg_lang"];
-        _pubgLangSegment.selectedSegmentIndex = g_pubgLanguage;
-        if ([defaults objectForKey:@"pubg_thickness"] != nil) {
-            g_pubgEspThickness = [defaults floatForKey:@"pubg_thickness"];
-            if (g_pubgEspThickness < 0.8f) g_pubgEspThickness = 0.8f;
-            if (g_pubgEspThickness > 3.5f) g_pubgEspThickness = 3.5f;
-        }
-        _pubgSettingThicknessSlider.value = g_pubgEspThickness;
-        _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
-        [self dsUpdatePubgLanguage];
-    } else {
-        _titleLabel.text = @"LQ Tools";
-        _zoomLabel.text = @"Zoom";
-        _zoomSlider.minimumValue = kDSHostedCamZoomMin;
-        _zoomSlider.maximumValue = kDSHostedCamZoomMax;
-        float initialZoom = storedZoom ? (float)[storedZoom doubleValue] : 1.0f;
-        if (!isfinite(initialZoom)) initialZoom = 1.0f;
-        _zoomSlider.value = fminf(fmaxf(initialZoom, kDSHostedCamZoomMin),
-                                  kDSHostedCamZoomMax);
-        ds_lq_camera_zoom_set(_enableSwitch.on, _zoomSlider.value);
-        ds_lq_auto_smite_set(_autoSmiteSwitch.on);
-        ds_lq_auto_smite_objectives_only_set(
-            _autoSmiteObjectivesOnlySwitch.on);
-        CGPoint minimapOffset = ds_hosted_minimap_offset();
-        _minimapXSlider.value = (float)minimapOffset.x;
-        _minimapYSlider.value = (float)minimapOffset.y;
+    _titleLabel.text = @"DARKPUBG";
+    _zoomLabel.text = @"Khoảng cách hiện địch";
+    _zoomSlider.minimumValue = 50.0f;
+    _zoomSlider.maximumValue = 500.0f;
+    _zoomSlider.value = g_dspubgMaxDistance;
+    if ([defaults objectForKey:@"pubg_box"] != nil) g_pubgEspBox = [defaults boolForKey:@"pubg_box"];
+    _pubgBoxSwitch.on = g_pubgEspBox;
+    if ([defaults objectForKey:@"pubg_skeleton"] != nil) g_pubgEspSkeleton = [defaults boolForKey:@"pubg_skeleton"];
+    _pubgSkeletonSwitch.on = g_pubgEspSkeleton;
+    if ([defaults objectForKey:@"pubg_line"] != nil) g_pubgEspLine = [defaults boolForKey:@"pubg_line"];
+    _pubgLineSwitch.on = g_pubgEspLine;
+    if ([defaults objectForKey:@"pubg_health"] != nil) g_pubgEspHealth = [defaults boolForKey:@"pubg_health"];
+    _pubgHealthSwitch.on = g_pubgEspHealth;
+    if ([defaults objectForKey:@"pubg_name"] != nil) g_pubgEspName = [defaults boolForKey:@"pubg_name"];
+    _pubgNameSwitch.on = g_pubgEspName;
+    if ([defaults objectForKey:@"pubg_dist"] != nil) g_pubgEspDist = [defaults boolForKey:@"pubg_dist"];
+    _pubgDistSwitch.on = g_pubgEspDist;
+    if ([defaults objectForKey:@"pubg_bot"] != nil) g_pubgEspBot = [defaults boolForKey:@"pubg_bot"];
+    _pubgBotSwitch.on = g_pubgEspBot;
+    if ([defaults objectForKey:@"pubg_arrow"] != nil) g_pubgEspArrow = [defaults boolForKey:@"pubg_arrow"];
+    _pubgArrowSwitch.on = g_pubgEspArrow;
+    if ([defaults objectForKey:@"pubg_grenade"] != nil) g_pubgEspGrenade = [defaults boolForKey:@"pubg_grenade"];
+    _pubgGrenadeSwitch.on = g_pubgEspGrenade;
+    if ([defaults objectForKey:@"pubg_vehicle"] != nil) g_pubgEspVehicle = [defaults boolForKey:@"pubg_vehicle"];
+    _pubgVehicleSwitch.on = g_pubgEspVehicle;
+    if ([defaults objectForKey:@"pubg_vehicle_hp"] != nil) g_pubgEspVehicleHp = [defaults boolForKey:@"pubg_vehicle_hp"];
+    _pubgVehicleHpSwitch.on = g_pubgEspVehicleHp;
+    if ([defaults objectForKey:@"pubg_vehicle_fuel"] != nil) g_pubgEspVehicleFuel = [defaults boolForKey:@"pubg_vehicle_fuel"];
+    _pubgVehicleFuelSwitch.on = g_pubgEspVehicleFuel;
+    if ([defaults objectForKey:@"pubg_weapon"] != nil) g_pubgEspWeapon = [defaults boolForKey:@"pubg_weapon"];
+    _pubgWeaponSwitch.on = g_pubgEspWeapon;
+    if ([defaults objectForKey:@"pubg_armor"] != nil) g_pubgEspArmor = [defaults boolForKey:@"pubg_armor"];
+    _pubgArmorSwitch.on = g_pubgEspArmor;
+    if ([defaults objectForKey:@"pubg_bag"] != nil) g_pubgEspBag = [defaults boolForKey:@"pubg_bag"];
+    _pubgBagSwitch.on = g_pubgEspBag;
+    if ([defaults objectForKey:@"pubg_scope"] != nil) g_pubgEspScope = [defaults boolForKey:@"pubg_scope"];
+    _pubgScopeSwitch.on = g_pubgEspScope;
+    if ([defaults objectForKey:@"pubg_crate"] != nil) g_pubgEspCrate = [defaults boolForKey:@"pubg_crate"];
+    _pubgCrateSwitch.on = g_pubgEspCrate;
+    if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
+    _pubgItemScanSlider.value = g_pubgItemMaxDistance;
+    _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_pubgItemMaxDistance];
+
+    if ([defaults objectForKey:@"pubg_lang"] != nil) g_pubgLanguage = (int)[defaults integerForKey:@"pubg_lang"];
+    _pubgLangSegment.selectedSegmentIndex = g_pubgLanguage;
+    if ([defaults objectForKey:@"pubg_thickness"] != nil) {
+        g_pubgEspThickness = [defaults floatForKey:@"pubg_thickness"];
+        if (g_pubgEspThickness < 0.8f) g_pubgEspThickness = 0.8f;
+        if (g_pubgEspThickness > 3.5f) g_pubgEspThickness = 3.5f;
     }
+    _pubgSettingThicknessSlider.value = g_pubgEspThickness;
+    _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
+    [self dsUpdatePubgLanguage];
 
     [self dsSetExpanded:g_hostedMenuExpanded];
     [self dsUpdateValueLabel];
@@ -1650,27 +1422,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     _closeButton.frame = CGRectMake(CGRectGetWidth(panelBounds) - 36.0, 8.0,
                                     26.0, 26.0);
 
-    if (ds_active_game() == 1) {
-        _titleLabel.text = @"DARKPUBG";
-        _titleLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
-        _enableLabel.hidden = YES;
-        _enableSwitch.hidden = YES;
-        _autoSmiteLabel.hidden = YES;
-        _autoSmiteSwitch.hidden = YES;
-        _autoSmiteObjectivesOnlyLabel.hidden = YES;
-        _autoSmiteObjectivesOnlySwitch.hidden = YES;
-        _minimapXLabel.hidden = YES;
-        _minimapXMinusButton.hidden = YES;
-        _minimapXSlider.hidden = YES;
-        _minimapXPlusButton.hidden = YES;
-        _minimapXValueLabel.hidden = YES;
-        _minimapYLabel.hidden = YES;
-        _minimapYMinusButton.hidden = YES;
-        _minimapYSlider.hidden = YES;
-        _minimapYPlusButton.hidden = YES;
-        _minimapYValueLabel.hidden = YES;
-        CGFloat cardW = (panelW - 32.0) * 0.5;
-        CGFloat cardH = 30.0;
+    _titleLabel.text = @"DARKPUBG";
+    _titleLabel.textColor = [UIColor colorWithRed:0/255.0 green:229/255.0 blue:255/255.0 alpha:1.0];
+    CGFloat cardW = (panelW - 32.0) * 0.5;
+    CGFloat cardH = 30.0;
         CGFloat col1X = 12.0;
         CGFloat col2X = 12.0 + cardW + 8.0;
         CGFloat switchRightPadding = 8.0 + (51.0 * 0.70 * 0.5);
@@ -2041,53 +1796,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         _pubgSettingThicknessCard.hidden = YES; _pubgSettingThicknessLabel.hidden = YES;
         _pubgSettingThicknessValueLabel.hidden = YES; _pubgSettingThicknessSlider.hidden = YES;
         _pubgSettingInfoCard.hidden = YES; _pubgSettingInfoLabel.hidden = YES; _pubgSettingInfoDescLabel.hidden = YES;
-
-        _titleLabel.text = @"LQ Tools";
-        _enableLabel.hidden = NO;
-        _enableSwitch.hidden = NO;
-        _autoSmiteLabel.hidden = NO;
-        _autoSmiteSwitch.hidden = NO;
-        _autoSmiteObjectivesOnlyLabel.hidden = NO;
-        _autoSmiteObjectivesOnlySwitch.hidden = NO;
-        _minimapXLabel.hidden = NO;
-        _minimapXMinusButton.hidden = NO;
-        _minimapXSlider.hidden = NO;
-        _minimapXPlusButton.hidden = NO;
-        _minimapXValueLabel.hidden = NO;
-        _minimapYLabel.hidden = NO;
-        _minimapYMinusButton.hidden = NO;
-        _minimapYSlider.hidden = NO;
-        _minimapYPlusButton.hidden = NO;
-        _minimapYValueLabel.hidden = NO;
-        _resetButton.hidden = NO;
-
-        _enableLabel.frame = CGRectMake(13.0, 73.0, 90.0, 20.0);
-        _enableSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 68.0, 51.0, 31.0);
-        _autoSmiteLabel.frame = CGRectMake(13.0, 104.0, 90.0, 20.0);
-        _autoSmiteSwitch.frame = CGRectMake(CGRectGetWidth(panelBounds) - 62.0, 99.0, 51.0, 31.0);
-        _autoSmiteObjectivesOnlyLabel.frame = CGRectMake(13.0, 135.0, 110.0, 20.0);
-        _autoSmiteObjectivesOnlySwitch.frame = CGRectMake(
-            CGRectGetWidth(panelBounds) - 62.0, 130.0, 51.0, 31.0);
-        _zoomLabel.text = @"Zoom";
-        _zoomLabel.hidden = NO;
-        _zoomValueLabel.hidden = NO;
-        _zoomSlider.hidden = NO;
-        _zoomLabel.frame = CGRectMake(13.0, 166.0, 52.0, 20.0);
-        _zoomValueLabel.frame = CGRectMake(CGRectGetWidth(panelBounds) - 58.0, 166.0, 46.0, 20.0);
-        _zoomSlider.frame = CGRectMake(66.0, 163.0, CGRectGetWidth(panelBounds) - 132.0, 26.0);
-        CGFloat panelWidth = CGRectGetWidth(panelBounds);
-        _minimapXLabel.frame = CGRectMake(13.0, 197.0, 42.0, 20.0);
-        _minimapXMinusButton.frame = CGRectMake(57.0, 193.0, 28.0, 28.0);
-        _minimapXSlider.frame = CGRectMake(89.0, 194.0, panelWidth - 168.0, 26.0);
-        _minimapXPlusButton.frame = CGRectMake(panelWidth - 75.0, 193.0, 28.0, 28.0);
-        _minimapXValueLabel.frame = CGRectMake(panelWidth - 44.0, 197.0, 34.0, 20.0);
-        _minimapYLabel.frame = CGRectMake(13.0, 228.0, 42.0, 20.0);
-        _minimapYMinusButton.frame = CGRectMake(57.0, 224.0, 28.0, 28.0);
-        _minimapYSlider.frame = CGRectMake(89.0, 225.0, panelWidth - 168.0, 26.0);
-        _minimapYPlusButton.frame = CGRectMake(panelWidth - 75.0, 224.0, 28.0, 28.0);
-        _minimapYValueLabel.frame = CGRectMake(panelWidth - 44.0, 228.0, 34.0, 20.0);
-        _resetButton.frame = CGRectMake(13.0, CGRectGetHeight(panelBounds) - 36.0,
-                                        CGRectGetWidth(panelBounds) - 26.0, 27.0);
     }
 }
 
@@ -2205,334 +1913,92 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     ds_hosted_esp_set_enabled(sender.on);
 }
 
-- (void)dsEnableSwitchChanged:(UISwitch *)sender {
-    ds_lq_camera_zoom_set(sender.on, _zoomSlider.value);
-}
-
-- (void)dsAutoSmiteSwitchChanged:(UISwitch *)sender {
-    ds_lq_auto_smite_set(sender.on);
-}
-
-- (void)dsAutoSmiteObjectivesOnlySwitchChanged:(UISwitch *)sender {
-    ds_lq_auto_smite_objectives_only_set(sender.on);
-}
-
-- (void)dsPubgBoxChanged:(UISwitch *)sender {
-    g_pubgEspBox = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_box"];
-}
-
-- (void)dsPubgSkeletonChanged:(UISwitch *)sender {
-    g_pubgEspSkeleton = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_skeleton"];
-}
-
-- (void)dsPubgLineChanged:(UISwitch *)sender {
-    g_pubgEspLine = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_line"];
-}
-
-- (void)dsPubgHealthChanged:(UISwitch *)sender {
-    g_pubgEspHealth = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_health"];
-}
-
-- (void)dsPubgNameChanged:(UISwitch *)sender {
-    g_pubgEspName = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_name"];
-}
-
-- (void)dsPubgDistChanged:(UISwitch *)sender {
-    g_pubgEspDist = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_dist"];
-}
-
-- (void)dsPubgBotChanged:(UISwitch *)sender {
-    g_pubgEspBot = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bot"];
-}
-
-- (void)dsPubgArrowChanged:(UISwitch *)sender {
-    g_pubgEspArrow = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_arrow"];
-}
-
-- (void)dsPubgGrenadeChanged:(UISwitch *)sender {
-    g_pubgEspGrenade = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_grenade"];
-}
-
-- (void)dsPubgVehicleChanged:(UISwitch *)sender {
-    g_pubgEspVehicle = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
-}
-
-- (void)dsPubgVehicleHpChanged:(UISwitch *)sender {
-    g_pubgEspVehicleHp = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle_hp"];
-}
-
-- (void)dsPubgVehicleFuelChanged:(UISwitch *)sender {
-    g_pubgEspVehicleFuel = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle_fuel"];
-}
-
-- (void)dsPubgWeaponChanged:(UISwitch *)sender {
-    g_pubgEspWeapon = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_weapon"];
-}
-
-- (void)dsPubgArmorChanged:(UISwitch *)sender {
-    g_pubgEspArmor = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_armor"];
-}
-
-- (void)dsPubgBagChanged:(UISwitch *)sender {
-    g_pubgEspBag = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bag"];
-}
-
-- (void)dsPubgScopeChanged:(UISwitch *)sender {
-    g_pubgEspScope = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_scope"];
-}
-
-- (void)dsPubgCrateChanged:(UISwitch *)sender {
-    g_pubgEspCrate = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_crate"];
-}
-
-- (void)dsPubgItemScanSliderChanged:(UISlider *)sender {
-    g_pubgItemMaxDistance = sender.value;
-    _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", g_pubgItemMaxDistance];
-    [NSUserDefaults.standardUserDefaults setFloat:g_pubgItemMaxDistance forKey:@"pubg_item_dist"];
-}
-
-- (void)dsPubgTabTapped:(UIButton *)sender {
-    if (sender == _pubgTabButtonItems) {
-        _pubgCurrentTab = 1;
-    } else if (sender == _pubgTabButtonSettings) {
-        _pubgCurrentTab = 2;
-    } else {
-        _pubgCurrentTab = 0;
-    }
-    [self dsLayoutMenu];
-}
-
-- (void)dsPubgLangChanged:(UISegmentedControl *)sender {
-    g_pubgLanguage = (int)sender.selectedSegmentIndex;
-    [NSUserDefaults.standardUserDefaults setInteger:g_pubgLanguage forKey:@"pubg_lang"];
-    [self dsUpdatePubgLanguage];
-}
-
-- (void)dsPubgThicknessChanged:(UISlider *)sender {
-    g_pubgEspThickness = sender.value;
-    _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", g_pubgEspThickness];
-    [NSUserDefaults.standardUserDefaults setFloat:g_pubgEspThickness forKey:@"pubg_thickness"];
-}
-
-- (void)dsUpdatePubgLanguage {
-    BOOL isEn = (g_pubgLanguage == 1);
-
-    // Tab buttons
-    [_pubgTabButtonPlayer setTitle:isEn ? @"👤 Enemy" : @"👤 ESP Địch" forState:UIControlStateNormal];
-    [_pubgTabButtonItems setTitle:isEn ? @"📦 Items" : @"📦 Vật Phẩm" forState:UIControlStateNormal];
-    [_pubgTabButtonSettings setTitle:isEn ? @"⚙️ Settings" : @"⚙️ Cài Đặt" forState:UIControlStateNormal];
-
-    // Master ESP
-    _espLabel.text = isEn ? @"Master ESP" : @"Bật ESP Master";
-
-    // Tab 0: Enemy ESP
-    _pubgBoxLabel.text = isEn ? @"Corner Box 2D" : @"Box Góc 2D";
-    _pubgSkeletonLabel.text = isEn ? @"Skeleton" : @"Xương";
-    _pubgLineLabel.text = isEn ? @"Snapline" : @"Tia Line";
-    _pubgHealthLabel.text = isEn ? @"Health Bar" : @"Thanh Máu";
-    _pubgNameLabel.text = isEn ? @"Player Name" : @"Tên Địch";
-    _pubgDistLabel.text = isEn ? @"Distance" : @"Khoảng Cách";
-    _pubgBotLabel.text = isEn ? @"Show Bots AI" : @"Hiện Bot AI";
-    _pubgArrowLabel.text = isEn ? @"360° Arrow" : @"Mũi Tên";
-    _pubgGrenadeLabel.text = isEn ? @"Grenade Alert" : @"Cảnh Báo Bom";
-    _zoomLabel.text = isEn ? @"Enemy ESP Distance" : @"Khoảng cách hiện địch";
-
-    // Tab 1: Items
-    _pubgVehicleLabel.text = isEn ? @"Vehicles" : @"Hiện Xe";
-    _pubgVehicleHpLabel.text = isEn ? @"Vehicle HP" : @"Máu Xe";
-    _pubgVehicleFuelLabel.text = isEn ? @"Vehicle Fuel" : @"Xăng Xe";
-    _pubgWeaponLabel.text = isEn ? @"Weapons" : @"Hiện Súng";
-    _pubgArmorLabel.text = isEn ? @"Armor & Helm" : @"Giáp & Mũ";
-    _pubgBagLabel.text = isEn ? @"Backpacks" : @"Hiện Balo";
-    _pubgScopeLabel.text = isEn ? @"Scopes" : @"Ống Ngắm";
-    _pubgCrateLabel.text = isEn ? @"Crates & AirDrop" : @"Hòm & Thính";
-    _pubgItemScanLabel.text = isEn ? @"Item ESP Distance" : @"Khoảng cách vật phẩm";
-
-    // Tab 2: Settings
-    _pubgSettingLangLabel.text = isEn ? @"Menu Language" : @"Ngôn ngữ giao diện";
-    _pubgSettingThicknessLabel.text = isEn ? @"Enemy Line Thickness" : @"Độ dày nét vẽ địch";
-    _pubgSettingInfoLabel.text = isEn ? @"System & Optimization" : @"Hệ thống & Tối ưu";
-    _pubgSettingInfoDescLabel.text = isEn
-        ? @"• Display: 60/120 FPS ProMotion\n• Latency: Zero-Lag Interactive QoS"
-        : @"• Tần số quét: 60/120 FPS mượt mà\n• Độ trễ: Zero-Lag Interactive QoS";
-
-    // Reset button
-    [_resetButton setTitle:isEn ? @"Reset to Defaults" : @"Khôi phục cài đặt gốc" forState:UIControlStateNormal];
-}
-
 - (void)dsZoomSliderChanged:(UISlider *)sender {
-    if (ds_active_game() == 1) {
-        g_dspubgMaxDistance = sender.value;
-        [self dsUpdateValueLabel];
-        return;
-    }
-    // Moving the slider is an explicit request to use camera zoom. Keeping the
-    // switch off here made every slider event restore the stock value.
-    if (!_enableSwitch.on) {
-        [_enableSwitch setOn:YES animated:YES];
-    }
-    ds_lq_camera_zoom_set(true, sender.value);
+    g_dspubgMaxDistance = sender.value;
     [self dsUpdateValueLabel];
-}
-
-- (void)dsMinimapOffsetChanged:(UISlider *)sender {
-    (void)sender;
-    ds_hosted_minimap_set_offset(CGPointMake(_minimapXSlider.value,
-                                             _minimapYSlider.value));
-    [self dsUpdateValueLabel];
-}
-
-- (void)dsMinimapStepTapped:(UIButton *)sender {
-    UISlider *slider = nil;
-    float delta = 0.0f;
-    switch (sender.tag) {
-        case kDSHostedMinimapXMinusTag:
-            slider = _minimapXSlider;
-            delta = -1.0f;
-            break;
-        case kDSHostedMinimapXPlusTag:
-            slider = _minimapXSlider;
-            delta = 1.0f;
-            break;
-        case kDSHostedMinimapYMinusTag:
-            slider = _minimapYSlider;
-            delta = -1.0f;
-            break;
-        case kDSHostedMinimapYPlusTag:
-            slider = _minimapYSlider;
-            delta = 1.0f;
-            break;
-        default:
-            return;
-    }
-    float value = fminf(fmaxf(slider.value + delta, slider.minimumValue),
-                        slider.maximumValue);
-    [slider setValue:value animated:NO];
-    [self dsMinimapOffsetChanged:slider];
 }
 
 - (void)dsResetTapped:(UIButton *)sender {
     (void)sender;
-    if (ds_active_game() == 1) {
-        [_espSwitch setOn:YES animated:YES];
-        ds_hosted_esp_set_enabled(true);
-        [_pubgBoxSwitch setOn:YES animated:YES];
-        [_pubgSkeletonSwitch setOn:YES animated:YES];
-        [_pubgLineSwitch setOn:YES animated:YES];
-        [_pubgHealthSwitch setOn:YES animated:YES];
-        [_pubgNameSwitch setOn:YES animated:YES];
-        [_pubgDistSwitch setOn:YES animated:YES];
-        [_pubgBotSwitch setOn:YES animated:YES];
-        [_pubgArrowSwitch setOn:YES animated:YES];
-        [_pubgGrenadeSwitch setOn:YES animated:YES];
-        [_zoomSlider setValue:400.0f animated:YES];
-        g_pubgEspBox = YES;
-        g_pubgEspSkeleton = YES;
-        g_pubgEspLine = YES;
-        g_pubgEspHealth = YES;
-        g_pubgEspName = YES;
-        g_pubgEspDist = YES;
-        g_pubgEspBot = YES;
-        g_pubgEspArrow = YES;
-        g_pubgEspGrenade = YES;
-        g_dspubgMaxDistance = 400.0f;
-
-        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-        [defaults setBool:YES forKey:@"pubg_box"];
-        [defaults setBool:YES forKey:@"pubg_skeleton"];
-        [defaults setBool:YES forKey:@"pubg_line"];
-        [defaults setBool:YES forKey:@"pubg_health"];
-        [defaults setBool:YES forKey:@"pubg_name"];
-        [defaults setBool:YES forKey:@"pubg_dist"];
-        [defaults setBool:YES forKey:@"pubg_bot"];
-        [defaults setBool:YES forKey:@"pubg_arrow"];
-        [defaults setBool:YES forKey:@"pubg_grenade"];
-
-        [_pubgVehicleSwitch setOn:YES animated:YES];
-        [_pubgVehicleHpSwitch setOn:YES animated:YES];
-        [_pubgVehicleFuelSwitch setOn:YES animated:YES];
-        [_pubgWeaponSwitch setOn:YES animated:YES];
-        [_pubgArmorSwitch setOn:YES animated:YES];
-        [_pubgBagSwitch setOn:YES animated:YES];
-        [_pubgScopeSwitch setOn:YES animated:YES];
-        [_pubgCrateSwitch setOn:YES animated:YES];
-        [_pubgItemScanSlider setValue:150.0f animated:YES];
-        _pubgItemScanValueLabel.text = @"150m";
-
-        g_pubgEspVehicle = YES;
-        g_pubgEspVehicleHp = YES;
-        g_pubgEspVehicleFuel = YES;
-        g_pubgEspWeapon = YES;
-        g_pubgEspArmor = YES;
-        g_pubgEspBag = YES;
-        g_pubgEspScope = YES;
-        g_pubgEspCrate = YES;
-        g_pubgItemMaxDistance = 150.0f;
-
-        [defaults setBool:YES forKey:@"pubg_vehicle"];
-        [defaults setBool:YES forKey:@"pubg_vehicle_hp"];
-        [defaults setBool:YES forKey:@"pubg_vehicle_fuel"];
-        [defaults setBool:YES forKey:@"pubg_weapon"];
-        [defaults setBool:YES forKey:@"pubg_armor"];
-        [defaults setBool:YES forKey:@"pubg_bag"];
-        [defaults setBool:YES forKey:@"pubg_scope"];
-        [defaults setBool:YES forKey:@"pubg_crate"];
-        [defaults setFloat:150.0f forKey:@"pubg_item_dist"];
-
-        g_pubgLanguage = 0;
-        g_pubgEspThickness = 1.5f;
-        [defaults setInteger:0 forKey:@"pubg_lang"];
-        [defaults setFloat:1.5f forKey:@"pubg_thickness"];
-        _pubgLangSegment.selectedSegmentIndex = 0;
-        [_pubgSettingThicknessSlider setValue:1.5f animated:YES];
-        _pubgSettingThicknessValueLabel.text = @"1.5 px";
-        [self dsUpdatePubgLanguage];
-
-        [self dsUpdateValueLabel];
-        return;
-    }
     [_espSwitch setOn:YES animated:YES];
     ds_hosted_esp_set_enabled(true);
-    [_enableSwitch setOn:NO animated:YES];
-    [_autoSmiteSwitch setOn:NO animated:YES];
-    [_autoSmiteObjectivesOnlySwitch setOn:NO animated:YES];
-    [_zoomSlider setValue:1.0f animated:YES];
-    [_minimapXSlider setValue:0.0f animated:YES];
-    [_minimapYSlider setValue:0.0f animated:YES];
-    ds_lq_camera_zoom_set(false, 1.0f);
-    ds_lq_auto_smite_set(false);
-    ds_lq_auto_smite_objectives_only_set(false);
-    ds_hosted_minimap_set_offset(CGPointZero);
+    [_pubgBoxSwitch setOn:YES animated:YES];
+    [_pubgSkeletonSwitch setOn:YES animated:YES];
+    [_pubgLineSwitch setOn:YES animated:YES];
+    [_pubgHealthSwitch setOn:YES animated:YES];
+    [_pubgNameSwitch setOn:YES animated:YES];
+    [_pubgDistSwitch setOn:YES animated:YES];
+    [_pubgBotSwitch setOn:YES animated:YES];
+    [_pubgArrowSwitch setOn:YES animated:YES];
+    [_pubgGrenadeSwitch setOn:YES animated:YES];
+    [_zoomSlider setValue:400.0f animated:YES];
+    g_pubgEspBox = YES;
+    g_pubgEspSkeleton = YES;
+    g_pubgEspLine = YES;
+    g_pubgEspHealth = YES;
+    g_pubgEspName = YES;
+    g_pubgEspDist = YES;
+    g_pubgEspBot = YES;
+    g_pubgEspArrow = YES;
+    g_pubgEspGrenade = YES;
+    g_dspubgMaxDistance = 400.0f;
+
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setBool:YES forKey:@"pubg_box"];
+    [defaults setBool:YES forKey:@"pubg_skeleton"];
+    [defaults setBool:YES forKey:@"pubg_line"];
+    [defaults setBool:YES forKey:@"pubg_health"];
+    [defaults setBool:YES forKey:@"pubg_name"];
+    [defaults setBool:YES forKey:@"pubg_dist"];
+    [defaults setBool:YES forKey:@"pubg_bot"];
+    [defaults setBool:YES forKey:@"pubg_arrow"];
+    [defaults setBool:YES forKey:@"pubg_grenade"];
+
+    [_pubgVehicleSwitch setOn:YES animated:YES];
+    [_pubgVehicleHpSwitch setOn:YES animated:YES];
+    [_pubgVehicleFuelSwitch setOn:YES animated:YES];
+    [_pubgWeaponSwitch setOn:YES animated:YES];
+    [_pubgArmorSwitch setOn:YES animated:YES];
+    [_pubgBagSwitch setOn:YES animated:YES];
+    [_pubgScopeSwitch setOn:YES animated:YES];
+    [_pubgCrateSwitch setOn:YES animated:YES];
+    [_pubgItemScanSlider setValue:150.0f animated:YES];
+    _pubgItemScanValueLabel.text = @"150m";
+
+    g_pubgEspVehicle = YES;
+    g_pubgEspVehicleHp = YES;
+    g_pubgEspVehicleFuel = YES;
+    g_pubgEspWeapon = YES;
+    g_pubgEspArmor = YES;
+    g_pubgEspBag = YES;
+    g_pubgEspScope = YES;
+    g_pubgEspCrate = YES;
+    g_pubgItemMaxDistance = 150.0f;
+
+    [defaults setBool:YES forKey:@"pubg_vehicle"];
+    [defaults setBool:YES forKey:@"pubg_vehicle_hp"];
+    [defaults setBool:YES forKey:@"pubg_vehicle_fuel"];
+    [defaults setBool:YES forKey:@"pubg_weapon"];
+    [defaults setBool:YES forKey:@"pubg_armor"];
+    [defaults setBool:YES forKey:@"pubg_bag"];
+    [defaults setBool:YES forKey:@"pubg_scope"];
+    [defaults setBool:YES forKey:@"pubg_crate"];
+    [defaults setFloat:150.0f forKey:@"pubg_item_dist"];
+
+    g_pubgLanguage = 0;
+    g_pubgEspThickness = 1.5f;
+    [defaults setInteger:0 forKey:@"pubg_lang"];
+    [defaults setFloat:1.5f forKey:@"pubg_thickness"];
+    _pubgLangSegment.selectedSegmentIndex = 0;
+    [_pubgSettingThicknessSlider setValue:1.5f animated:YES];
+    _pubgSettingThicknessValueLabel.text = @"1.5 px";
+    [self dsUpdatePubgLanguage];
+
     [self dsUpdateValueLabel];
 }
 
 - (void)dsUpdateValueLabel {
-    if (ds_active_game() == 1) {
-        _zoomValueLabel.text = [NSString stringWithFormat:@"%.0fm", _zoomSlider.value];
-        return;
-    }
-    _zoomValueLabel.text = [NSString stringWithFormat:@"%.2f", _zoomSlider.value];
-    _minimapXValueLabel.text = [NSString stringWithFormat:@"%+.0f",
-                               _minimapXSlider.value];
-    _minimapYValueLabel.text = [NSString stringWithFormat:@"%+.0f",
-                               _minimapYSlider.value];
+    _zoomValueLabel.text = [NSString stringWithFormat:@"%.0fm", _zoomSlider.value];
 }
 
 @end
@@ -2575,6 +2041,8 @@ static void ds_hosted_menu_register(unsigned contextId) {
 }
 
 static bool g_menuHIDRegistered = false;
+static UIView *g_activeMenuHitView = nil;
+static NSInteger g_activeMenuPointerId = 0;
 
 static void ds_menu_hid_callback(void *target, void *refcon, IOHIDServiceRef service, IOHIDEventRef event) {
     if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) return;
@@ -2602,15 +2070,42 @@ static void ds_menu_hid_callback(void *target, void *refcon, IOHIDServiceRef ser
         phase = UITouchPhaseEnded;
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) return;
-        UIView *hit = [g_hostedMenuWindow hitTest:loc withEvent:nil];
-        if (hit) {
-            NSInteger pointerId = [[[[rep handInfo] paths] firstObject] pathIdentity];
+        if (!g_hostedMenuWindow || g_hostedMenuWindow.hidden) {
+            g_activeMenuHitView = nil;
+            g_activeMenuPointerId = 0;
+            return;
+        }
+
+        NSInteger pointerId = [[[[rep handInfo] paths] firstObject] pathIdentity];
+        if (pointerId <= 0) return;
+
+        if (phase == UITouchPhaseBegan) {
+            UIView *hit = [g_hostedMenuWindow hitTest:loc withEvent:nil];
+            if (hit) {
+                g_activeMenuHitView = hit;
+                g_activeMenuPointerId = pointerId;
+                [TSEventFetcher receiveAXEventID:MIN(MAX(pointerId, 1), 98)
+                              atGlobalCoordinate:loc
+                                  withTouchPhase:phase
+                                        inWindow:g_hostedMenuWindow
+                                          onView:hit];
+            } else {
+                if (g_activeMenuPointerId == pointerId) {
+                    g_activeMenuHitView = nil;
+                    g_activeMenuPointerId = 0;
+                }
+            }
+        } else if (g_activeMenuHitView && g_activeMenuPointerId == pointerId) {
+            UIView *targetView = g_activeMenuHitView;
+            if (phase == UITouchPhaseEnded || phase == UITouchPhaseCancelled) {
+                g_activeMenuHitView = nil;
+                g_activeMenuPointerId = 0;
+            }
             [TSEventFetcher receiveAXEventID:MIN(MAX(pointerId, 1), 98)
                           atGlobalCoordinate:loc
                               withTouchPhase:phase
                                     inWindow:g_hostedMenuWindow
-                                      onView:hit];
+                                      onView:targetView];
         }
     });
 }
@@ -2755,7 +2250,7 @@ static uint64_t ds_debug_find_main_image_base(uint64_t vmMap) {
 
 typedef struct {
     uint64_t generation;
-    BOOL lqRenderSourceReady;
+    BOOL pubgRenderSourceReady;
 } DSHostedRenderSnapshot;
 
 static os_unfair_lock g_hostedSnapshotLock = OS_UNFAIR_LOCK_INIT;
@@ -2775,432 +2270,6 @@ static std::atomic<bool> g_hostedLayerReady(false);
 static CADisplayLink *g_hostedDisplayLink = nil;
 static CGFloat g_hostedPortraitNotchHeight = 0.0;
 
-// Persistent AOV layer pool. Each frame only changes position, contents and
-// visibility inside a disabled-actions transaction.
-static UIImageView *g_hostedLQHeroViews[5] = {};
-static UIImageView *g_hostedLQMinimapViews[5] = {};
-static UIImageView *g_hostedLQStatusHeroViews[5] = {};
-static CATextLayer *g_hostedLQHealthLabels[5] = {};
-static CAShapeLayer *g_hostedLQUltimateDiamonds[5] = {};
-static CATextLayer *g_hostedLQUltimateLabels[5] = {};
-static CATextLayer *g_hostedLQTalentLabels[5] = {};
-static CALayer *g_hostedLQMonsterViews[kDSLQMaxMonsters] = {};
-static CATextLayer *g_hostedLQMonsterHealthLabels[kDSLQMaxMonsters] = {};
-static CALayer *g_hostedLQMonsterMinimapViews[kDSLQMaxMonsters] = {};
-static uint64_t g_hostedLQMonsterActors[kDSLQMaxMonsters] = {};
-static uint32_t g_hostedLQMonsterConfigIds[kDSLQMaxMonsters] = {};
-static uint64_t g_hostedLQMonsterLastSeen[kDSLQMaxMonsters] = {};
-static int32_t g_hostedLQMonsterLastHealth[kDSLQMaxMonsters] = {};
-static CGPoint g_hostedLQMonsterLastWorldPositions[kDSLQMaxMonsters] = {};
-static CGPoint g_hostedLQMonsterLastMapPositions[kDSLQMaxMonsters] = {};
-static BOOL g_hostedLQMonsterHasWorldPosition[kDSLQMaxMonsters] = {};
-static BOOL g_hostedLQMonsterHasMapPosition[kDSLQMaxMonsters] = {};
-static const CGFloat kDSLQHeroIconSize = 32.5;
-
-static CGFloat ds_hosted_lq_minimap_icon_size(CGFloat screenHeight) {
-    CGFloat nativeScale = MAX(UIScreen.mainScreen.nativeScale, 1.0);
-    return nativeScale == 2.0 && screenHeight < 500.0
-        ? 14.0 : 42.0 / nativeScale;
-}
-
-static CGFloat ds_hosted_lq_minimap_center_x(CGFloat gameScreenX,
-                                              CGFloat gameScreenWidth,
-                                              const float viewport[4],
-                                              CGFloat overlayWidth,
-                                              CGFloat safeAreaInset,
-                                              CGFloat fallbackCenterX,
-                                              BOOL *usedRuntime) {
-    // RefreshMinimapFinalPos stores WorldToScreenPoint. The game subsequently
-    // sends that point through the same form camera's ScreenToWorldPoint, so
-    // remove its pixelRect before mapping the viewport coordinate to UIKit.
-    CGFloat centerX = gameScreenWidth > 0.0 && viewport[2] > 0.0
-        ? ((gameScreenX / gameScreenWidth - viewport[0]) / viewport[2]) *
-              overlayWidth + safeAreaInset * 0.5
-        : NAN;
-    BOOL valid = isfinite(centerX) && centerX > 0.0;
-    if (usedRuntime) *usedRuntime = valid;
-    return valid ? centerX : fallbackCenterX;
-}
-
-static CGFloat ds_hosted_lq_minimap_center_y(CGFloat mapHeight,
-                                              int32_t roomType,
-                                              CGFloat gameScreenY,
-                                              CGFloat gameScreenHeight,
-                                              const float viewport[4],
-                                              CGFloat overlayHeight,
-                                              BOOL *usedRuntime) {
-    // mmFinalScreenPos.y is the game's actual minimap anchor. It includes
-    // layout choices such as moving the shop to the right; only the fallback
-    // differs by map type. The hosted overlay's axes are manually rotated, so
-    // convert the form-camera viewport's bottom-origin Y to UIKit's top-origin.
-    if (isfinite(gameScreenY) && gameScreenY > 0.0 &&
-        viewport[3] > 0.0 && gameScreenHeight > 0.0 &&
-        overlayHeight > 0.0) {
-        CGFloat viewportY =
-            (gameScreenY / gameScreenHeight - viewport[1]) / viewport[3];
-        // RefreshMinimapFinalPos projects mmUGUIRoot's lower pivot. Marker
-        // offsets, however, are relative to the map center.
-        CGFloat centerY = (1.0 - viewportY) * overlayHeight -
-                          mapHeight * 0.5;
-        if (isfinite(centerY) && centerY >= 0.0) {
-            if (usedRuntime) *usedRuntime = YES;
-            return centerY;
-        }
-    }
-    if (usedRuntime) *usedRuntime = NO;
-    if (roomType == 3) return mapHeight * 0.75 + 18.0;
-    return mapHeight * 0.5 + 1.0;
-}
-
-static CGFloat ds_hosted_lq_minimap_layout_y_correction(
-    int32_t storePosMode,
-    CGFloat mapHeight,
-    CGFloat rawAnchorY,
-    CGFloat nodeRatio,
-    CGFloat screenToLayerY) {
-    CGFloat anchorHalfHeight = fabs(rawAnchorY) *
-                               nodeRatio * screenToLayerY;
-    CGFloat correction = mapHeight * 0.5 - anchorHalfHeight;
-    if (!isfinite(correction) || fabs(correction) >= mapHeight * 0.1) {
-        correction = 0.0;
-    }
-
-    if (storePosMode == 0) {
-        // The store-left layout clips the outer minimap root at the top.
-        CGFloat layoutRemainder = mapHeight - fabs(rawAnchorY);
-        if (isfinite(layoutRemainder) && layoutRemainder > 0.0 &&
-            layoutRemainder < mapHeight * 0.5) {
-            correction += layoutRemainder * 0.5;
-        }
-    } else if (storePosMode == 1) {
-        // The right-store minimap's visible content pivot sits one point above
-        // the outer root returned by RefreshMinimapFinalPos.
-        correction += 1.0;
-    }
-    return correction;
-}
-
-typedef struct {
-    BOOL valid;
-    CGFloat scaleX;
-    CGFloat scaleY;
-    CGFloat mapWidth;
-    CGFloat mapHeight;
-    CGPoint baseCenter;
-    CGPoint markerCenter;
-} DSHostedLQMinimapLayout;
-
-// Runtime minimap geometry is identical for every hero and monster in one
-// projection frame. Build its screen transform once, then share it across both
-// render passes. The manual offset moves only minimap markers; status/cooldown
-// widgets keep using baseCenter and remain in their original screen position.
-static DSHostedLQMinimapLayout ds_hosted_lq_minimap_layout(
-    CGFloat gameScreenWidth,
-    CGFloat gameScreenHeight,
-    const float viewport[4],
-    CGFloat mapWidthPixels,
-    CGFloat mapHeightPixels,
-    CGFloat gameCenterX,
-    CGFloat gameCenterY,
-    CGFloat rawAnchorY,
-    int32_t storePosMode,
-    int32_t roomType,
-    CGFloat overlayWidth,
-    CGFloat overlayHeight,
-    CGFloat runtimeMinimapInset) {
-    DSHostedLQMinimapLayout layout = {};
-    if (!viewport || !isfinite(gameScreenWidth) ||
-        !isfinite(gameScreenHeight) || !isfinite(mapWidthPixels) ||
-        !isfinite(mapHeightPixels) || gameScreenWidth <= 0.0 ||
-        gameScreenHeight <= 0.0 || viewport[2] <= 0.0f ||
-        viewport[3] <= 0.0f || mapWidthPixels <= 0.0 ||
-        mapHeightPixels <= 0.0 || overlayWidth <= 0.0 ||
-        overlayHeight <= 0.0) {
-        return layout;
-    }
-
-    layout.scaleX = overlayWidth / (gameScreenWidth * viewport[2]);
-    layout.scaleY = overlayHeight / (gameScreenHeight * viewport[3]);
-    layout.mapWidth = mapWidthPixels * layout.scaleX;
-    layout.mapHeight = mapHeightPixels * layout.scaleY;
-    if (!isfinite(layout.scaleX) || !isfinite(layout.scaleY) ||
-        !isfinite(layout.mapWidth) || !isfinite(layout.mapHeight) ||
-        layout.scaleX <= 0.0 || layout.scaleY <= 0.0 ||
-        layout.mapWidth <= 0.0 || layout.mapHeight <= 0.0) {
-        DSHostedLQMinimapLayout empty = {};
-        return empty;
-    }
-
-    CGFloat fallbackCenterX = runtimeMinimapInset + layout.mapWidth * 0.5;
-    layout.baseCenter.x = ds_hosted_lq_minimap_center_x(
-        gameCenterX, gameScreenWidth, viewport, overlayWidth,
-        runtimeMinimapInset, fallbackCenterX, nullptr);
-    BOOL usedRuntimeCenterY = NO;
-    layout.baseCenter.y = ds_hosted_lq_minimap_center_y(
-        layout.mapHeight, roomType, gameCenterY, gameScreenHeight,
-        viewport, overlayHeight, &usedRuntimeCenterY);
-    if (usedRuntimeCenterY) {
-        CGFloat nodeRatio = MIN(gameScreenWidth / 1136.0,
-                                gameScreenHeight / 640.0);
-        layout.baseCenter.y -= ds_hosted_lq_minimap_layout_y_correction(
-            storePosMode, layout.mapHeight, rawAnchorY, nodeRatio,
-            layout.scaleY);
-    }
-
-    CGPoint offset = ds_hosted_minimap_offset();
-    layout.markerCenter = CGPointMake(layout.baseCenter.x + offset.x,
-                                      layout.baseCenter.y + offset.y);
-    layout.valid = isfinite(layout.baseCenter.x) &&
-                   isfinite(layout.baseCenter.y) &&
-                   isfinite(layout.markerCenter.x) &&
-                   isfinite(layout.markerCenter.y);
-    return layout;
-}
-static int32_t g_hostedLQLastHealth[5] = {};
-static uint32_t g_hostedLQHeroConfigIds[5] = {};
-static uint32_t g_hostedLQHeroRequestedConfigIds[5] = {};
-static uint32_t g_hostedLQHeroPlayerIds[5] = {};
-static uint64_t g_hostedLQHeroActors[5] = {};
-static uint64_t g_hostedLQHeroLastSeen[5] = {};
-static uint64_t g_hostedLQHeroLastImageAttempt[5] = {};
-static CGPoint g_hostedLQHeroLastPositions[5] = {};
-static BOOL g_hostedLQHeroHasPosition[5] = {};
-static uint64_t g_hostedLQSlotEpoch = 0;
-static uint64_t g_hostedLQRenderSequence = 0;
-
-static os_unfair_lock g_hostedLQHeroImageCacheLock = OS_UNFAIR_LOCK_INIT;
-static std::atomic_bool g_dslqAllHeroImagesPrewarmStarted(false);
-
-typedef struct {
-    uint32_t magic;
-    uint32_t version;
-    uint32_t width;
-    uint32_t height;
-    uint32_t bytesPerRow;
-    uint64_t payloadSize;
-} DSLQDecodedImageCacheHeader;
-
-static const uint32_t kDSLQDecodedImageCacheMagic = 0x44535149U;
-static const uint32_t kDSLQDecodedImageCacheVersion = 1U;
-
-static NSString *ds_lq_decoded_image_cache_directory(void) {
-    static NSString *directory;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(
-            NSDocumentDirectory, NSUserDomainMask, YES);
-        NSString *base = paths.firstObject ?: NSTemporaryDirectory();
-        directory = [[base stringByAppendingPathComponent:
-            @"DarkSpeed/HeroImageCache"] copy];
-        [[NSFileManager defaultManager] createDirectoryAtPath:directory
-                                  withIntermediateDirectories:YES
-                                                   attributes:nil
-                                                        error:nil];
-    });
-    return directory;
-}
-
-static NSString *ds_lq_decoded_image_cache_path(uint32_t heroId) {
-    if (!heroId) return nil;
-    return [ds_lq_decoded_image_cache_directory()
-        stringByAppendingPathComponent:
-            [NSString stringWithFormat:@"hero_%u.rgba", heroId]];
-}
-
-static UIImage *ds_lq_load_decoded_image_from_disk(uint32_t heroId) {
-    NSString *path = ds_lq_decoded_image_cache_path(heroId);
-    if (!path) return nil;
-    NSData *file = [NSData dataWithContentsOfFile:path
-                                          options:NSDataReadingMappedIfSafe
-                                            error:nil];
-    if (!file || file.length < sizeof(DSLQDecodedImageCacheHeader)) return nil;
-
-    DSLQDecodedImageCacheHeader header = {};
-    memcpy(&header, file.bytes, sizeof(header));
-    if (header.magic != kDSLQDecodedImageCacheMagic ||
-        header.version != kDSLQDecodedImageCacheVersion ||
-        !header.width || !header.height ||
-        header.width > 4096 || header.height > 4096 ||
-        header.bytesPerRow < header.width * 4U ||
-        header.payloadSize != (uint64_t)header.bytesPerRow * header.height ||
-        header.payloadSize > SIZE_MAX ||
-        file.length != sizeof(header) + (NSUInteger)header.payloadSize) {
-        return nil;
-    }
-
-    NSData *payload = [file subdataWithRange:NSMakeRange(
-        sizeof(header), (NSUInteger)header.payloadSize)];
-    CGDataProviderRef provider = CGDataProviderCreateWithCFData(
-        (__bridge CFDataRef)payload);
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGImageRef cgImage = provider && colorSpace
-        ? CGImageCreate(header.width, header.height, 8, 32,
-                        header.bytesPerRow, colorSpace,
-                        kCGImageAlphaPremultipliedLast |
-                            kCGBitmapByteOrder32Big,
-                        provider, NULL, false, kCGRenderingIntentDefault)
-        : NULL;
-    if (provider) CGDataProviderRelease(provider);
-    if (colorSpace) CGColorSpaceRelease(colorSpace);
-    if (!cgImage) return nil;
-    UIImage *image = [UIImage imageWithCGImage:cgImage scale:1.0
-                                   orientation:UIImageOrientationUp];
-    CGImageRelease(cgImage);
-    return image;
-}
-
-static void ds_lq_store_decoded_image_to_disk(uint32_t heroId,
-                                               size_t width,
-                                               size_t height,
-                                               size_t bytesPerRow,
-                                               const void *pixels) {
-    if (!heroId || !pixels || !width || !height ||
-        width > UINT32_MAX || height > UINT32_MAX ||
-        bytesPerRow < width * 4 || bytesPerRow > UINT32_MAX ||
-        height > SIZE_MAX / bytesPerRow) return;
-    size_t payloadSize = bytesPerRow * height;
-    if (payloadSize > UINT64_MAX) return;
-    DSLQDecodedImageCacheHeader header = {
-        kDSLQDecodedImageCacheMagic,
-        kDSLQDecodedImageCacheVersion,
-        (uint32_t)width,
-        (uint32_t)height,
-        (uint32_t)bytesPerRow,
-        (uint64_t)payloadSize
-    };
-    NSMutableData *file = [NSMutableData dataWithCapacity:
-        sizeof(header) + payloadSize];
-    [file appendBytes:&header length:sizeof(header)];
-    [file appendBytes:pixels length:payloadSize];
-    NSString *path = ds_lq_decoded_image_cache_path(heroId);
-    if (path) [file writeToFile:path options:NSDataWritingAtomic error:nil];
-}
-
-static NSMutableDictionary<NSNumber *, UIImage *> *ds_lq_hero_image_cache(void) {
-    static NSMutableDictionary<NSNumber *, UIImage *> *cache;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        cache = [NSMutableDictionary dictionaryWithCapacity:160];
-    });
-    return cache;
-}
-
-static UIImage *ds_lq_hero_image(uint32_t heroId) {
-    if (!heroId) return nil;
-    NSMutableDictionary<NSNumber *, UIImage *> *cache = ds_lq_hero_image_cache();
-    NSNumber *key = @(heroId);
-    os_unfair_lock_lock(&g_hostedLQHeroImageCacheLock);
-    UIImage *image = cache[key];
-    os_unfair_lock_unlock(&g_hostedLQHeroImageCacheLock);
-    return image;
-}
-
-static UIImage *ds_lq_decode_hero_image(uint32_t heroId) {
-    if (!heroId) return nil;
-    UIImage *cached = ds_lq_hero_image(heroId);
-    if (cached) return cached;
-
-    UIImage *diskCached = ds_lq_load_decoded_image_from_disk(heroId);
-    if (diskCached) {
-        NSMutableDictionary<NSNumber *, UIImage *> *cache =
-            ds_lq_hero_image_cache();
-        NSNumber *key = @(heroId);
-        os_unfair_lock_lock(&g_hostedLQHeroImageCacheLock);
-        UIImage *existing = cache[key];
-        if (!existing) cache[key] = diskCached;
-        os_unfair_lock_unlock(&g_hostedLQHeroImageCacheLock);
-        return existing ?: diskCached;
-    }
-
-    UIImage *image = nil;
-    for (size_t i = 0; i < sizeof(heroArray) / sizeof(heroArray[0]); i++) {
-        if ((uint32_t)heroArray[i].heroid != heroId) continue;
-        NSData *data = [NSData dataWithBytesNoCopy:heroArray[i].data
-                                            length:heroArray[i].size
-                                      freeWhenDone:NO];
-        image = [UIImage imageWithData:data];
-        break;
-    }
-    if (!image) return nil;
-
-    // Force bitmap decode away from the display callback. CALayer uses the
-    // CGImage pixels directly, so UIImage's logical scale is not relevant.
-    CGImageRef source = image.CGImage;
-    size_t width = source ? CGImageGetWidth(source) : 0;
-    size_t height = source ? CGImageGetHeight(source) : 0;
-    if (source && width && height && width <= SIZE_MAX / 4) {
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-        CGContextRef context = colorSpace
-            ? CGBitmapContextCreate(NULL, width, height, 8, width * 4,
-                                    colorSpace,
-                                    kCGImageAlphaPremultipliedLast |
-                                        kCGBitmapByteOrder32Big)
-            : NULL;
-        if (context) {
-            CGContextSetBlendMode(context, kCGBlendModeCopy);
-            CGContextDrawImage(context, CGRectMake(0, 0, width, height),
-                               source);
-            ds_lq_store_decoded_image_to_disk(
-                heroId, width, height, width * 4,
-                CGBitmapContextGetData(context));
-            CGImageRef decoded = CGBitmapContextCreateImage(context);
-            if (decoded) {
-                image = [UIImage imageWithCGImage:decoded];
-                CGImageRelease(decoded);
-            }
-            CGContextRelease(context);
-        }
-        if (colorSpace) CGColorSpaceRelease(colorSpace);
-    }
-
-    NSMutableDictionary<NSNumber *, UIImage *> *cache = ds_lq_hero_image_cache();
-    NSNumber *key = @(heroId);
-    os_unfair_lock_lock(&g_hostedLQHeroImageCacheLock);
-    UIImage *existing = cache[key];
-    if (!existing) cache[key] = image;
-    os_unfair_lock_unlock(&g_hostedLQHeroImageCacheLock);
-    return existing ?: image;
-}
-
-typedef struct {
-    int count;
-    uint32_t heroIds[kDSLQMaxEnemies];
-} DSLQHeroImagePrewarmRequest;
-
-static dispatch_queue_t ds_lq_hero_image_prewarm_queue(void) {
-    static dispatch_queue_t queue;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.darkspeed.lq.hero-images",
-                                      DISPATCH_QUEUE_SERIAL);
-    });
-    return queue;
-}
-
-static void ds_lq_prewarm_hero_images(const uint32_t *heroIds, int count) {
-    DSLQHeroImagePrewarmRequest request = {};
-    request.count = MIN(MAX(count, 0), kDSLQMaxEnemies);
-    for (int i = 0; i < request.count; i++) request.heroIds[i] = heroIds[i];
-    dispatch_async(ds_lq_hero_image_prewarm_queue(), ^{
-        @autoreleasepool {
-            for (int i = 0; i < request.count; i++)
-                (void)ds_lq_decode_hero_image(request.heroIds[i]);
-        }
-    });
-}
-
-static void ds_lq_prewarm_all_hero_images(void) {
-    bool expected = false;
-    if (!g_dslqAllHeroImagesPrewarmStarted.compare_exchange_strong(
-            expected, true, std::memory_order_acq_rel)) return;
-    dispatch_async(ds_lq_hero_image_prewarm_queue(), ^{
-        @autoreleasepool {
-            const size_t count = sizeof(heroArray) / sizeof(heroArray[0]);
-            for (size_t i = 0; i < count; i++)
-                (void)ds_lq_decode_hero_image((uint32_t)heroArray[i].heroid);
-        }
-    });
-}
 
 static void ds_hosted_consume_render_snapshot(bool fallback,
                                               double timestamp,
@@ -3271,516 +2340,6 @@ static void ds_hosted_apply_orientation(UIInterfaceOrientation orientation) {
         (int)orientation != g_hostedMenuLastOrientation) {
         g_hostedMenuLastOrientation = (int)orientation;
         [g_hostedMenuViewController dsApplyOrientation];
-    }
-}
-
-#pragma mark - AOV icon render
-
-static void ds_hosted_lq_hide_all(void) {
-    for (int i = 0; i < kDSLQMaxEnemies; i++) {
-        UIImageView *view = g_hostedLQHeroViews[i];
-        if (view && !view.hidden) view.hidden = YES;
-        UIImageView *minimapView = g_hostedLQMinimapViews[i];
-        if (minimapView && !minimapView.hidden) minimapView.hidden = YES;
-        UIImageView *statusView = g_hostedLQStatusHeroViews[i];
-        if (statusView && !statusView.hidden) statusView.hidden = YES;
-        if (g_hostedLQHealthLabels[i])
-            g_hostedLQHealthLabels[i].hidden = YES;
-        if (g_hostedLQUltimateDiamonds[i])
-            g_hostedLQUltimateDiamonds[i].hidden = YES;
-        if (g_hostedLQUltimateLabels[i])
-            g_hostedLQUltimateLabels[i].hidden = YES;
-        if (g_hostedLQTalentLabels[i])
-            g_hostedLQTalentLabels[i].hidden = YES;
-    }
-    for (int i = 0; i < kDSLQMaxMonsters; i++) {
-        if (g_hostedLQMonsterViews[i])
-            g_hostedLQMonsterViews[i].hidden = YES;
-        if (g_hostedLQMonsterHealthLabels[i])
-            g_hostedLQMonsterHealthLabels[i].hidden = YES;
-        if (g_hostedLQMonsterMinimapViews[i])
-            g_hostedLQMonsterMinimapViews[i].hidden = YES;
-    }
-}
-
-static void ds_hosted_lq_reset_slots(BOOL clearContents) {
-    ds_hosted_lq_hide_all();
-    memset(g_hostedLQHeroConfigIds, 0, sizeof(g_hostedLQHeroConfigIds));
-    memset(g_hostedLQHeroRequestedConfigIds, 0,
-           sizeof(g_hostedLQHeroRequestedConfigIds));
-    memset(g_hostedLQHeroPlayerIds, 0, sizeof(g_hostedLQHeroPlayerIds));
-    memset(g_hostedLQHeroActors, 0, sizeof(g_hostedLQHeroActors));
-    memset(g_hostedLQHeroLastSeen, 0, sizeof(g_hostedLQHeroLastSeen));
-    memset(g_hostedLQHeroLastImageAttempt, 0,
-           sizeof(g_hostedLQHeroLastImageAttempt));
-    memset(g_hostedLQHeroLastPositions, 0,
-           sizeof(g_hostedLQHeroLastPositions));
-    memset(g_hostedLQHeroHasPosition, 0,
-           sizeof(g_hostedLQHeroHasPosition));
-    memset(g_hostedLQMonsterActors, 0, sizeof(g_hostedLQMonsterActors));
-    memset(g_hostedLQMonsterConfigIds, 0,
-           sizeof(g_hostedLQMonsterConfigIds));
-    memset(g_hostedLQMonsterLastSeen, 0,
-           sizeof(g_hostedLQMonsterLastSeen));
-    memset(g_hostedLQMonsterLastWorldPositions, 0,
-           sizeof(g_hostedLQMonsterLastWorldPositions));
-    memset(g_hostedLQMonsterLastMapPositions, 0,
-           sizeof(g_hostedLQMonsterLastMapPositions));
-    memset(g_hostedLQMonsterHasWorldPosition, 0,
-           sizeof(g_hostedLQMonsterHasWorldPosition));
-    memset(g_hostedLQMonsterHasMapPosition, 0,
-           sizeof(g_hostedLQMonsterHasMapPosition));
-    for (int i = 0; i < kDSLQMaxEnemies; i++)
-        g_hostedLQLastHealth[i] = INT32_MIN;
-    for (int i = 0; i < kDSLQMaxMonsters; i++)
-        g_hostedLQMonsterLastHealth[i] = INT32_MIN;
-    g_hostedLQSlotEpoch = 0;
-    g_hostedLQRenderSequence = 0;
-    if (clearContents) {
-        for (int i = 0; i < kDSLQMaxEnemies; i++) {
-            if (g_hostedLQHeroViews[i]) g_hostedLQHeroViews[i].image = nil;
-            if (g_hostedLQMinimapViews[i])
-                g_hostedLQMinimapViews[i].image = nil;
-            if (g_hostedLQStatusHeroViews[i])
-                g_hostedLQStatusHeroViews[i].image = nil;
-        }
-    }
-}
-
-static int ds_hosted_lq_slot_for_identity(uint32_t playerId, uint64_t actor,
-                                          const BOOL touched[5]) {
-    if (playerId) {
-        for (int i = 0; i < kDSLQMaxEnemies; i++) {
-            if (!touched[i] && g_hostedLQHeroPlayerIds[i] == playerId) return i;
-        }
-    }
-    if (actor) {
-        for (int i = 0; i < kDSLQMaxEnemies; i++) {
-            if (!touched[i] && g_hostedLQHeroActors[i] == actor) return i;
-        }
-    }
-    for (int i = 0; i < kDSLQMaxEnemies; i++) {
-        if (!touched[i] && g_hostedLQHeroPlayerIds[i] == 0 &&
-            g_hostedLQHeroActors[i] == 0) return i;
-    }
-    int oldestSlot = -1;
-    uint64_t oldestSeen = UINT64_MAX;
-    for (int i = 0; i < kDSLQMaxEnemies; i++) {
-        if (!touched[i] && g_hostedLQHeroLastSeen[i] < oldestSeen) {
-            oldestSeen = g_hostedLQHeroLastSeen[i];
-            oldestSlot = i;
-        }
-    }
-    return oldestSlot;
-}
-
-static int ds_hosted_lq_monster_slot_for_actor(
-    uint64_t actor, const BOOL touched[kDSLQMaxMonsters]) {
-    if (!actor) return -1;
-    for (int i = 0; i < kDSLQMaxMonsters; i++) {
-        if (!touched[i] && g_hostedLQMonsterActors[i] == actor) return i;
-    }
-    for (int i = 0; i < kDSLQMaxMonsters; i++) {
-        if (!touched[i] && g_hostedLQMonsterActors[i] == 0) return i;
-    }
-    int oldestSlot = -1;
-    uint64_t oldestSeen = UINT64_MAX;
-    for (int i = 0; i < kDSLQMaxMonsters; i++) {
-        if (!touched[i] && g_hostedLQMonsterLastSeen[i] < oldestSeen) {
-            oldestSeen = g_hostedLQMonsterLastSeen[i];
-            oldestSlot = i;
-        }
-    }
-    return oldestSlot;
-}
-
-static BOOL ds_hosted_lq_monster_buff(uint32_t configId) {
-    return configId == 7010 || configId == 7011 ||
-           configId == 547010 || configId == 547011;
-}
-
-static BOOL ds_hosted_lq_monster_boss(uint32_t configId) {
-    return configId == 49 || configId == 7012 || configId == 70093 ||
-           configId == 123 ||
-           configId == 124 || configId == 70092 || configId == 7024 ||
-           configId == 7009;
-}
-
-static BOOL ds_hosted_lq_monster_minimap_large(uint32_t configId) {
-    return configId == 7010 || configId == 7011 || configId == 7012 ||
-           configId == 70093 || configId == 70092 || configId == 7024 ||
-           configId == 7009 || configId == 547010 || configId == 547011;
-}
-
-static void ds_hosted_lq_apply_cooldowns(const DSLQProjectedHero &hero,
-                                         int slot, CGPoint minimapCenter,
-                                         CGFloat width, CGFloat height,
-                                         BOOL hidden) {
-    UIImageView *statusHero = g_hostedLQStatusHeroViews[slot];
-    CAShapeLayer *diamond = g_hostedLQUltimateDiamonds[slot];
-    CATextLayer *ultimate = g_hostedLQUltimateLabels[slot];
-    CATextLayer *talent = g_hostedLQTalentLabels[slot];
-    CGFloat nativeScale = MAX(UIScreen.mainScreen.scale, 1.0);
-    CGFloat baseScale = nativeScale == 2.0 && height < 500.0
-        ? 12.0 : 42.0 / nativeScale;
-    CGFloat iconScale = 1.5 * baseScale;
-    NSInteger heroIndex = slot + 1;
-    CGPoint position = CGPointMake(
-        minimapCenter.x + width / 8.0 +
-            (heroIndex + 5) * iconScale + round(height / 60.0) * heroIndex,
-        iconScale * 0.5 + 10.0);
-    if (statusHero) {
-        statusHero.frame = CGRectMake(position.x - iconScale * 0.5,
-                                      position.y - iconScale * 0.5,
-                                      iconScale, iconScale);
-        statusHero.layer.cornerRadius = iconScale * 0.5;
-        statusHero.hidden = hidden;
-    }
-    BOOL ultimateHidden = hidden || !hero.ultimateCooldownValid;
-    if (diamond) {
-        CGFloat diamondSize = (iconScale / 8.0) * 1.5;
-        CGPoint center = CGPointMake(
-            position.x, position.y - iconScale * 0.5 - 2.0);
-        diamond.frame = CGRectMake(center.x - diamondSize - 2.0,
-                                   center.y - diamondSize - 2.0,
-                                   (diamondSize + 2.0) * 2.0,
-                                   (diamondSize + 2.0) * 2.0);
-        CGMutablePathRef path = CGPathCreateMutable();
-        CGFloat cx = CGRectGetMidX(diamond.bounds);
-        CGFloat cy = CGRectGetMidY(diamond.bounds);
-        CGPathMoveToPoint(path, NULL, cx, cy - diamondSize);
-        CGPathAddLineToPoint(path, NULL, cx + diamondSize, cy);
-        CGPathAddLineToPoint(path, NULL, cx, cy + diamondSize);
-        CGPathAddLineToPoint(path, NULL, cx - diamondSize, cy);
-        CGPathCloseSubpath(path);
-        diamond.path = path;
-        CGPathRelease(path);
-        diamond.lineWidth = 1.5;
-        diamond.strokeColor = [UIColor colorWithRed:175/255.0
-                                               green:238/255.0
-                                                blue:238/255.0 alpha:1.0].CGColor;
-        diamond.fillColor =
-            [UIColor colorWithRed:0 green:200/255.0 blue:0 alpha:1.0].CGColor;
-        diamond.hidden = ultimateHidden || hero.ultimateCooldown > 0;
-        if (ultimate) {
-            BOOL showNumber = !ultimateHidden &&
-                hero.ultimateCooldown > 0;
-            ultimate.string = showNumber
-                ? [NSString stringWithFormat:@"%d", hero.ultimateCooldown]
-                : @"";
-            ultimate.frame = CGRectMake(center.x - 18.0, center.y - 7.0,
-                                        36.0, 14.0);
-            ultimate.hidden = !showNumber;
-        }
-    }
-    if (talent) {
-        BOOL showTalent = !hidden && hero.talentCooldownValid &&
-                          hero.talentCooldown > 0;
-        talent.string = showTalent
-            ? [NSString stringWithFormat:@"%d", hero.talentCooldown] : @"";
-        talent.frame = CGRectMake(position.x - 15.0,
-                                  position.y + iconScale + 4.75,
-                                  30.0, 14.0);
-        talent.hidden = !showTalent;
-    }
-}
-
-// The AOV batch retains every enemy identity and marks projection rejects as
-// invisible. Binding by playerId keeps a hero on the same CALayer at screen
-// edges instead of compacting all following heroes into different slots.
-static void ds_hosted_apply_lq(void) {
-    if (!g_hostedLayer) return;
-    if (!ds_hosted_esp_enabled()) {
-        // The switch only gates the overlay visuals; ds_lq_tick keeps running
-        // so Auto TT and the camera helpers stay live while ESP is off.
-        ds_hosted_lq_hide_all();
-        return;
-    }
-    UIInterfaceOrientation orientation = ds_active_orientation();
-    if (!UIInterfaceOrientationIsLandscape(orientation)) {
-        ds_hosted_lq_hide_all();
-        return;
-    }
-    DSLQProjectedHero heroes[5] = {};
-    uint64_t epoch = 0;
-    int count = ds_lq_copy_projected_heroes(heroes, &epoch);
-    if (count < 0) return;
-    if (count > kDSLQMaxEnemies) count = kDSLQMaxEnemies;
-    if (epoch && epoch != g_hostedLQSlotEpoch) {
-        ds_hosted_lq_reset_slots(YES);
-        g_hostedLQSlotEpoch = epoch;
-    }
-
-    BOOL touched[5] = {};
-    const CGFloat width = CGRectGetWidth(g_hostedLayer.bounds);
-    const CGFloat height = CGRectGetHeight(g_hostedLayer.bounds);
-    CGFloat notchHeight = g_hostedPortraitNotchHeight;
-    if (notchHeight <= 0.0) {
-        UIView *hostedRootView = g_hostedWindow.rootViewController.view;
-        notchHeight = CGRectGetMinY(
-            hostedRootView.safeAreaLayoutGuide.layoutFrame);
-    }
-    CGFloat landscapeLeftInset = notchHeight > 30.0 ? 41.0 : 0.0;
-    CGFloat runtimeMinimapInset = notchHeight > 30.0 ? notchHeight : 0.0;
-    DSHostedLQMinimapLayout minimapLayout = {};
-    for (int i = 0; i < count && !minimapLayout.valid; i++) {
-        const DSLQProjectedHero &sample = heroes[i];
-        minimapLayout = ds_hosted_lq_minimap_layout(
-            sample.minimapScreenWidthPx, sample.minimapScreenHeightPx,
-            sample.minimapFormCameraViewport, sample.minimapWidthPx,
-            sample.minimapHeightPx, sample.minimapCenterXPx,
-            sample.minimapCenterYPx, sample.minimapAnchorYPx,
-            sample.minimapStorePosMode, sample.minimapRoomType,
-            width, height, runtimeMinimapInset);
-    }
-    ++g_hostedLQRenderSequence;
-    for (int i = 0; i < count; i++) {
-        const DSLQProjectedHero &hero = heroes[i];
-        int slot = ds_hosted_lq_slot_for_identity(hero.playerId, hero.actor,
-                                                   touched);
-        if (slot < 0) continue;
-        touched[slot] = YES;
-        bool identityChanged =
-            g_hostedLQHeroPlayerIds[slot] != hero.playerId ||
-            g_hostedLQHeroActors[slot] != hero.actor;
-        g_hostedLQHeroPlayerIds[slot] = hero.playerId;
-        g_hostedLQHeroActors[slot] = hero.actor;
-        g_hostedLQHeroLastSeen[slot] = g_hostedLQRenderSequence;
-        if (identityChanged) g_hostedLQHeroHasPosition[slot] = NO;
-
-        UIImageView *view = g_hostedLQHeroViews[slot];
-        UIImageView *minimapView = g_hostedLQMinimapViews[slot];
-        UIImageView *statusView = g_hostedLQStatusHeroViews[slot];
-        if (!view) continue;
-        if (g_hostedLQHeroRequestedConfigIds[slot] != hero.configId) {
-            g_hostedLQHeroRequestedConfigIds[slot] = hero.configId;
-            g_hostedLQHeroConfigIds[slot] = 0;
-            g_hostedLQHeroLastImageAttempt[slot] = 0;
-            view.image = nil;
-            if (minimapView) minimapView.image = nil;
-            if (statusView) statusView.image = nil;
-        }
-        // Image decode/prewarm is metadata work. Retry a missing cache entry
-        // at a bounded cadence instead of taking the cache lock every display
-        // callback while still allowing an asynchronous prewarm to complete.
-        bool imageMissing = hero.configId != 0 &&
-            (g_hostedLQHeroConfigIds[slot] != hero.configId ||
-             view.image == nil);
-        if (imageMissing &&
-            (g_hostedLQHeroLastImageAttempt[slot] == 0 ||
-             g_hostedLQRenderSequence -
-                 g_hostedLQHeroLastImageAttempt[slot] >= 4)) {
-            UIImage *image = ds_lq_hero_image(hero.configId);
-            g_hostedLQHeroLastImageAttempt[slot] = g_hostedLQRenderSequence;
-            if (image) {
-                view.image = image;
-                if (minimapView) minimapView.image = image;
-                if (statusView) statusView.image = image;
-                g_hostedLQHeroConfigIds[slot] = hero.configId;
-            }
-        }
-        BOOL hidden = !hero.visible || view.image == nil;
-        CGPoint heroPosition = g_hostedLQHeroLastPositions[slot];
-        if (!hidden) {
-            CGPoint position = CGPointMake(hero.u * width, hero.v * height);
-            heroPosition = position;
-            const CGFloat iconSize = kDSLQHeroIconSize;
-            if (!g_hostedLQHeroHasPosition[slot] ||
-                !CGPointEqualToPoint(g_hostedLQHeroLastPositions[slot],
-                                     position)) {
-                view.frame = CGRectMake(position.x - iconSize * 0.5,
-                                        position.y - iconSize * 0.5,
-                                        iconSize, iconSize);
-                g_hostedLQHeroLastPositions[slot] = position;
-                g_hostedLQHeroHasPosition[slot] = YES;
-            }
-            CATextLayer *healthLabel = g_hostedLQHealthLabels[slot];
-            if (hero.hpSampleValid && healthLabel) {
-                if (g_hostedLQLastHealth[slot] != hero.hp) {
-                    healthLabel.string = [NSString stringWithFormat:@"%d",
-                                                                  hero.hp];
-                    g_hostedLQLastHealth[slot] = hero.hp;
-                }
-                healthLabel.frame = CGRectMake(
-                    position.x - 36.0, position.y - iconSize * 0.5 - 20.0,
-                    72.0, 18.0);
-                healthLabel.hidden = NO;
-            } else {
-                if (healthLabel) healthLabel.hidden = YES;
-            }
-        } else {
-            if (g_hostedLQHealthLabels[slot])
-                g_hostedLQHealthLabels[slot].hidden = YES;
-        }
-        if (view.hidden != hidden) view.hidden = hidden;
-        ds_hosted_lq_apply_cooldowns(
-            hero, slot,
-            CGPointMake(landscapeLeftInset,
-                        minimapLayout.valid ? minimapLayout.baseCenter.y : 1.0),
-            width, height, statusView == nil || statusView.image == nil);
-        CGFloat minimapX = minimapLayout.markerCenter.x +
-                           hero.minimapX * minimapLayout.scaleX;
-        CGFloat minimapY = minimapLayout.markerCenter.y +
-                           hero.minimapY * minimapLayout.scaleY;
-        BOOL minimapHidden = !minimapLayout.valid || !hero.minimapValid ||
-                             !minimapView ||
-                             minimapView.image == nil ||
-                             minimapX < 0.0 || minimapX > width ||
-                             minimapY < 0.0 || minimapY > height;
-        if (!minimapHidden) {
-            CGFloat minimapIconSize =
-                ds_hosted_lq_minimap_icon_size(height);
-            minimapView.frame = CGRectMake(
-                minimapX - minimapIconSize * 0.5,
-                minimapY - minimapIconSize * 0.5,
-                minimapIconSize, minimapIconSize);
-            minimapView.layer.cornerRadius = minimapIconSize * 0.5;
-        }
-        if (minimapView && minimapView.hidden != minimapHidden)
-            minimapView.hidden = minimapHidden;
-    }
-    for (int i = 0; i < kDSLQMaxEnemies; i++) {
-        if (!touched[i] && g_hostedLQHeroViews[i] &&
-            !g_hostedLQHeroViews[i].hidden) {
-            g_hostedLQHeroViews[i].hidden = YES;
-        }
-        if (!touched[i] && g_hostedLQHealthLabels[i])
-            g_hostedLQHealthLabels[i].hidden = YES;
-        if (!touched[i] && g_hostedLQMinimapViews[i])
-            g_hostedLQMinimapViews[i].hidden = YES;
-        if (!touched[i] && g_hostedLQStatusHeroViews[i])
-            g_hostedLQStatusHeroViews[i].hidden = YES;
-        if (!touched[i] && g_hostedLQUltimateDiamonds[i])
-            g_hostedLQUltimateDiamonds[i].hidden = YES;
-        if (!touched[i] && g_hostedLQUltimateLabels[i])
-            g_hostedLQUltimateLabels[i].hidden = YES;
-        if (!touched[i] && g_hostedLQTalentLabels[i])
-            g_hostedLQTalentLabels[i].hidden = YES;
-    }
-
-    DSLQProjectedMonster monsters[kDSLQMaxMonsters] = {};
-    uint64_t monsterEpoch = 0;
-    int monsterCount = ds_lq_copy_projected_monsters(monsters, &monsterEpoch);
-    if (monsterCount >= 0) {
-        monsterCount = MIN(monsterCount, kDSLQMaxMonsters);
-        BOOL monsterTouched[kDSLQMaxMonsters] = {};
-        for (int i = 0; i < monsterCount; i++) {
-            const DSLQProjectedMonster *monster = &monsters[i];
-            int slot = ds_hosted_lq_monster_slot_for_actor(
-                monster->actor, monsterTouched);
-            if (slot < 0) continue;
-            monsterTouched[slot] = YES;
-            BOOL identityChanged =
-                g_hostedLQMonsterActors[slot] != monster->actor;
-            BOOL configChanged =
-                g_hostedLQMonsterConfigIds[slot] != monster->configId;
-            if (identityChanged) {
-                g_hostedLQMonsterHasWorldPosition[slot] = NO;
-                g_hostedLQMonsterHasMapPosition[slot] = NO;
-                g_hostedLQMonsterLastHealth[slot] = INT32_MIN;
-            }
-            g_hostedLQMonsterActors[slot] = monster->actor;
-            g_hostedLQMonsterConfigIds[slot] = monster->configId;
-            g_hostedLQMonsterLastSeen[slot] = g_hostedLQRenderSequence;
-
-            CALayer *worldDot = g_hostedLQMonsterViews[slot];
-            CATextLayer *worldHp = g_hostedLQMonsterHealthLabels[slot];
-            CALayer *mapDot = g_hostedLQMonsterMinimapViews[slot];
-            BOOL worldHidden = !monster || !monster->visible ||
-                monster->u < 0.0f || monster->u > 1.0f ||
-                monster->v < 0.0f || monster->v > 1.0f;
-            if (worldDot) {
-                if (!worldHidden) {
-                    CGPoint point = CGPointMake(monster->u * width,
-                                                monster->v * height);
-                    CGFloat radius = ds_hosted_lq_monster_boss(monster->configId)
-                        ? height / 100.0
-                        : (ds_hosted_lq_monster_buff(monster->configId)
-                           ? height / 150.0 : height / 200.0);
-                    if (!g_hostedLQMonsterHasWorldPosition[slot] ||
-                        configChanged ||
-                        !CGPointEqualToPoint(
-                            g_hostedLQMonsterLastWorldPositions[slot], point)) {
-                        worldDot.frame = CGRectMake(
-                            point.x - radius, point.y - radius,
-                            radius * 2.0, radius * 2.0);
-                        worldDot.cornerRadius = radius;
-                        if (worldHp) {
-                            worldHp.frame = CGRectMake(
-                                point.x - 70.0, point.y - radius - 20.0,
-                                140.0, 18.0);
-                            worldHp.fontSize = ds_hosted_lq_monster_boss(
-                                monster->configId) ? 15.0 : 12.0;
-                            worldHp.foregroundColor =
-                                (ds_hosted_lq_monster_buff(monster->configId)
-                                     ? UIColor.whiteColor
-                                     : UIColor.redColor).CGColor;
-                        }
-                        g_hostedLQMonsterLastWorldPositions[slot] = point;
-                        g_hostedLQMonsterHasWorldPosition[slot] = YES;
-                    }
-                    if (worldHp) {
-                        if (monster->hpSampleValid &&
-                            g_hostedLQMonsterLastHealth[slot] != monster->hp) {
-                            worldHp.string = [NSString stringWithFormat:@"%d",
-                                                                   monster->hp];
-                            g_hostedLQMonsterLastHealth[slot] = monster->hp;
-                        }
-                        BOOL hpHidden = !monster->hpSampleValid;
-                        if (worldHp.hidden != hpHidden)
-                            worldHp.hidden = hpHidden;
-                    }
-                } else if (worldHp) {
-                    if (!worldHp.hidden) worldHp.hidden = YES;
-                }
-                if (worldDot.hidden != worldHidden)
-                    worldDot.hidden = worldHidden;
-            }
-
-            CGFloat mapX = -1.0;
-            CGFloat mapY = -1.0;
-            if (monster && monster->minimapValid && minimapLayout.valid) {
-                mapX = minimapLayout.markerCenter.x +
-                       monster->minimapX * minimapLayout.scaleX;
-                mapY = minimapLayout.markerCenter.y +
-                       monster->minimapY * minimapLayout.scaleY;
-            }
-            BOOL mapHidden = !minimapLayout.valid || !monster ||
-                !monster->minimapValid ||
-                mapX < 0.0 || mapX > width || mapY < 0.0 || mapY > height;
-            if (mapDot) {
-                if (!mapHidden) {
-                    CGFloat radius = ds_hosted_lq_monster_minimap_large(
-                        monster->configId) ? height / 150.0
-                                           : height / 300.0;
-                    CGPoint point = CGPointMake(mapX, mapY);
-                    if (!g_hostedLQMonsterHasMapPosition[slot] ||
-                        configChanged ||
-                        !CGPointEqualToPoint(
-                            g_hostedLQMonsterLastMapPositions[slot], point)) {
-                        mapDot.frame = CGRectMake(
-                            mapX - radius, mapY - radius,
-                            radius * 2.0, radius * 2.0);
-                        mapDot.cornerRadius = radius;
-                        g_hostedLQMonsterLastMapPositions[slot] = point;
-                        g_hostedLQMonsterHasMapPosition[slot] = YES;
-                    }
-                }
-                if (mapDot.hidden != mapHidden) mapDot.hidden = mapHidden;
-            }
-        }
-        for (int slot = 0; slot < kDSLQMaxMonsters; slot++) {
-            if (monsterTouched[slot]) continue;
-            if (g_hostedLQMonsterViews[slot] &&
-                !g_hostedLQMonsterViews[slot].hidden)
-                g_hostedLQMonsterViews[slot].hidden = YES;
-            if (g_hostedLQMonsterHealthLabels[slot] &&
-                !g_hostedLQMonsterHealthLabels[slot].hidden)
-                g_hostedLQMonsterHealthLabels[slot].hidden = YES;
-            if (g_hostedLQMonsterMinimapViews[slot] &&
-                !g_hostedLQMonsterMinimapViews[slot].hidden)
-                g_hostedLQMonsterMinimapViews[slot].hidden = YES;
-        }
     }
 }
 
@@ -4879,20 +3438,15 @@ static void ds_hosted_consume_render_snapshot(bool fallback,
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     UIInterfaceOrientation renderOri = ds_active_orientation();
-    if (ds_active_game() == 1 && !UIInterfaceOrientationIsLandscape(renderOri)) {
+    if (!UIInterfaceOrientationIsLandscape(renderOri)) {
         if (ds_pubg_has_render_source()) {
             renderOri = UIInterfaceOrientationLandscapeRight;
         }
     }
     ds_hosted_apply_orientation(renderOri);
-    if (ds_active_game() == 1) {
-        ds_hosted_lq_hide_all();
-        ds_hosted_apply_pubg();
-    } else {
-        ds_hosted_pubg_hide_all();
-        ds_hosted_apply_lq();
-    }
+    ds_hosted_apply_pubg();
     [CATransaction commit];
+    [CATransaction flush];
 }
 
 static void ds_hosted_publish_render_snapshot(const DSHostedRenderSnapshot &next) {
@@ -5033,147 +3587,15 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
     g_hostedLayer = espView.layer;
     g_hostedLayer.contents = nil;
 
-    // AOV-only pool: five persistent hero icons and live-HP text layers.
-    {
-        NSDictionary *noAnim = @{@"position": [NSNull null], @"hidden": [NSNull null],
-                                 @"string": [NSNull null], @"bounds": [NSNull null],
-                                 @"frame": [NSNull null], @"backgroundColor": [NSNull null],
-                                 @"path": [NSNull null], @"strokeColor": [NSNull null],
-                                 @"fillColor": [NSNull null], @"lineWidth": [NSNull null],
-                                 @"lineDashPhase": [NSNull null]};
-        CGFloat scale = UIScreen.mainScreen.scale;
-        CGFloat minimapIconSize = ds_hosted_lq_minimap_icon_size(
-            MIN(CGRectGetWidth(content), CGRectGetHeight(content)));
-        for (int i = 0; i < kDSLQMaxEnemies; i++) {
-            UIImageView *minimapHero = [[UIImageView alloc]
-                initWithFrame:CGRectMake(0, 0, minimapIconSize,
-                                         minimapIconSize)];
-            minimapHero.contentMode = UIViewContentModeScaleAspectFill;
-            minimapHero.clipsToBounds = YES;
-            minimapHero.layer.cornerRadius = minimapIconSize * 0.5;
-            minimapHero.layer.masksToBounds = YES;
-            minimapHero.layer.borderWidth = 1.0;
-            minimapHero.layer.borderColor = UIColor.redColor.CGColor;
-            minimapHero.layer.contentsScale = scale;
-            minimapHero.hidden = YES;
-            minimapHero.userInteractionEnabled = NO;
-            minimapHero.layer.actions = noAnim;
-            [g_hostedESPView addSubview:minimapHero];
-            g_hostedLQMinimapViews[i] = minimapHero;
+    NSDictionary *noAnim = @{@"position": [NSNull null], @"hidden": [NSNull null],
+                             @"string": [NSNull null], @"bounds": [NSNull null],
+                             @"frame": [NSNull null], @"backgroundColor": [NSNull null],
+                             @"path": [NSNull null], @"strokeColor": [NSNull null],
+                             @"fillColor": [NSNull null], @"lineWidth": [NSNull null],
+                             @"lineDashPhase": [NSNull null]};
+    CGFloat scale = UIScreen.mainScreen.scale;
 
-            CATextLayer *healthLabel = [CATextLayer layer];
-            healthLabel.actions = noAnim;
-            healthLabel.contentsScale = scale;
-            healthLabel.alignmentMode = kCAAlignmentCenter;
-            healthLabel.fontSize = 15.0;
-            healthLabel.font = (__bridge CFTypeRef)
-                [UIFont systemFontOfSize:15.0 weight:UIFontWeightBold];
-            healthLabel.foregroundColor = UIColor.redColor.CGColor;
-            healthLabel.hidden = YES;
-            [g_hostedLayer addSublayer:healthLabel];
-            g_hostedLQHealthLabels[i] = healthLabel;
-
-            UIImageView *hero = [[UIImageView alloc]
-                initWithFrame:CGRectMake(0, 0, kDSLQHeroIconSize,
-                                         kDSLQHeroIconSize)];
-            hero.contentMode = UIViewContentModeScaleAspectFill;
-            hero.clipsToBounds = YES;
-            hero.layer.cornerRadius = kDSLQHeroIconSize * 0.5;
-            hero.layer.masksToBounds = YES;
-            hero.layer.borderWidth = 1.0;
-            hero.layer.borderColor =
-                [UIColor colorWithRed:1.0 green:0.10 blue:0.12 alpha:1.0].CGColor;
-            hero.layer.contentsScale = scale;
-            hero.hidden = YES;
-            hero.userInteractionEnabled = NO;
-            hero.layer.actions = noAnim;
-            [g_hostedESPView addSubview:hero];
-            g_hostedLQHeroViews[i] = hero;
-
-            UIImageView *statusHero = [[UIImageView alloc]
-                initWithFrame:CGRectZero];
-            statusHero.contentMode = UIViewContentModeScaleAspectFill;
-            statusHero.clipsToBounds = YES;
-            statusHero.layer.masksToBounds = YES;
-            statusHero.layer.borderWidth = 1.0;
-            statusHero.layer.borderColor =
-                [UIColor colorWithRed:139/255.0 green:0 blue:0 alpha:1.0].CGColor;
-            statusHero.layer.contentsScale = scale;
-            statusHero.hidden = YES;
-            statusHero.userInteractionEnabled = NO;
-            statusHero.layer.actions = noAnim;
-            [g_hostedESPView addSubview:statusHero];
-            g_hostedLQStatusHeroViews[i] = statusHero;
-
-            CAShapeLayer *ultimateDiamond = [CAShapeLayer layer];
-            ultimateDiamond.actions = noAnim;
-            ultimateDiamond.contentsScale = scale;
-            ultimateDiamond.hidden = YES;
-            [g_hostedLayer addSublayer:ultimateDiamond];
-            g_hostedLQUltimateDiamonds[i] = ultimateDiamond;
-
-            CATextLayer *ultimateLabel = [CATextLayer layer];
-            ultimateLabel.actions = noAnim;
-            ultimateLabel.contentsScale = scale;
-            ultimateLabel.alignmentMode = kCAAlignmentCenter;
-            ultimateLabel.fontSize = 9.0;
-            ultimateLabel.font = (__bridge CFTypeRef)
-                [UIFont systemFontOfSize:9.0 weight:UIFontWeightBold];
-            ultimateLabel.foregroundColor =
-                [UIColor colorWithRed:0 green:200/255.0 blue:0 alpha:1.0].CGColor;
-            ultimateLabel.hidden = YES;
-            [g_hostedLayer addSublayer:ultimateLabel];
-            g_hostedLQUltimateLabels[i] = ultimateLabel;
-
-            CATextLayer *talentLabel = [CATextLayer layer];
-            talentLabel.actions = noAnim;
-            talentLabel.contentsScale = scale;
-            talentLabel.alignmentMode = kCAAlignmentCenter;
-            talentLabel.fontSize = 10.0;
-            talentLabel.font = (__bridge CFTypeRef)
-                [UIFont systemFontOfSize:10.0 weight:UIFontWeightBold];
-            talentLabel.foregroundColor = UIColor.whiteColor.CGColor;
-            talentLabel.backgroundColor =
-                [UIColor colorWithWhite:0 alpha:0.72].CGColor;
-            talentLabel.cornerRadius = 7.0;
-            talentLabel.hidden = YES;
-            [g_hostedLayer addSublayer:talentLabel];
-            g_hostedLQTalentLabels[i] = talentLabel;
-        }
-
-        for (int i = 0; i < kDSLQMaxMonsters; i++) {
-            CALayer *worldDot = [CALayer layer];
-            worldDot.actions = noAnim;
-            worldDot.contentsScale = scale;
-            worldDot.backgroundColor = UIColor.redColor.CGColor;
-            worldDot.hidden = YES;
-            [g_hostedLayer addSublayer:worldDot];
-            g_hostedLQMonsterViews[i] = worldDot;
-
-            CATextLayer *worldHp = [CATextLayer layer];
-            worldHp.actions = noAnim;
-            worldHp.contentsScale = scale;
-            worldHp.alignmentMode = kCAAlignmentCenter;
-            worldHp.fontSize = 12.0;
-            worldHp.font = (__bridge CFTypeRef)
-                [UIFont systemFontOfSize:12.0 weight:UIFontWeightSemibold];
-            worldHp.foregroundColor = UIColor.redColor.CGColor;
-            worldHp.hidden = YES;
-            [g_hostedLayer addSublayer:worldHp];
-            g_hostedLQMonsterHealthLabels[i] = worldHp;
-
-            CALayer *mapDot = [CALayer layer];
-            mapDot.actions = noAnim;
-            mapDot.contentsScale = scale;
-            mapDot.backgroundColor = UIColor.redColor.CGColor;
-            mapDot.hidden = YES;
-            [g_hostedLayer addSublayer:mapDot];
-            g_hostedLQMonsterMinimapViews[i] = mapDot;
-        }
-
-        ds_hosted_lq_reset_slots(YES);
-
-        // PUBG-only pool: bounding boxes, snaplines, info labels, and health bars
+    // PUBG-only pool: bounding boxes, snaplines, info labels, and health bars
         {
             for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
                 CAShapeLayer *box = [CAShapeLayer layer];
@@ -5659,25 +4081,8 @@ static void ds_hosted_overlay_frame(void) {
     }
 
     DSHostedRenderSnapshot snapshot = {};
-
-    // FBSOrientationObserver follows the actual foreground application. While
-    // Home is portrait, stop touching the suspended game's mapped pages; the
-    // same reader state resumes when its landscape scene becomes active again.
-    // However, in PUBG external mode, allow tick to continue even on SpringBoard
-    // if the game process is running and connected.
-    if (ds_active_game() == 1) {
-        ds_pubg_tick();
-        snapshot.lqRenderSourceReady = ds_pubg_has_render_source();
-    } else {
-        UIInterfaceOrientation activeOrientation = ds_active_orientation();
-        if (UIInterfaceOrientationIsPortrait(activeOrientation)) {
-            ds_hosted_publish_render_snapshot(snapshot);
-            return;
-        }
-        ds_lq_tick();
-        snapshot.lqRenderSourceReady = ds_lq_has_render_source();
-    }
-
+    ds_pubg_tick();
+    snapshot.pubgRenderSourceReady = ds_pubg_has_render_source();
     g_hostedPushedFrames++;
     ds_hosted_publish_render_snapshot(snapshot);
 }
@@ -5699,12 +4104,7 @@ static void ds_hosted_overlay_start(void) {
     g_hostedConsumedDisplayPulse = UINT64_MAX;
     [NSUserDefaults.standardUserDefaults setInteger:1 forKey:kDSActiveGameKey];
     [NSUserDefaults.standardUserDefaults synchronize];
-    if (ds_active_game() == 1) {
-        ds_pubg_overlay_reset();
-    } else {
-        ds_lq_overlay_reset();
-        ds_lq_prewarm_all_hero_images();
-    }
+    ds_pubg_overlay_reset();
     dispatch_async(dispatch_get_main_queue(), ^{
         unsigned contextId = ds_hosted_overlay_setup_on_main();
         unsigned menuContextId = ds_hosted_menu_setup_on_main();
@@ -5743,7 +4143,7 @@ static void ds_hosted_overlay_start(void) {
             if (pulse == g_hostedConsumedDisplayPulse) {
                 // The display link can go silent while this process is
                 // backgrounded (hosted SpringBoard context, audio keepalive).
-                // Returning here starved ds_lq_tick() after the first frame:
+                // Returning here starved ds_pubg_tick() after the first frame:
                 // no ESP refresh, no camera zoom, no auto smite, and menu
                 // switches appeared dead. Only skip while the display link is
                 // actually driving frames; otherwise this timer reads and
@@ -5784,7 +4184,6 @@ static void ds_hosted_overlay_pause(void) {
     g_hostedLastDisplayLinkTick.store(0.0, std::memory_order_relaxed);
     g_hostedDisplayPulse.store(0, std::memory_order_release);
     g_hostedConsumedDisplayPulse = UINT64_MAX;
-    ds_lq_overlay_reset();
     ds_pubg_overlay_reset();
     dispatch_async(dispatch_get_main_queue(), ^{
         [g_hostedDisplayLink invalidate];
@@ -5794,7 +4193,6 @@ static void ds_hosted_overlay_pause(void) {
         g_hostedMenuWindow.hidden = YES;
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        ds_hosted_lq_reset_slots(YES);
         ds_hosted_pubg_hide_all();
         [CATransaction commit];
     });
@@ -5824,7 +4222,7 @@ static void ds_hosted_overlay_stop(void) {
     g_hostedLastDisplayLinkTick.store(0.0, std::memory_order_relaxed);
     g_hostedDisplayPulse.store(0, std::memory_order_release);
     g_hostedConsumedDisplayPulse = UINT64_MAX;
-    ds_lq_overlay_reset();
+    ds_pubg_overlay_reset();
     dispatch_async(dispatch_get_main_queue(), ^{
         [g_hostedDisplayLink invalidate];
         g_hostedDisplayLink = nil;
@@ -5839,21 +4237,6 @@ static void ds_hosted_overlay_stop(void) {
         g_hostedMenuContextId = 0;
         g_hostedMenuExpanded = NO;
         g_hostedPortraitNotchHeight = 0.0;
-        ds_hosted_lq_reset_slots(YES);
-        for (int index = 0; index < kDSLQMaxEnemies; index++) {
-            g_hostedLQHeroViews[index] = nil;
-            g_hostedLQMinimapViews[index] = nil;
-            g_hostedLQStatusHeroViews[index] = nil;
-            g_hostedLQHealthLabels[index] = nil;
-            g_hostedLQUltimateDiamonds[index] = nil;
-            g_hostedLQUltimateLabels[index] = nil;
-            g_hostedLQTalentLabels[index] = nil;
-        }
-        for (int index = 0; index < kDSLQMaxMonsters; index++) {
-            g_hostedLQMonsterViews[index] = nil;
-            g_hostedLQMonsterHealthLabels[index] = nil;
-            g_hostedLQMonsterMinimapViews[index] = nil;
-        }
         g_hostedContentBounds = CGRectNull;
     });
 }

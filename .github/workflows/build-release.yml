@@ -51,7 +51,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: LienQuanDS_${{ env.PKG_VERSION }}
+          name: DarkPubg_${{ env.PKG_VERSION }}
           path: |
             packages/*.ipa
 
@@ -59,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
-          name: LienQuanDS_${{ env.PKG_VERSION }}_symbols
+          name: DarkPubg_${{ env.PKG_VERSION }}_symbols
           path: |
             packages/*_symbols.zip
 

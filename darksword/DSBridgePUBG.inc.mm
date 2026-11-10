@@ -2639,10 +2639,12 @@ static bool ds_pubg_is_in_match(uint64_t world, uint64_t playerController, uint6
         }
     }
 
-    // 2. NetDriver -> ServerConnection check (Exact matching metalbiew.txt)
+    // 2. NetDriver -> ServerConnection check
     // In match, GWorld->NetDriver is connected to a dedicated game server.
-    // In lobby, NetDriver is either NULL or ServerConnection is NULL.
     uint64_t netDriver = ds_pubg_read_ptr(world + 0x38ULL); // UWorld.NetDriver
+    if (!netDriver || !ds_pubg_valid(netDriver)) {
+        netDriver = ds_pubg_read_ptr(world + 0x98ULL);
+    }
     if (netDriver && ds_pubg_valid(netDriver)) {
         uint64_t serverConn = ds_pubg_read_ptr(netDriver + 0x78ULL); // UNetDriver.ServerConnection
         if (!serverConn || !ds_pubg_valid(serverConn)) {
@@ -2651,11 +2653,9 @@ static bool ds_pubg_is_in_match(uint64_t world, uint64_t playerController, uint6
         if (!serverConn || !ds_pubg_valid(serverConn)) {
             serverConn = ds_pubg_read_ptr(netDriver + 0x80ULL);
         }
-        if (!serverConn || !ds_pubg_valid(serverConn)) {
-            return false; // Not connected to any match server -> In Lobby
+        if (serverConn && ds_pubg_valid(serverConn)) {
+            return true; // Confirmed active dedicated server connection -> In Match!
         }
-    } else {
-        return false; // No NetDriver -> In Lobby
     }
 
     // 3. PlayerController check
