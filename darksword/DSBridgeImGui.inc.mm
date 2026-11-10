@@ -60,6 +60,10 @@ static ImVec2 g_floatingButtonPos = ImVec2(60.0f, 90.0f);
 static CGRect g_floatingButtonRect = CGRectMake(38.0, 68.0, 44.0, 44.0);
 static CGRect g_imguiMenuRect = CGRectZero;
 
+static void ds_imgui_render_pubg_esp(ImDrawList *draw, CGSize screenSize);
+static void ds_imgui_render_floating_button(ImDrawList *draw);
+static void ds_imgui_render_menu(void);
+
 @interface DSImGuiView : MTKView <MTKViewDelegate>
 - (void)updateOrientation;
 @end
