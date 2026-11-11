@@ -924,10 +924,6 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UILabel *_pubgItemScanValueLabel;
     UISlider *_pubgItemScanSlider;
 
-    UIView *_rowItemLogger;
-    UILabel *_pubgItemLoggerLabel;
-    UISwitch *_pubgItemLoggerSwitch;
-
     // Tab 2: Vehicle ESP Controls
     UIView *_rowVehicle;
     UILabel *_pubgVehicleLabel;
@@ -1159,7 +1155,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
     CGFloat rowW = 286.0;
     _tabContentViewPlayer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 514.0)];
-    _tabContentViewItems = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 344.0)];
+    _tabContentViewItems = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 284.0)];
     _tabContentViewVehicles = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 132.0)];
     _tabContentViewSettings = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 230.0)];
 
@@ -1188,7 +1184,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     if ([defaults objectForKey:@"pubg_scope"] != nil) g_pubgEspScope = [defaults boolForKey:@"pubg_scope"];
     if ([defaults objectForKey:@"pubg_crate"] != nil) g_pubgEspCrate = [defaults boolForKey:@"pubg_crate"];
     if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
-    if ([defaults objectForKey:@"pubg_item_logger"] != nil) g_pubgItemLogger = [defaults boolForKey:@"pubg_item_logger"];
     if ([defaults objectForKey:@"pubg_lang"] != nil) g_pubgLanguage = (int)[defaults integerForKey:@"pubg_lang"];
     if ([defaults objectForKey:@"pubg_thickness"] != nil) {
         g_pubgEspThickness = [defaults floatForKey:@"pubg_thickness"];
@@ -1306,11 +1301,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     ds_setup_slider_row(_rowItemScan, _pubgItemScanLabel, _pubgItemScanValueLabel, _pubgItemScanSlider,
                         @"Khoảng cách vật phẩm", 50.0f, 300.0f, g_pubgItemMaxDistance,
                         self, @selector(dsPubgItemScanSliderChanged:), rowW);
-    y1 += 60.0;
-    _rowItemLogger = ds_create_pill_row(y1, rowW, 40.0);
-    _pubgItemLoggerLabel = ds_create_row_label(_rowItemLogger, @"Ghi Log Vật Phẩm (File)", rowW, 40.0);
-    _pubgItemLoggerSwitch = ds_create_row_switch(_rowItemLogger, self, @selector(dsPubgItemLoggerChanged:), g_pubgItemLogger, rowW, 40.0);
-    [_tabContentViewItems addSubview:_rowItemLogger];
 
     // --- Tab 2: Vehicle ESP Controls ---
     CGFloat y2 = 0;
@@ -1447,7 +1437,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 - (void)dsUpdateTabSelection {
     UIButton *buttons[4] = { _pubgTabButtonPlayer, _pubgTabButtonItems, _pubgTabButtonVehicles, _pubgTabButtonSettings };
     UIView *views[4] = { _tabContentViewPlayer, _tabContentViewItems, _tabContentViewVehicles, _tabContentViewSettings };
-    CGFloat heights[4] = { 514.0, 344.0, 132.0, 230.0 };
+    CGFloat heights[4] = { 514.0, 284.0, 132.0, 230.0 };
 
     for (int i = 0; i < 4; i++) {
         UIButton *b = buttons[i];
@@ -1717,31 +1707,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [NSUserDefaults.standardUserDefaults setFloat:sender.value forKey:@"pubg_item_dist"];
 }
 
-- (void)dsPubgItemLoggerChanged:(UISwitch *)sender {
-    g_pubgItemLogger = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_item_logger"];
-    if (g_pubgItemLogger) {
-        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-        if (paths && paths.count > 0) {
-            NSString *docPath = [paths.firstObject stringByAppendingPathComponent:@"pubg_items.txt"];
-            FILE *f = fopen([docPath UTF8String], "a");
-            if (f) {
-                fputs("\n=======================================================\n", f);
-                fputs("            DARKSWORD PUBG - ITEM LOG SESSION          \n", f);
-                fputs("=======================================================\n", f);
-                fclose(f);
-            }
-        }
-        FILE *fTmp = fopen("/tmp/pubg_items.txt", "a");
-        if (fTmp) {
-            fputs("\n=======================================================\n", fTmp);
-            fputs("            DARKSWORD PUBG - ITEM LOG SESSION          \n", fTmp);
-            fputs("=======================================================\n", fTmp);
-            fclose(fTmp);
-        }
-    }
-}
-
 - (void)dsPubgVehicleChanged:(UISwitch *)sender {
     g_pubgEspVehicle = sender.on;
     [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
@@ -1874,7 +1839,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         _pubgScopeLabel.text = @"Scopes";
         _pubgCrateLabel.text = @"Airdrops & Crates";
         _pubgItemScanLabel.text = @"Item Scan Distance";
-        _pubgItemLoggerLabel.text = @"Log Items to File";
 
         _pubgVehicleLabel.text = @"Vehicles";
         _pubgVehicleHpLabel.text = @"Vehicle HP";
@@ -1910,7 +1874,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         _pubgScopeLabel.text = @"Ống Ngắm (Scopes)";
         _pubgCrateLabel.text = @"Thùng Thính & Hòm Xác";
         _pubgItemScanLabel.text = @"Khoảng cách vật phẩm";
-        _pubgItemLoggerLabel.text = @"Ghi Log Vật Phẩm (File)";
 
         _pubgVehicleLabel.text = @"Hiện Phương Tiện (Xe)";
         _pubgVehicleHpLabel.text = @"Hiện Máu Xe";

@@ -1009,7 +1009,6 @@ static BOOL g_pubgEspArmor = YES;
 static BOOL g_pubgEspBag = YES;
 static BOOL g_pubgEspScope = YES;
 static BOOL g_pubgEspCrate = YES;
-static BOOL g_pubgItemLogger = NO;
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);

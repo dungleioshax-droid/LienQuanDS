@@ -154,61 +154,6 @@ static inline bool ds_pubg_is_scenery_name(const char *name) {
             strstr(name, "LobbyModel") || strstr(name, "DefaultPhysicsVolume"));
 }
 
-// Item logging to file for user inspect & definition tuning
-static std::unordered_set<uint64_t> s_loggedItemSet;
-static std::mutex s_itemLogMutex;
-
-static void ds_pubg_log_item(uint64_t actor, int itemId, const char *actorName, const char *displayName, DSPUBGItemCategory cat, int count, float x, float y, float z, float dist) {
-    if (!g_pubgItemLogger) return;
-
-    uint64_t key = actor ^ ((uint64_t)(itemId > 0 ? itemId : 1) << 24);
-    {
-        std::lock_guard<std::mutex> lock(s_itemLogMutex);
-        if (s_loggedItemSet.find(key) != s_loggedItemSet.end()) {
-            return;
-        }
-        s_loggedItemSet.insert(key);
-    }
-
-    const char *catStr = "None";
-    switch (cat) {
-        case DSPUBGItemCategoryVehicle: catStr = "Vehicle"; break;
-        case DSPUBGItemCategoryWeapon:  catStr = "Weapon"; break;
-        case DSPUBGItemCategoryScope:   catStr = "Scope"; break;
-        case DSPUBGItemCategoryArmor:   catStr = "Armor"; break;
-        case DSPUBGItemCategoryBag:     catStr = "Bag"; break;
-        case DSPUBGItemCategoryCrate:   catStr = "Crate"; break;
-        default: catStr = "Other"; break;
-    }
-
-    time_t rawtime;
-    struct tm *timeinfo;
-    char timeBuf[32];
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    strftime(timeBuf, sizeof(timeBuf), "%H:%M:%S", timeinfo);
-
-    char logLine[320];
-    snprintf(logLine, sizeof(logLine), "[%s] ID: %-6d | Cat: %-7s | Name: %-18s | Count: %-2d | Actor: %-28s | Dist: %3.0fm | Pos: (%.1f, %.1f, %.1f)\n",
-             timeBuf, itemId, catStr, displayName ? displayName : "Unknown", count, actorName ? actorName : "Unknown", dist, x, y, z);
-
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    if (paths && paths.count > 0) {
-        NSString *docPath = [paths.firstObject stringByAppendingPathComponent:@"pubg_items.txt"];
-        FILE *f = fopen([docPath UTF8String], "a");
-        if (f) {
-            fputs(logLine, f);
-            fclose(f);
-        }
-    }
-
-    FILE *fTmp = fopen("/tmp/pubg_items.txt", "a");
-    if (fTmp) {
-        fputs(logLine, fTmp);
-        fclose(fTmp);
-    }
-}
-
 // Precomputes RGBA color and priority for 120 FPS zero-overhead rendering
 static inline void ds_pubg_compute_item_props(DSPUBGItemCategory cat, const char *name, uint32_t &outColor, bool &outPriority) {
     outPriority = false;
@@ -2709,10 +2654,6 @@ static void ds_pubg_overlay_reset(void) {
     ++g_dspubgGrenadeEpoch;
     os_unfair_lock_unlock(&g_dspubgSnapshotLock);
 
-    {
-        std::lock_guard<std::mutex> lock(s_itemLogMutex);
-        s_loggedItemSet.clear();
-    }
     s_crateCache.clear();
 }
 
@@ -4075,10 +4016,6 @@ static void ds_pubg_tick(void) {
                     ds_pubg_compute_item_props(ci.category, ci.name, ciColor, ciPrio);
                     pi.colorRGBA = ciColor;
                     pi.isPriority = ciPrio;
-
-                    if (g_pubgItemLogger) {
-                        ds_pubg_log_item(actor, 0, "CrateItem", ci.name, ci.category, 1, rootLoc.X, rootLoc.Y, rootLoc.Z, dist3D);
-                    }
                 }
                 return;
             }
@@ -4102,12 +4039,6 @@ static void ds_pubg_tick(void) {
         ds_pubg_compute_item_props(cat, displayName, cColor, cPrio);
         pi.colorRGBA = cColor;
         pi.isPriority = cPrio;
-
-        if (g_pubgItemLogger) {
-            int targetId = ds_pubg_read_i32(actor + 0x5FCULL);
-            if (targetId <= 0) targetId = ds_pubg_read_i32(actor + 0x758ULL);
-            ds_pubg_log_item(actor, targetId, actorName, displayName, cat, 1, rootLoc.X, rootLoc.Y, rootLoc.Z, dist3D);
-        }
 
         if (cat == DSPUBGItemCategoryVehicle) {
             uint64_t vCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
