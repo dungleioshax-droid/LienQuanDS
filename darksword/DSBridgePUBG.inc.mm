@@ -20,8 +20,8 @@
 
 // UEPointers from DUMP/Offsets.hpp & DUMP/Logs.txt (ShadowTrackerExtra UE4)
 // Base address is Mach-O 64-bit main image (__TEXT)
-// Primary default GEngine RVA (v3.4 Global)
-static const uint64_t kDSPUBGEngineRvaDefault = 0x0A8AA8A0ULL;
+// Primary default GEngine RVA (Updated from DUMP/Offsets.hpp: Engine = 0x10acc4680)
+static const uint64_t kDSPUBGEngineRvaDefault = 0x0ACC4680ULL;
 
 // Class Member Offsets from DUMP/SDK/Engine.hpp & DUMP/SDK.txt
 static const uint64_t kDSPUBGEngineGameViewportOffset        = 0x810ULL;  // UEngine.GameViewport (UGameViewportClient*)
@@ -62,13 +62,13 @@ static const uint64_t kDSPUBGCharacterMovementOffset         = 0x518ULL;  // ACh
 static const uint64_t kDSPUBGCharacterCapsuleOffset          = 0x520ULL;  // ACharacter.CapsuleComponent (UCapsuleComponent*)
 static const uint64_t kDSPUBGMeshBoxExtentZOffset            = 0xBA0ULL;  // Mesh.Bounds.BoxExtent.Z
 static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL;  // UAECharacter.PlayerName (FString)
-static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x980ULL;  // UAECharacter.PlayerKey (uint32_t)
-static const uint64_t kDSPUBGCharacterTeamIDOffset           = 0x998ULL;  // UAECharacter.TeamID (int32_t)
-static const uint64_t kDSPUBGCharacterIsAIOffset             = 0xA40ULL;  // UAECharacter.bIsAI (bool)
-static const uint64_t kDSPUBGCharacterHealthOffset           = 0xE60ULL;  // STExtraCharacter.Health (float)
-static const uint64_t kDSPUBGCharacterHealthMaxOffset        = 0xE64ULL;  // STExtraCharacter.HealthMax (float)
-static const uint64_t kDSPUBGCharacterDeadOffset             = 0xE7CULL;  // STExtraCharacter.bDead (uint8_t)
-static const uint64_t kDSPUBGCharacterVehicleOffset          = 0xEB0ULL;  // ASTExtraCharacter.CurrentVehicle (ASTExtraVehicleBase*)
+static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x990ULL;  // UAECharacter.PlayerKey (uint32_t) [DUMP updated]
+static const uint64_t kDSPUBGCharacterTeamIDOffset           = 0x9A8ULL;  // UAECharacter.TeamID (int32_t) [DUMP updated]
+static const uint64_t kDSPUBGCharacterIsAIOffset             = 0xA50ULL;  // UAECharacter.bIsAI (bool) [DUMP updated]
+static const uint64_t kDSPUBGCharacterHealthOffset           = 0xE70ULL;  // STExtraCharacter.Health (float) [DUMP updated]
+static const uint64_t kDSPUBGCharacterHealthMaxOffset        = 0xE74ULL;  // STExtraCharacter.HealthMax (float) [DUMP updated]
+static const uint64_t kDSPUBGCharacterDeadOffset             = 0xE8CULL;  // STExtraCharacter.bDead (uint8_t) [DUMP updated]
+static const uint64_t kDSPUBGCharacterVehicleOffset          = 0xEC0ULL;  // ASTExtraCharacter.CurrentVehicle (ASTExtraVehicleBase*) [DUMP updated]
 
 // Runtime target state
 static uint64_t g_dspubgProc = 0;
@@ -493,6 +493,7 @@ static bool ds_pubg_is_valid_gnames(uint64_t vmMap, uint64_t candidate, uint32_t
 static void ds_pubg_try_known_gnames(uint64_t vmMap, uint64_t base) {
     if (g_dspubgGNames) return;
     static const uint64_t kKnownGNamesRVAs[] = {
+        0x0D792AB0ULL, // Updated from DUMP/Offsets.hpp (Names = 0x10d792ab0)
         0x0D492AC0ULL, // v3.4 Global / VN / 64-bit Mach-O
         0x0D481AC0ULL,
         0x0D490AC0ULL,
@@ -1547,7 +1548,7 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
         if (strstr(actorName, "AirDrop")) {
             uint8_t isEmpty = ds_pubg_read_u8(actor + 0x729ULL) & 1;
             if (isEmpty) return DSPUBGItemCategoryNone;
-            uint8_t isSuper = ds_pubg_read_u8(actor + 0x5C0ULL) & 1;
+            uint8_t isSuper = (ds_pubg_read_u8(actor + 0x5C4ULL) & 1) || (ds_pubg_read_u8(actor + 0x5C0ULL) & 1);
             snprintf(outDisplay, outCap, isSuper ? "THÍNH ĐỎ" : "HÒM THÍNH");
             return DSPUBGItemCategoryCrate;
         }
@@ -1604,7 +1605,8 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     int airdropId = ds_pubg_read_i32(actor + 0x5B0ULL);
     if (airdropId > 0 && airdropId < 1000) {
         float dropSpd = ds_pubg_read_f32(actor + 0x56CULL);
-        uint8_t aFlag = ds_pubg_read_u8(actor + 0x5C0ULL);
+        uint8_t aFlag = ds_pubg_read_u8(actor + 0x5C4ULL);
+        if (aFlag == 0) aFlag = ds_pubg_read_u8(actor + 0x5C0ULL);
         if (!isnan(dropSpd) && dropSpd >= -3000.0f && dropSpd <= 3000.0f && aFlag <= 2) {
             uint8_t isEmpty = ds_pubg_read_u8(actor + 0x729ULL) & 1;
             if (!isEmpty) {
@@ -1890,6 +1892,7 @@ static bool ds_pubg_scan_for_engine_and_world(uint64_t vmMap, uint64_t base) {
 
     // 2. Check known common RVAs across PUBG Mobile versions
     static const uint64_t kKnownRVAs[] = {
+        0x0ACC4680ULL, // Updated from DUMP/Offsets.hpp (Engine = 0x10acc4680)
         0x0A8AA8A0ULL, // v3.4 Global
         0x0A8A98A0ULL,
         0x0A8B08A0ULL,
@@ -2523,8 +2526,8 @@ static int32_t ds_pubg_read_equipped_weapon_id(uint64_t pawn) {
     };
 
     // Step 1: Check WeaponManagerComponent on pawn
-    // Offsets on ASTExtraBaseCharacter: 0x2628 (primary dump), 0x25B8, 0x15B8, 0x2600, 0x2618, 0x2620, 0x2630
-    static const uint64_t wmOffsets[] = { 0x2628ULL, 0x25B8ULL, 0x15B8ULL, 0x2600ULL, 0x2618ULL, 0x2620ULL, 0x2630ULL };
+    // Offsets on ASTExtraBaseCharacter: 0x2768 (DUMP updated), 0x2628 (primary dump), 0x25B8, 0x15B8, 0x2600, 0x2618, 0x2620, 0x2630
+    static const uint64_t wmOffsets[] = { 0x2768ULL, 0x2628ULL, 0x25B8ULL, 0x15B8ULL, 0x2600ULL, 0x2618ULL, 0x2620ULL, 0x2630ULL };
     for (uint64_t wmOff : wmOffsets) {
         uint64_t wm = ds_pubg_read_ptr(pawn + wmOff);
         if (!wm || !ds_pubg_valid(wm)) continue;
@@ -3167,16 +3170,16 @@ static void ds_pubg_tick(void) {
         cEntry.itemCat = DSPUBGItemCategoryNone;
 
         bool isKnocked = false;
-        // Check multiple possible GroggyHealth offsets in STExtraCharacter: 0xE68, 0xE6C, 0xE70, 0xE74
-        float gh = ds_pubg_read_f32(pawn + 0xE68ULL);
+        // Check multiple possible GroggyHealth offsets in STExtraCharacter (shifted by +0x10 in new DUMP: 0xE78, 0xE7C, 0xE80)
+        float gh = ds_pubg_read_f32(pawn + 0xE78ULL);
         if (isnan(gh) || isinf(gh) || gh <= 0.0f || gh > 200.0f) {
-            gh = ds_pubg_read_f32(pawn + 0xE6CULL);
+            gh = ds_pubg_read_f32(pawn + 0xE7CULL);
         }
         if (isnan(gh) || isinf(gh) || gh <= 0.0f || gh > 200.0f) {
-            gh = ds_pubg_read_f32(pawn + 0xE70ULL);
+            gh = ds_pubg_read_f32(pawn + 0xE80ULL);
         }
         if (isnan(gh) || isinf(gh) || gh <= 0.0f || gh > 200.0f) {
-            gh = ds_pubg_read_f32(pawn + 0xE74ULL);
+            gh = ds_pubg_read_f32(pawn + 0xE84ULL);
         }
 
         // If bDead (offset 0xE7C) is 0, but standard health <= 0, the player is knocked down (gục ngã)!
