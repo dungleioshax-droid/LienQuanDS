@@ -10,6 +10,7 @@
 #import "FBSOrientationObserver.h"
 #import "FBSOrientationUpdate.h"
 #import "BackboardServices.h"
+#import "JetsamHelper.h"
 
 #import <objc/runtime.h>
 #import <objc/message.h>

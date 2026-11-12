@@ -3062,9 +3062,12 @@ static void ds_pubg_tick(void) {
         localTeamId = ds_pubg_read_i32(localPawn + kDSPUBGCharacterTeamIDOffset);
     }
 
-    CGRect screenBounds = UIScreen.mainScreen.bounds;
-    float screenW = (float)MAX(screenBounds.size.width, screenBounds.size.height);
-    float screenH = (float)MIN(screenBounds.size.width, screenBounds.size.height);
+    float screenW = (float)CGRectGetWidth(g_hostedContentBounds);
+    float screenH = (float)CGRectGetHeight(g_hostedContentBounds);
+    if (screenW <= 0.0f || screenH <= 0.0f) {
+        screenW = 844.0f;
+        screenH = 390.0f;
+    }
 
     DSPUBGCamBasis basis = {};
     if (!ds_pubg_cam_basis_build(camLoc, camRot, camFOV, screenW, screenH, basis)) {

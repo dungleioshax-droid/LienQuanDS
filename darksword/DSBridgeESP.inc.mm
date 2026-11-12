@@ -2251,7 +2251,18 @@ static CGColorRef ds_pubg_cgcolor_from_rgba(uint32_t rgba) {
     return newColor;
 }
 
+static inline NSString *ds_safe_utf8_string(const char *str, NSString *fallback) {
+    if (!str || str[0] == '\0') return fallback ?: @"";
+    NSString *s = [NSString stringWithUTF8String:str];
+    if (s && s.length > 0) return s;
+    s = [[NSString alloc] initWithCString:str encoding:NSASCIIStringEncoding];
+    if (s && s.length > 0) return s;
+    s = [[NSString alloc] initWithBytes:str length:strlen(str) encoding:NSISOLatin1StringEncoding];
+    return (s && s.length > 0) ? s : (fallback ?: @"");
+}
+
 static void ds_hosted_apply_pubg(void) {
+    @try {
     if (!g_hostedLayer) return;
     if (!ds_hosted_esp_enabled()) {
         ds_hosted_pubg_hide_all();
@@ -2590,21 +2601,22 @@ static void ds_hosted_apply_pubg(void) {
             BOOL isEn = (g_pubgLanguage == 1);
             if (p.isKnocked) {
                 if (p.weaponName[0] != '\0') {
-                    weaponText = [NSString stringWithFormat:isEn ? @"⚠️ KNOCKED | %s" : @"⚠️ GỤC | %s", p.weaponName];
+                    NSString *wName = ds_safe_utf8_string(p.weaponName, @"Gun");
+                    weaponText = [NSString stringWithFormat:isEn ? @"⚠️ KNOCKED | %@" : @"⚠️ GỤC | %@", wName];
                     weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
                 } else {
                     weaponText = isEn ? @"⚠️ KNOCKED | Fist" : @"⚠️ GỤC | Tay";
                     weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
                 }
             } else if (p.weaponName[0] != '\0') {
-                weaponText = [NSString stringWithUTF8String:p.weaponName];
+                weaponText = ds_safe_utf8_string(p.weaponName, @"Gun");
                 weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
             } else {
                 weaponText = isEn ? @"Fist" : @"Tay";
                 weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
             }
 
-            if (weaponText) {
+            if (weaponText && weaponText.length > 0) {
                 CGFloat wLblW = 100.0f;
                 CGFloat wLblH = 11.0f;
                 CGFloat baseTop = showHp ? barY : topY;
@@ -2654,14 +2666,16 @@ static void ds_hosted_apply_pubg(void) {
             NSMutableAttributedString *attrText = [[NSMutableAttributedString alloc] init];
 
             if (g_pubgEspName) {
-                NSString *nameStr = [NSString stringWithUTF8String:displayName];
-                [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
-                    NSFontAttributeName: s_infoFont,
-                    NSForegroundColorAttributeName: nameColor,
-                    NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-1.4),
-                    NSParagraphStyleAttributeName: s_centerStyle
-                }]];
+                NSString *nameStr = ds_safe_utf8_string(displayName, ai ? @"Bot" : (g_pubgLanguage == 1 ? @"Enemy" : @"Địch"));
+                if (nameStr && nameStr.length > 0) {
+                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
+                        NSFontAttributeName: s_infoFont,
+                        NSForegroundColorAttributeName: nameColor,
+                        NSStrokeColorAttributeName: [UIColor blackColor],
+                        NSStrokeWidthAttributeName: @(-1.4),
+                        NSParagraphStyleAttributeName: s_centerStyle
+                    }]];
+                }
             }
 
             if (teamStr[0] != '\0') {
@@ -2671,14 +2685,16 @@ static void ds_hosted_apply_pubg(void) {
                         NSParagraphStyleAttributeName: s_centerStyle
                     }]];
                 }
-                NSString *tStr = [NSString stringWithUTF8String:teamStr];
-                [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:tStr attributes:@{
-                    NSFontAttributeName: s_infoFont,
-                    NSForegroundColorAttributeName: whiteColor,
-                    NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-1.4),
-                    NSParagraphStyleAttributeName: s_centerStyle
-                }]];
+                NSString *tStr = ds_safe_utf8_string(teamStr, @"");
+                if (tStr && tStr.length > 0) {
+                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:tStr attributes:@{
+                        NSFontAttributeName: s_infoFont,
+                        NSForegroundColorAttributeName: whiteColor,
+                        NSStrokeColorAttributeName: [UIColor blackColor],
+                        NSStrokeWidthAttributeName: @(-1.4),
+                        NSParagraphStyleAttributeName: s_centerStyle
+                    }]];
+                }
             }
 
             if (g_pubgEspDist) {
@@ -2689,13 +2705,15 @@ static void ds_hosted_apply_pubg(void) {
                     }]];
                 }
                 NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
-                [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
-                    NSFontAttributeName: s_infoFont,
-                    NSForegroundColorAttributeName: whiteColor,
-                    NSStrokeColorAttributeName: [UIColor blackColor],
-                    NSStrokeWidthAttributeName: @(-1.4),
-                    NSParagraphStyleAttributeName: s_centerStyle
-                }]];
+                if (distStr && distStr.length > 0) {
+                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
+                        NSFontAttributeName: s_infoFont,
+                        NSForegroundColorAttributeName: whiteColor,
+                        NSStrokeColorAttributeName: [UIColor blackColor],
+                        NSStrokeWidthAttributeName: @(-1.4),
+                        NSParagraphStyleAttributeName: s_centerStyle
+                    }]];
+                }
             }
 
             CGFloat enemyBottom = bottomY;
@@ -2820,6 +2838,12 @@ static void ds_hosted_apply_pubg(void) {
             g_hostedPUBGTopCountBgLayer.hidden = YES;
         }
 
+        static UIFont *s_topCountFont = nil;
+        static dispatch_once_t s_topCountOnce;
+        dispatch_once(&s_topCountOnce, ^{
+            s_topCountFont = [UIFont monospacedDigitSystemFontOfSize:22.0 weight:UIFontWeightHeavy];
+        });
+
         if (ds_pubg_has_render_source()) {
             int total = totalEnemies + totalBots;
             CGFloat lblW = 120.0f;
@@ -2829,7 +2853,7 @@ static void ds_hosted_apply_pubg(void) {
 
             g_hostedPUBGTopCountLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
             g_hostedPUBGTopCountLabel.fontSize = 22.0f;
-            g_hostedPUBGTopCountLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:22.0 weight:UIFontWeightHeavy];
+            g_hostedPUBGTopCountLabel.font = (__bridge CFTypeRef)s_topCountFont;
             g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:239.0/255.0 green:68.0/255.0 blue:68.0/255.0 alpha:1.0].CGColor;
             g_hostedPUBGTopCountLabel.backgroundColor = UIColor.clearColor.CGColor;
             g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"%d", total];
@@ -2843,6 +2867,8 @@ static void ds_hosted_apply_pubg(void) {
     DSPUBGProjectedItem items[kDSPUBGMaxItems];
     uint64_t itemEpoch = 0;
     int itemCount = ds_pubg_copy_projected_items(items, &itemEpoch);
+    if (itemCount < 0) itemCount = 0;
+    if (itemCount > kDSPUBGMaxItems) itemCount = kDSPUBGMaxItems;
 
     // Anti-overlap vertical stacking for items at the same screen position (capped to 48 nearest items)
     int antiOverlapCount = (itemCount > 48) ? 48 : itemCount;
@@ -3146,7 +3172,7 @@ static void ds_hosted_apply_pubg(void) {
 
         // 7. Distance tag
         if (badgeLbl && g.isVisible) {
-            NSString *titleStr = [NSString stringWithUTF8String:g.name];
+            NSString *titleStr = ds_safe_utf8_string(g.name, @"Bomb");
             NSString *fullBadge = [NSString stringWithFormat:@"%@ [%.0fm]", titleStr, g.distanceMeters];
 
             NSAttributedString *badgeAttr = [[NSAttributedString alloc] initWithString:fullBadge attributes:@{
@@ -3171,6 +3197,9 @@ static void ds_hosted_apply_pubg(void) {
     // Banner removed per user request: "không cần làm cái thông báo địch rút bom đâu xoá đi cho tôi"
     if (g_hostedPUBGGrenadeDangerBanner) {
         g_hostedPUBGGrenadeDangerBanner.hidden = YES;
+    }
+    } @catch (NSException *ex) {
+        // Guard against any UIKit / CoreAnimation unexpected exception
     }
 }
 

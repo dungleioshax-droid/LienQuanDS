@@ -101,6 +101,12 @@
     return UIInterfaceOrientationMaskPortrait;
 }
 
+- (void)applicationDidEnterBackground:(UIApplication *)application {
+    if (DSBridgeIsRunning()) {
+        DSBridgeStartKeepalive();
+    }
+}
+
 - (void)applicationDidBecomeActive:(UIApplication *)application {
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^(void) {
