@@ -2881,22 +2881,25 @@ static void ds_hosted_apply_pubg(void) {
         static UIFont *s_topCountFont = nil;
         static dispatch_once_t s_topCountOnce;
         dispatch_once(&s_topCountOnce, ^{
-            s_topCountFont = [UIFont monospacedDigitSystemFontOfSize:22.0 weight:UIFontWeightHeavy];
+            s_topCountFont = [UIFont monospacedDigitSystemFontOfSize:16.0 weight:UIFontWeightHeavy];
         });
 
         if (ds_pubg_has_render_source()) {
-            int total = totalEnemies + totalBots;
-            CGFloat lblW = 120.0f;
-            CGFloat lblH = 30.0f;
+            CGFloat lblW = 440.0f;
+            CGFloat lblH = 26.0f;
             CGFloat lblX = (width - lblW) * 0.5f;
-            CGFloat lblY = 12.0f;
+            CGFloat lblY = 14.0f;
 
             g_hostedPUBGTopCountLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
-            g_hostedPUBGTopCountLabel.fontSize = 22.0f;
+            g_hostedPUBGTopCountLabel.fontSize = 16.0f;
             g_hostedPUBGTopCountLabel.font = (__bridge CFTypeRef)s_topCountFont;
-            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:239.0/255.0 green:68.0/255.0 blue:68.0/255.0 alpha:1.0].CGColor;
+            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
             g_hostedPUBGTopCountLabel.backgroundColor = UIColor.clearColor.CGColor;
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"%d", total];
+            g_hostedPUBGTopCountLabel.shadowColor = UIColor.blackColor.CGColor;
+            g_hostedPUBGTopCountLabel.shadowRadius = 1.5f;
+            g_hostedPUBGTopCountLabel.shadowOpacity = 1.0f;
+            g_hostedPUBGTopCountLabel.shadowOffset = CGSizeZero;
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PLAYER AROUNO[ %d ]   BOT AROUNO[ %d ]", totalEnemies, totalBots];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
             g_hostedPUBGTopCountLabel.hidden = YES;
@@ -3874,13 +3877,13 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.actions = noAnim;
             topLabel.contentsScale = scale;
             topLabel.alignmentMode = kCAAlignmentCenter;
-            topLabel.fontSize = 22.0;
-            topLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:22.0 weight:UIFontWeightHeavy];
-            topLabel.foregroundColor = [UIColor colorWithRed:239.0/255.0 green:68.0/255.0 blue:68.0/255.0 alpha:1.0].CGColor;
+            topLabel.fontSize = 16.0;
+            topLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:16.0 weight:UIFontWeightHeavy];
+            topLabel.foregroundColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
             topLabel.backgroundColor = UIColor.clearColor.CGColor;
             topLabel.shadowColor = UIColor.blackColor.CGColor;
-            topLabel.shadowRadius = 0.0;
-            topLabel.shadowOpacity = 0.0;
+            topLabel.shadowRadius = 1.5;
+            topLabel.shadowOpacity = 1.0;
             topLabel.shadowOffset = CGSizeZero;
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
