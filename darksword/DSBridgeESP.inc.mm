@@ -773,6 +773,7 @@ static UIButton *ds_hosted_minimap_step_button(NSString *symbolName,
 @interface DSESPMenuViewController : UIViewController
 - (void)dsSetExpanded:(BOOL)expanded;
 - (void)dsApplyOrientation;
+- (void)dsApplyOrientation:(UIInterfaceOrientation)orientation duration:(NSTimeInterval)duration;
 - (BOOL)dsShouldAcceptHitView:(UIView *)hitView;
 - (UIButton *)toggleButton;
 - (void)dsUpdatePubgLanguage;
@@ -1584,28 +1585,51 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 }
 
 - (void)dsApplyOrientation {
+    [self dsApplyOrientation:ds_active_orientation() duration:0.0];
+}
+
+- (void)dsApplyOrientation:(UIInterfaceOrientation)targetOrientation duration:(NSTimeInterval)duration {
     if (!_contentView) return;
     CGRect windowBounds = self.view.bounds;
-    int orientation = (int)ds_active_orientation();
+    if (CGRectIsEmpty(windowBounds)) {
+        windowBounds = UIScreen.mainScreen.bounds;
+    }
+    int orientation = (int)targetOrientation;
+    if (orientation == (int)UIInterfaceOrientationUnknown) {
+        orientation = (int)ds_active_orientation();
+    }
     if (_hasAppliedOrientation && _appliedOrientation == orientation &&
         CGRectEqualToRect(_appliedWindowBounds, windowBounds)) return;
     _hasAppliedOrientation = YES;
     _appliedOrientation = orientation;
     _appliedWindowBounds = windowBounds;
+    g_hostedMenuLastOrientation = orientation;
 
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    _contentView.center = CGPointMake(CGRectGetWidth(windowBounds) * 0.5, CGRectGetHeight(windowBounds) * 0.5);
-    if (UIInterfaceOrientationIsLandscape((UIInterfaceOrientation)orientation)) {
-        _contentView.bounds = CGRectMake(0, 0, CGRectGetHeight(windowBounds), CGRectGetWidth(windowBounds));
-        double angle = (orientation == UIInterfaceOrientationLandscapeLeft) ? -M_PI_2 : M_PI_2;
-        _contentView.transform = CGAffineTransformMakeRotation(angle);
+    void (^layoutBlock)(void) = ^{
+        _contentView.center = CGPointMake(CGRectGetWidth(windowBounds) * 0.5, CGRectGetHeight(windowBounds) * 0.5);
+        if (UIInterfaceOrientationIsLandscape((UIInterfaceOrientation)orientation)) {
+            _contentView.bounds = CGRectMake(0, 0, CGRectGetHeight(windowBounds), CGRectGetWidth(windowBounds));
+            double angle = (orientation == UIInterfaceOrientationLandscapeLeft) ? -M_PI_2 : M_PI_2;
+            _contentView.transform = CGAffineTransformMakeRotation(angle);
+        } else {
+            _contentView.bounds = windowBounds;
+            _contentView.transform = CGAffineTransformIdentity;
+        }
+        [self dsLayoutMenu];
+    };
+
+    if (duration > 0.001) {
+        [UIView animateWithDuration:duration
+                              delay:0.0
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseInOut
+                         animations:layoutBlock
+                         completion:nil];
     } else {
-        _contentView.bounds = windowBounds;
-        _contentView.transform = CGAffineTransformIdentity;
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        layoutBlock();
+        [CATransaction commit];
     }
-    [CATransaction commit];
-    [self dsLayoutMenu];
 }
 
 - (BOOL)dsShouldAcceptHitView:(UIView *)hitView {
@@ -2137,28 +2161,44 @@ static void ds_hosted_configure_display_link(CADisplayLink *displayLink) {
 
 static DSHostedDisplayLinkDriver *g_hostedDisplayLinkDriver = nil;
 
-static void ds_hosted_apply_orientation(UIInterfaceOrientation orientation) {
-    if (!g_hostedLayer || (int)orientation == g_hostedLastOrientation) return;
-    g_hostedLastOrientation = (int)orientation;
-    CGRect windowBounds = g_hostedWindow.bounds;
-    if (UIInterfaceOrientationIsLandscape(orientation)) {
-        g_hostedLayer.bounds = CGRectMake(0, 0, windowBounds.size.height,
-                                          windowBounds.size.width);
-        g_hostedLayer.position = CGPointMake(windowBounds.size.width * 0.5,
-                                             windowBounds.size.height * 0.5);
-        double angle = orientation == UIInterfaceOrientationLandscapeLeft
-            ? -M_PI_2 : M_PI_2;
-        g_hostedLayer.affineTransform = CGAffineTransformMakeRotation(angle);
-    } else {
-        g_hostedLayer.bounds = windowBounds;
-        g_hostedLayer.position = CGPointMake(windowBounds.size.width * 0.5,
-                                             windowBounds.size.height * 0.5);
-        g_hostedLayer.affineTransform = CGAffineTransformIdentity;
+static void ds_hosted_apply_orientation(UIInterfaceOrientation orientation, double duration = 0.0) {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            ds_hosted_apply_orientation(orientation, duration);
+        });
+        return;
     }
-    if (g_hostedMenuViewController &&
-        (int)orientation != g_hostedMenuLastOrientation) {
-        g_hostedMenuLastOrientation = (int)orientation;
-        [g_hostedMenuViewController dsApplyOrientation];
+
+    // 1. ESP Overlay Layer
+    if (g_hostedLayer && (int)orientation != g_hostedLastOrientation) {
+        g_hostedLastOrientation = (int)orientation;
+        CGRect windowBounds = g_hostedWindow.bounds;
+        [CATransaction begin];
+        if (duration > 0.001) {
+            [CATransaction setAnimationDuration:duration];
+        } else {
+            [CATransaction setDisableActions:YES];
+        }
+        if (UIInterfaceOrientationIsLandscape(orientation)) {
+            g_hostedLayer.bounds = CGRectMake(0, 0, windowBounds.size.height,
+                                              windowBounds.size.width);
+            g_hostedLayer.position = CGPointMake(windowBounds.size.width * 0.5,
+                                                 windowBounds.size.height * 0.5);
+            double angle = orientation == UIInterfaceOrientationLandscapeLeft
+                ? -M_PI_2 : M_PI_2;
+            g_hostedLayer.affineTransform = CGAffineTransformMakeRotation(angle);
+        } else {
+            g_hostedLayer.bounds = windowBounds;
+            g_hostedLayer.position = CGPointMake(windowBounds.size.width * 0.5,
+                                                 windowBounds.size.height * 0.5);
+            g_hostedLayer.affineTransform = CGAffineTransformIdentity;
+        }
+        [CATransaction commit];
+    }
+
+    // 2. Floating Menu View Controller
+    if (g_hostedMenuViewController) {
+        [g_hostedMenuViewController dsApplyOrientation:orientation duration:duration];
     }
 }
 
@@ -3976,6 +4016,8 @@ static void ds_hosted_overlay_pause(void) {
     g_hostedLastDisplayLinkTick.store(0.0, std::memory_order_relaxed);
     g_hostedDisplayPulse.store(0, std::memory_order_release);
     g_hostedConsumedDisplayPulse = UINT64_MAX;
+    g_hostedLastOrientation = 0;
+    g_hostedMenuLastOrientation = 0;
     ds_pubg_overlay_reset();
     dispatch_async(dispatch_get_main_queue(), ^{
         [g_hostedDisplayLink invalidate];
@@ -4014,6 +4056,8 @@ static void ds_hosted_overlay_stop(void) {
     g_hostedLastDisplayLinkTick.store(0.0, std::memory_order_relaxed);
     g_hostedDisplayPulse.store(0, std::memory_order_release);
     g_hostedConsumedDisplayPulse = UINT64_MAX;
+    g_hostedLastOrientation = 0;
+    g_hostedMenuLastOrientation = 0;
     ds_pubg_overlay_reset();
     dispatch_async(dispatch_get_main_queue(), ^{
         [g_hostedDisplayLink invalidate];

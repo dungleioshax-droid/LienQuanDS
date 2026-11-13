@@ -140,6 +140,7 @@ static CGRect g_windowContentBounds = CGRectNull;
 // mechanism cccc/TrollSpeed use): it follows the foreground app even while
 // this process is backgrounded.
 static id g_orientationObserver = nil;
+static id g_deviceOrientationObserver = nil;
 static std::atomic<int> g_activeOrientation(UIInterfaceOrientationUnknown);
 static dispatch_source_t g_rateTimer = nil;
 static AVAudioPlayer *g_keepAlivePlayer = nil;
@@ -802,6 +803,8 @@ static CGRect ds_scene_bounds(void) {
     return bounds;
 }
 
+static bool ds_pubg_has_render_source(void);
+
 // The orientation actually shown on screen: FBSOrientationObserver first
 // (follows the foreground app), physical device orientation as fallback.
 static UIInterfaceOrientation ds_active_orientation(void) {
@@ -811,8 +814,12 @@ static UIInterfaceOrientation ds_active_orientation(void) {
         case UIDeviceOrientationLandscapeLeft:  return UIInterfaceOrientationLandscapeRight;
         case UIDeviceOrientationLandscapeRight: return UIInterfaceOrientationLandscapeLeft;
         case UIDeviceOrientationPortraitUpsideDown: return UIInterfaceOrientationPortraitUpsideDown;
-        default: return UIInterfaceOrientationPortrait;
+        default: break;
     }
+    if (ds_pubg_has_render_source()) {
+        return UIInterfaceOrientationLandscapeRight;
+    }
+    return UIInterfaceOrientationPortrait;
 }
 
 // Space the window's subviews lay out in: the scene space, swapped to
@@ -1468,6 +1475,10 @@ static void ds_finish_disable(void) {
     // inside SpringBoard (disable only hid it) and the next enable reuses it.
     g_activeOrientation.store(UIInterfaceOrientationUnknown);
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (g_deviceOrientationObserver) {
+            [[NSNotificationCenter defaultCenter] removeObserver:g_deviceOrientationObserver];
+            g_deviceOrientationObserver = nil;
+        }
         [g_orientationObserver invalidate];
         g_orientationObserver = nil;
     });
@@ -1509,16 +1520,51 @@ static void ds_finish_enable(void) {
     // mechanism cccc/TrollSpeed run in their HUD process): it follows the
     // foreground app even while this process is backgrounded.
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (g_orientationObserver) return;
-        Class observerClass = objc_getClass("FBSOrientationObserver");
-        if (!observerClass) return;
-        g_orientationObserver = [[observerClass alloc] init];
-        [g_orientationObserver setHandler:^(FBSOrientationUpdate *update) {
-            if (update) g_activeOrientation.store((int)update.orientation);
-        }];
-        long long current = [g_orientationObserver activeInterfaceOrientation];
-        if (current != UIInterfaceOrientationUnknown) {
-            g_activeOrientation.store((int)current);
+        [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+        if (!g_orientationObserver) {
+            Class observerClass = objc_getClass("FBSOrientationObserver");
+            if (observerClass) {
+                g_orientationObserver = [[observerClass alloc] init];
+                [g_orientationObserver setHandler:^(FBSOrientationUpdate *update) {
+                    if (!update) return;
+                    UIInterfaceOrientation ori = (UIInterfaceOrientation)update.orientation;
+                    if (ori == UIInterfaceOrientationUnknown) return;
+                    g_activeOrientation.store((int)ori);
+                    double duration = update.duration;
+                    if ([NSThread isMainThread]) {
+                        ds_hosted_apply_orientation(ori, duration);
+                    } else {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            ds_hosted_apply_orientation(ori, duration);
+                        });
+                    }
+                }];
+                long long current = [g_orientationObserver activeInterfaceOrientation];
+                if (current != UIInterfaceOrientationUnknown) {
+                    g_activeOrientation.store((int)current);
+                    ds_hosted_apply_orientation((UIInterfaceOrientation)current, 0.0);
+                }
+            }
+        }
+        if (!g_deviceOrientationObserver) {
+            g_deviceOrientationObserver = [[NSNotificationCenter defaultCenter]
+                addObserverForName:UIDeviceOrientationDidChangeNotification
+                object:nil
+                queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification * _Nonnull note) {
+                    (void)note;
+                    UIDeviceOrientation devOri = UIDevice.currentDevice.orientation;
+                    if (UIDeviceOrientationIsLandscape(devOri)) {
+                        UIInterfaceOrientation ori = (devOri == UIDeviceOrientationLandscapeLeft)
+                            ? UIInterfaceOrientationLandscapeRight
+                            : UIInterfaceOrientationLandscapeLeft;
+                        g_activeOrientation.store((int)ori);
+                        ds_hosted_apply_orientation(ori, 0.3);
+                    } else if (devOri == UIDeviceOrientationPortrait) {
+                        g_activeOrientation.store((int)UIInterfaceOrientationPortrait);
+                        ds_hosted_apply_orientation(UIInterfaceOrientationPortrait, 0.3);
+                    }
+                }];
         }
     });
 
