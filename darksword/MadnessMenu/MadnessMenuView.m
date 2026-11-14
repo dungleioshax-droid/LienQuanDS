@@ -4,14 +4,16 @@
 #import "MadnessMascotData.h"
 #import <QuartzCore/QuartzCore.h>
 
-static const CGFloat kMadnessPanelW = 640.0f;
+static const CGFloat kMadnessPanelW = 500.0f;
 static const CGFloat kMadnessPanelH = 325.0f;
 
-@interface MadnessMenuView () <UIScrollViewDelegate>
+@interface MadnessMenuView () <UIScrollViewDelegate, UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIButton *panel;
 @property (nonatomic, strong) UIView *titleBox;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIImageView *mascotView;
+@property (nonatomic, strong) UIPanGestureRecognizer *panGesture;
+@property (nonatomic, strong) UIPanGestureRecognizer *titlePan;
 
 // Header top bar items
 @property (nonatomic, strong) UILabel *lblEn;
@@ -139,17 +141,17 @@ static const CGFloat kMadnessPanelH = 325.0f;
 }
 
 - (void)addSectionHeader:(NSString *)title atY:(CGFloat)y {
-    UILabel *chev = [[UILabel alloc] initWithFrame:CGRectMake(15, y, 14, 18)];
+    UILabel *chev = [[UILabel alloc] initWithFrame:CGRectMake(12, y, 14, 18)];
     chev.text = @"⋗";
     chev.textColor = UIColor.yellowColor;
-    chev.font = [UIFont boldSystemFontOfSize:18.0];
+    chev.font = [UIFont boldSystemFontOfSize:16.0];
     chev.textAlignment = NSTextAlignmentLeft;
     [self.scroll addSubview:chev];
 
-    UILabel *tit = [[UILabel alloc] initWithFrame:CGRectMake(32, y, 220, 18)];
+    UILabel *tit = [[UILabel alloc] initWithFrame:CGRectMake(28, y, 220, 18)];
     tit.text = title;
     tit.textColor = UIColor.whiteColor;
-    tit.font = [UIFont boldSystemFontOfSize:12.0];
+    tit.font = [UIFont boldSystemFontOfSize:11.5];
     tit.textAlignment = NSTextAlignmentLeft;
     [self.scroll addSubview:tit];
 }
@@ -165,25 +167,30 @@ static const CGFloat kMadnessPanelH = 325.0f;
         CGFloat x = [sx floatValue];
         CGFloat y = [sy floatValue];
         if (x > 20 && x < 1500 && y > 10 && y < 1000) {
-            startX = x - 105.0;
-            startY = y - 16.0;
+            startX = x - 102.0;
+            startY = y - 15.0;
         }
     }
 
-    // Panel container: start collapsed
+    // Panel container: start collapsed (205 x 30)
     self.panel = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.panel.frame = CGRectMake(startX, startY, 210, 32);
+    self.panel.frame = CGRectMake(startX, startY, 205, 30);
     self.panel.backgroundColor = UIColor.clearColor;
-    self.panel.layer.cornerRadius = 12.0;
+    self.panel.layer.cornerRadius = 8.0;
     self.panel.clipsToBounds = YES;
-    [self.panel addTarget:self action:@selector(wasDragged:withEvent:) forControlEvents:UIControlEventTouchDragInside | UIControlEventTouchDragOutside];
     [self addSubview:self.panel];
+
+    // Pan Gesture Recognizer on panel for smooth header dragging
+    self.panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePanelPan:)];
+    self.panGesture.delegate = self;
+    self.panGesture.cancelsTouchesInView = NO;
+    [self.panel addGestureRecognizer:self.panGesture];
 
     // Collapse / Expand handle button (Round circle [ V ])
     self.handle = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.handle.frame = CGRectMake(8, 3, 26, 26);
+    self.handle.frame = CGRectMake(5, 3, 24, 24);
     self.handle.backgroundColor = MADBlack50();
-    self.handle.layer.cornerRadius = 13.0;
+    self.handle.layer.cornerRadius = 12.0;
     self.handle.layer.masksToBounds = YES;
     self.handle.layer.borderWidth = 0.8;
     self.handle.layer.borderColor = [UIColor colorWithWhite:0.4 alpha:0.8].CGColor;
@@ -196,9 +203,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [self.handle addGestureRecognizer:self.handleLong];
     [self.handle addTarget:self action:@selector(handleTapped:) forControlEvents:UIControlEventTouchUpInside];
 
-    self.handleGlyph = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 26, 26)];
+    self.handleGlyph = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 24, 24)];
     self.handleGlyph.text = @"⋗";
-    self.handleGlyph.font = [UIFont boldSystemFontOfSize:22.0];
+    self.handleGlyph.font = [UIFont boldSystemFontOfSize:20.0];
     self.handleGlyph.textColor = UIColor.yellowColor;
     self.handleGlyph.textAlignment = NSTextAlignmentCenter;
     self.handleGlyph.userInteractionEnabled = NO;
@@ -206,125 +213,130 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [self.handle addSubview:self.handleGlyph];
 
     // Top Dark Header Capsule Bar: [ MADNESS (cat) EN عربي RU CH  CONTACT->  @Majed_aj  MADNESS~CHANNEL ]
-    self.titleBox = [[UIView alloc] initWithFrame:CGRectMake(38, 3, 160, 26)];
+    self.titleBox = [[UIView alloc] initWithFrame:CGRectMake(34, 3, 165, 24)];
     self.titleBox.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.90];
-    self.titleBox.layer.cornerRadius = 13.0;
+    self.titleBox.layer.cornerRadius = 12.0;
     self.titleBox.layer.borderColor = [UIColor colorWithWhite:0.25 alpha:0.8].CGColor;
     self.titleBox.layer.borderWidth = 0.5;
     self.titleBox.clipsToBounds = YES;
     self.titleBox.userInteractionEnabled = YES;
     [self.panel addSubview:self.titleBox];
 
+    self.titlePan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePanelPan:)];
+    self.titlePan.delegate = self;
+    self.titlePan.cancelsTouchesInView = NO;
+    [self.titleBox addGestureRecognizer:self.titlePan];
+
     // 1. Title: MADNESS
-    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 3, 62, 20)];
+    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, 2, 58, 20)];
     self.titleLabel.text = @"MADNESS";
     self.titleLabel.textColor = UIColor.yellowColor;
-    self.titleLabel.font = [UIFont fontWithName:@"AvenirNextCondensed-HeavyItalic" size:13.0]
-                           ?: [UIFont boldSystemFontOfSize:13.0];
+    self.titleLabel.font = [UIFont fontWithName:@"AvenirNextCondensed-HeavyItalic" size:12.5]
+                           ?: [UIFont boldSystemFontOfSize:12.5];
     self.titleLabel.textAlignment = NSTextAlignmentLeft;
     self.titleLabel.userInteractionEnabled = NO;
     [self.titleBox addSubview:self.titleLabel];
 
     // 2. Mascot icon
-    self.mascotView = [[UIImageView alloc] initWithFrame:CGRectMake(74, 2.5, 21, 21)];
+    self.mascotView = [[UIImageView alloc] initWithFrame:CGRectMake(68, 2, 20, 20)];
     self.mascotView.image = MadnessMascotImage();
     self.mascotView.contentMode = UIViewContentModeScaleAspectFit;
     self.mascotView.userInteractionEnabled = NO;
     [self.titleBox addSubview:self.mascotView];
 
     // 3. Language Selector: [ EN ]  عربي  RU  CH
-    self.lblEn = [[UILabel alloc] initWithFrame:CGRectMake(100, 3.5, 24, 19)];
+    self.lblEn = [[UILabel alloc] initWithFrame:CGRectMake(92, 3, 22, 18)];
     self.lblEn.text = @"EN";
     self.lblEn.backgroundColor = UIColor.yellowColor;
     self.lblEn.textColor = UIColor.blackColor;
-    self.lblEn.font = [UIFont boldSystemFontOfSize:10.0];
+    self.lblEn.font = [UIFont boldSystemFontOfSize:9.5];
     self.lblEn.textAlignment = NSTextAlignmentCenter;
-    self.lblEn.layer.cornerRadius = 4.0;
+    self.lblEn.layer.cornerRadius = 3.5;
     self.lblEn.clipsToBounds = YES;
     [self.titleBox addSubview:self.lblEn];
 
-    self.lblAr = [[UILabel alloc] initWithFrame:CGRectMake(128, 3.5, 28, 19)];
+    self.lblAr = [[UILabel alloc] initWithFrame:CGRectMake(117, 3, 26, 18)];
     self.lblAr.text = @"عربي";
     self.lblAr.textColor = UIColor.whiteColor;
-    self.lblAr.font = [UIFont boldSystemFontOfSize:10.0];
+    self.lblAr.font = [UIFont boldSystemFontOfSize:9.5];
     self.lblAr.textAlignment = NSTextAlignmentCenter;
     [self.titleBox addSubview:self.lblAr];
 
-    self.lblRu = [[UILabel alloc] initWithFrame:CGRectMake(160, 3.5, 22, 19)];
+    self.lblRu = [[UILabel alloc] initWithFrame:CGRectMake(146, 3, 20, 18)];
     self.lblRu.text = @"RU";
     self.lblRu.textColor = UIColor.whiteColor;
-    self.lblRu.font = [UIFont boldSystemFontOfSize:10.0];
+    self.lblRu.font = [UIFont boldSystemFontOfSize:9.5];
     self.lblRu.textAlignment = NSTextAlignmentCenter;
     [self.titleBox addSubview:self.lblRu];
 
-    self.lblCh = [[UILabel alloc] initWithFrame:CGRectMake(184, 3.5, 22, 19)];
+    self.lblCh = [[UILabel alloc] initWithFrame:CGRectMake(168, 3, 20, 18)];
     self.lblCh.text = @"CH";
     self.lblCh.textColor = UIColor.whiteColor;
-    self.lblCh.font = [UIFont boldSystemFontOfSize:10.0];
+    self.lblCh.font = [UIFont boldSystemFontOfSize:9.5];
     self.lblCh.textAlignment = NSTextAlignmentCenter;
     [self.titleBox addSubview:self.lblCh];
 
     // 4. Contact button: [ CONTACT-> ]
     self.contactBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.contactBtn.frame = CGRectMake(212, 3.5, 86, 19);
+    self.contactBtn.frame = CGRectMake(192, 3, 76, 18);
     self.contactBtn.backgroundColor = UIColor.yellowColor;
-    self.contactBtn.layer.cornerRadius = 9.5;
+    self.contactBtn.layer.cornerRadius = 9.0;
     self.contactBtn.clipsToBounds = YES;
     [self.contactBtn setTitle:@"CONTACT->" forState:UIControlStateNormal];
     [self.contactBtn setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
-    self.contactBtn.titleLabel.font = [UIFont boldSystemFontOfSize:10.0];
+    self.contactBtn.titleLabel.font = [UIFont boldSystemFontOfSize:9.5];
     [self.contactBtn addTarget:self action:@selector(contactTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.titleBox addSubview:self.contactBtn];
 
     // 5. Handles: @Majed_aj  MADNESS~CHANNEL
-    self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(306, 3.5, 76, 19)];
+    self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(272, 3, 68, 18)];
     self.handleMajed.text = @"@Majed_aj";
     self.handleMajed.textColor = UIColor.whiteColor;
-    self.handleMajed.font = [UIFont boldSystemFontOfSize:10.5];
+    self.handleMajed.font = [UIFont boldSystemFontOfSize:10.0];
     self.handleMajed.textAlignment = NSTextAlignmentLeft;
     [self.titleBox addSubview:self.handleMajed];
 
-    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(386, 3.5, 140, 19)];
+    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(342, 3, 110, 18)];
     self.handleChan.text = @"MADNESS~CHANNEL";
     self.handleChan.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
-    self.handleChan.font = [UIFont boldSystemFontOfSize:10.0];
+    self.handleChan.font = [UIFont boldSystemFontOfSize:9.5];
     self.handleChan.textAlignment = NSTextAlignmentLeft;
     [self.titleBox addSubview:self.handleChan];
 
-    // Subheader Line (Below top capsule bar, y = 35):
+    // Subheader Line (Below top capsule bar, y = 31):
     // Left: Date & Time + Battery Level
-    self.clockLabel = [[UILabel alloc] initWithFrame:CGRectMake(42, 35, 155, 16)];
+    self.clockLabel = [[UILabel alloc] initWithFrame:CGRectMake(36, 31, 140, 16)];
     self.clockLabel.backgroundColor = UIColor.clearColor;
     self.clockLabel.textColor = UIColor.whiteColor;
-    self.clockLabel.font = [UIFont boldSystemFontOfSize:11.0];
+    self.clockLabel.font = [UIFont boldSystemFontOfSize:10.5];
     self.clockLabel.textAlignment = NSTextAlignmentLeft;
     self.clockLabel.userInteractionEnabled = NO;
     self.clockLabel.hidden = YES;
     [self.panel addSubview:self.clockLabel];
 
-    self.batteryLabel = [[UILabel alloc] initWithFrame:CGRectMake(202, 35, 30, 16)];
+    self.batteryLabel = [[UILabel alloc] initWithFrame:CGRectMake(180, 31, 26, 16)];
     self.batteryLabel.backgroundColor = UIColor.clearColor;
     self.batteryLabel.textColor = UIColor.yellowColor;
-    self.batteryLabel.font = [UIFont boldSystemFontOfSize:11.0];
+    self.batteryLabel.font = [UIFont boldSystemFontOfSize:10.5];
     self.batteryLabel.textAlignment = NSTextAlignmentLeft;
     self.batteryLabel.userInteractionEnabled = NO;
     self.batteryLabel.hidden = YES;
     [self.panel addSubview:self.batteryLabel];
 
     // Right: MORE FUTURE SOON INJOY ;)
-    self.sloganLabel = [[UILabel alloc] initWithFrame:CGRectMake(240, 35, kMadnessPanelW - 252, 16)];
+    self.sloganLabel = [[UILabel alloc] initWithFrame:CGRectMake(210, 31, 280, 16)];
     self.sloganLabel.backgroundColor = UIColor.clearColor;
     self.sloganLabel.text = @"MORE FUTURE SOON INJOY ;)";
     self.sloganLabel.textColor = UIColor.yellowColor;
-    self.sloganLabel.font = [UIFont boldSystemFontOfSize:11.0];
+    self.sloganLabel.font = [UIFont boldSystemFontOfSize:10.5];
     self.sloganLabel.textAlignment = NSTextAlignmentRight;
     self.sloganLabel.userInteractionEnabled = NO;
     self.sloganLabel.hidden = YES;
     [self.panel addSubview:self.sloganLabel];
 
-    // Content Scroll View (Horizontal menu grid): 0, 54, 640, 271
-    self.scroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 54, kMadnessPanelW, kMadnessPanelH - 54)];
-    self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 290);
+    // Content Scroll View (Horizontal menu grid): 0, 50, 500, 275
+    self.scroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 50, kMadnessPanelW, kMadnessPanelH - 50)];
+    self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 250);
     self.scroll.alwaysBounceHorizontal = NO;
     self.scroll.showsHorizontalScrollIndicator = NO;
     self.scroll.directionalLockEnabled = YES;
@@ -362,6 +374,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.dragMap.hidden = !g_pubgEspRadar;
     [self.dragMap addTarget:self action:@selector(wasDraggedm:withEventm:) forControlEvents:UIControlEventTouchDragInside | UIControlEventTouchDragOutside];
     [self addSubview:self.dragMap];
+
+    UIPanGestureRecognizer *radarPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleRadarPan:)];
+    [self.dragMap addGestureRecognizer:radarPan];
 
     // 1. Center green triangle
     UIBezierPath *tri = [UIBezierPath bezierPath];
@@ -436,64 +451,64 @@ static const CGFloat kMadnessPanelH = 325.0f;
     }
 }
 
-#pragma mark - Horizontal Content Grid (4 Columns x Pill Buttons)
+#pragma mark - Horizontal Content Grid (4 Columns x Authentic Buttons)
 
 - (void)buildHorizontalContent {
     __weak typeof(self) weakSelf = self;
 
-    const CGFloat colW = 142.0f;
-    const CGFloat colGap = 14.0f;
-    const CGFloat startX = 15.0f;
-    const CGFloat btnH = 22.0f;
+    const CGFloat colW = 110.0f;
+    const CGFloat colGap = 12.0f;
+    const CGFloat startX = 12.0f;
+    const CGFloat btnH = 20.0f;
 
-    CGFloat x0 = startX + 0 * (colW + colGap); // 15
-    CGFloat x1 = startX + 1 * (colW + colGap); // 171
-    CGFloat x2 = startX + 2 * (colW + colGap); // 327
-    CGFloat x3 = startX + 3 * (colW + colGap); // 483
+    CGFloat x0 = startX + 0 * (colW + colGap); // 12
+    CGFloat x1 = startX + 1 * (colW + colGap); // 134
+    CGFloat x2 = startX + 2 * (colW + colGap); // 256
+    CGFloat x3 = startX + 3 * (colW + colGap); // 378
 
     // =========================================================================
     // SECTION 1: > ESP PANEL
     // =========================================================================
-    [self addSectionHeader:@"ESP PANEL" atY:6.0];
+    [self addSectionHeader:@"ESP PANEL" atY:4.0];
 
-    // Row 0 (y = 28): [ ENABLE ], [ DRAW LINE ], [ ENEMY NUMBER ], [ PLAYER HEALTH ]
-    self.btnEspEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 28, colW, btnH) inView:self.scroll italic:YES];
+    // Row 0 (y = 24): [ ENABLE ], [ DRAW LINE ], [ ENEMY NUMBER ], [ PLAYER HEALTH ]
+    self.btnEspEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 24, colW, btnH) inView:self.scroll italic:YES];
     self.btnEspEnable.on = ds_hosted_esp_enabled();
     self.btnEspEnable.onToggle = ^(BOOL isOn) {
         ds_hosted_esp_set_enabled(isOn);
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:kDSHostedEspEnabledKey];
     };
 
-    self.btnLine = [self btn:@"DRAW LINE" frame:CGRectMake(x1, 28, colW, btnH) inView:self.scroll italic:YES];
+    self.btnLine = [self btn:@"DRAW LINE" frame:CGRectMake(x1, 24, colW, btnH) inView:self.scroll italic:YES];
     self.btnLine.on = g_pubgEspLine;
     self.btnLine.onToggle = ^(BOOL isOn) {
         g_pubgEspLine = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_line"];
     };
 
-    self.btnEnemyNum = [self btn:@"ENEMY NUMBER" frame:CGRectMake(x2, 28, colW, btnH) inView:self.scroll italic:YES];
+    self.btnEnemyNum = [self btn:@"ENEMY NUMBER" frame:CGRectMake(x2, 24, colW, btnH) inView:self.scroll italic:YES];
     self.btnEnemyNum.on = g_pubgEspEnemyNumber;
     self.btnEnemyNum.onToggle = ^(BOOL isOn) {
         g_pubgEspEnemyNumber = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_enemy_num"];
     };
 
-    self.btnHealth = [self btn:@"PLAYER HEALTH" frame:CGRectMake(x3, 28, colW, btnH) inView:self.scroll italic:YES];
+    self.btnHealth = [self btn:@"PLAYER HEALTH" frame:CGRectMake(x3, 24, colW, btnH) inView:self.scroll italic:YES];
     self.btnHealth.on = g_pubgEspHealth;
     self.btnHealth.onToggle = ^(BOOL isOn) {
         g_pubgEspHealth = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_health"];
     };
 
-    // Row 1 (y = 54): [ DRAW BONE ], [ DRAW SRADAR ], [ PLAYER NAME ], [ PLAYER DIS ]
-    self.btnBone = [self btn:@"DRAW BONE" frame:CGRectMake(x0, 54, colW, btnH) inView:self.scroll italic:YES];
+    // Row 1 (y = 48): [ DRAW BONE ], [ DRAW SRADAR ], [ PLAYER NAME ], [ PLAYER DIS ]
+    self.btnBone = [self btn:@"DRAW BONE" frame:CGRectMake(x0, 48, colW, btnH) inView:self.scroll italic:YES];
     self.btnBone.on = g_pubgEspSkeleton;
     self.btnBone.onToggle = ^(BOOL isOn) {
         g_pubgEspSkeleton = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_skeleton"];
     };
 
-    self.btnRadar = [self btn:@"DRAW SRADAR" frame:CGRectMake(x1, 54, colW, btnH) inView:self.scroll italic:YES];
+    self.btnRadar = [self btn:@"DRAW SRADAR" frame:CGRectMake(x1, 48, colW, btnH) inView:self.scroll italic:YES];
     self.btnRadar.on = g_pubgEspRadar;
     self.btnRadar.onToggle = ^(BOOL isOn) {
         g_pubgEspRadar = isOn;
@@ -501,51 +516,51 @@ static const CGFloat kMadnessPanelH = 325.0f;
         weakSelf.dragMap.hidden = !isOn;
     };
 
-    self.btnName = [self btn:@"PLAYER NAME" frame:CGRectMake(x2, 54, colW, btnH) inView:self.scroll italic:YES];
+    self.btnName = [self btn:@"PLAYER NAME" frame:CGRectMake(x2, 48, colW, btnH) inView:self.scroll italic:YES];
     self.btnName.on = g_pubgEspName;
     self.btnName.onToggle = ^(BOOL isOn) {
         g_pubgEspName = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_name"];
     };
 
-    self.btnDist = [self btn:@"PLAYER DIS" frame:CGRectMake(x3, 54, colW, btnH) inView:self.scroll italic:YES];
+    self.btnDist = [self btn:@"PLAYER DIS" frame:CGRectMake(x3, 48, colW, btnH) inView:self.scroll italic:YES];
     self.btnDist.on = g_pubgEspDist;
     self.btnDist.onToggle = ^(BOOL isOn) {
         g_pubgEspDist = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_dist"];
     };
 
-    // Row 2 (y = 80): [ 3D BOX ], [ DRAW ARROW ], [ PLAYER TEAM ], [ PLAYER FLAG ]
-    self.btn3D = [self btn:@"3D BOX" frame:CGRectMake(x0, 80, colW, btnH) inView:self.scroll italic:YES];
+    // Row 2 (y = 72): [ 3D BOX ], [ DRAW ARROW ], [ PLAYER TEAM ], [ PLAYER FLAG ]
+    self.btn3D = [self btn:@"3D BOX" frame:CGRectMake(x0, 72, colW, btnH) inView:self.scroll italic:YES];
     self.btn3D.on = g_pubgEspBox;
     self.btn3D.onToggle = ^(BOOL isOn) {
         g_pubgEspBox = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_box"];
     };
 
-    self.btnArrow = [self btn:@"DRAW ARROW" frame:CGRectMake(x1, 80, colW, btnH) inView:self.scroll italic:YES];
+    self.btnArrow = [self btn:@"DRAW ARROW" frame:CGRectMake(x1, 72, colW, btnH) inView:self.scroll italic:YES];
     self.btnArrow.on = g_pubgEspArrow;
     self.btnArrow.onToggle = ^(BOOL isOn) {
         g_pubgEspArrow = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_arrow"];
     };
 
-    self.btnTeam = [self btn:@"PLAYER TEAM" frame:CGRectMake(x2, 80, colW, btnH) inView:self.scroll italic:YES];
+    self.btnTeam = [self btn:@"PLAYER TEAM" frame:CGRectMake(x2, 72, colW, btnH) inView:self.scroll italic:YES];
     self.btnTeam.on = g_pubgEspTeam;
     self.btnTeam.onToggle = ^(BOOL isOn) {
         g_pubgEspTeam = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_team"];
     };
 
-    self.btnFlag = [self btn:@"PLAYER FLAG" frame:CGRectMake(x3, 80, colW, btnH) inView:self.scroll italic:YES];
+    self.btnFlag = [self btn:@"PLAYER FLAG" frame:CGRectMake(x3, 72, colW, btnH) inView:self.scroll italic:YES];
     self.btnFlag.on = g_pubgEspFlag;
     self.btnFlag.onToggle = ^(BOOL isOn) {
         g_pubgEspFlag = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_flag"];
     };
 
-    // Distance Slider (y = 108): [ 500 ]  DISTANCE
-    self.sliderEspDist = [[MenuSliderRow alloc] initWithFrame:CGRectMake(15, 108, 610, 24) min:50 max:500 value:g_dspubgMaxDistance name:@"DISTANCE"];
+    // Distance Slider (y = 96): [ 500 ]  DISTANCE
+    self.sliderEspDist = [[MenuSliderRow alloc] initWithFrame:CGRectMake(12, 96, 476, 20) min:50 max:500 value:g_dspubgMaxDistance name:@"DISTANCE"];
     self.sliderEspDist.displayMode = MenuSliderDisplayRaw;
     self.sliderEspDist.onChange = ^(float v) {
         g_dspubgMaxDistance = v;
@@ -556,10 +571,10 @@ static const CGFloat kMadnessPanelH = 325.0f;
     // =========================================================================
     // SECTION 2: > MATERIAL PANEL
     // =========================================================================
-    [self addSectionHeader:@"MATERIAL PANEL" atY:140.0];
+    [self addSectionHeader:@"MATERIAL PANEL" atY:122.0];
 
-    // Row 0 (y = 162): [ ENABLE ], [ VEHICLE ], [ GRENADE WARN ], [ LOOT BOX ]
-    self.btnMatEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 162, colW, btnH) inView:self.scroll italic:YES];
+    // Row 0 (y = 142): [ ENABLE ], [ VEHICLE ], [ GRENADE WARN ], [ LOOT BOX ]
+    self.btnMatEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 142, colW, btnH) inView:self.scroll italic:YES];
     self.btnMatEnable.on = (g_pubgEspWeapon || g_pubgEspArmor || g_pubgEspScope);
     self.btnMatEnable.onToggle = ^(BOOL isOn) {
         weakSelf.btnVeh.on = isOn;
@@ -606,7 +621,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [def setBool:isOn forKey:@"pubg_scarl"];
     };
 
-    self.btnVeh = [self btn:@"VEHICLE" frame:CGRectMake(x1, 162, colW, btnH) inView:self.scroll italic:YES];
+    self.btnVeh = [self btn:@"VEHICLE" frame:CGRectMake(x1, 142, colW, btnH) inView:self.scroll italic:YES];
     self.btnVeh.on = g_pubgEspVehicle;
     self.btnVeh.onToggle = ^(BOOL isOn) {
         g_pubgEspVehicle = isOn;
@@ -615,85 +630,85 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_vehicle"];
     };
 
-    self.btnGrenade = [self btn:@"GRENADE WARN" frame:CGRectMake(x2, 162, colW, btnH) inView:self.scroll italic:YES];
+    self.btnGrenade = [self btn:@"GRENADE WARN" frame:CGRectMake(x2, 142, colW, btnH) inView:self.scroll italic:YES];
     self.btnGrenade.on = g_pubgEspGrenade;
     self.btnGrenade.onToggle = ^(BOOL isOn) {
         g_pubgEspGrenade = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_grenade"];
     };
 
-    self.btnLootBox = [self btn:@"LOOT BOX" frame:CGRectMake(x3, 162, colW, btnH) inView:self.scroll italic:YES];
+    self.btnLootBox = [self btn:@"LOOT BOX" frame:CGRectMake(x3, 142, colW, btnH) inView:self.scroll italic:YES];
     self.btnLootBox.on = g_pubgEspCrate;
     self.btnLootBox.onToggle = ^(BOOL isOn) {
         g_pubgEspCrate = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_crate"];
     };
 
-    // Row 1 (y = 188): [ FLARE GUN ], [ AIRDROP ], [ ACCESSORY ], [ DRUG ]
-    self.btnFlareGun = [self btn:@"FLARE GUN" frame:CGRectMake(x0, 188, colW, btnH) inView:self.scroll italic:YES];
+    // Row 1 (y = 166): [ FLARE GUN ], [ AIRDROP ], [ ACCESSORY ], [ DRUG ]
+    self.btnFlareGun = [self btn:@"FLARE GUN" frame:CGRectMake(x0, 166, colW, btnH) inView:self.scroll italic:YES];
     self.btnFlareGun.on = g_pubgEspFlareGun;
     self.btnFlareGun.onToggle = ^(BOOL isOn) {
         g_pubgEspFlareGun = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_flaregun"];
     };
 
-    self.btnAirdrop = [self btn:@"AIRDROP" frame:CGRectMake(x1, 188, colW, btnH) inView:self.scroll italic:YES];
+    self.btnAirdrop = [self btn:@"AIRDROP" frame:CGRectMake(x1, 166, colW, btnH) inView:self.scroll italic:YES];
     self.btnAirdrop.on = g_pubgEspCrate;
     self.btnAirdrop.onToggle = ^(BOOL isOn) {
         g_pubgEspCrate = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_crate"];
     };
 
-    self.btnAccessory = [self btn:@"ACCESSORY" frame:CGRectMake(x2, 188, colW, btnH) inView:self.scroll italic:YES];
+    self.btnAccessory = [self btn:@"ACCESSORY" frame:CGRectMake(x2, 166, colW, btnH) inView:self.scroll italic:YES];
     self.btnAccessory.on = g_pubgEspScope;
     self.btnAccessory.onToggle = ^(BOOL isOn) {
         g_pubgEspScope = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_scope"];
     };
 
-    self.btnDrug = [self btn:@"DRUG" frame:CGRectMake(x3, 188, colW, btnH) inView:self.scroll italic:YES];
+    self.btnDrug = [self btn:@"DRUG" frame:CGRectMake(x3, 166, colW, btnH) inView:self.scroll italic:YES];
     self.btnDrug.on = g_pubgEspDrug;
     self.btnDrug.onToggle = ^(BOOL isOn) {
         g_pubgEspDrug = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_drug"];
     };
 
-    // Thin yellow separator line (y = 217)
-    UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(15, 217, 610, 1.0)];
+    // Thin yellow separator line (y = 191)
+    UIView *sep = [[UIView alloc] initWithFrame:CGRectMake(12, 191, 476, 0.8)];
     sep.backgroundColor = UIColor.yellowColor;
     [self.scroll addSubview:sep];
 
-    // Row 2 (y = 224): [ VAL ], [ AKM ], [ M416 ], [ SCAR-L ]
-    self.btnVal = [self btn:@"VAL" frame:CGRectMake(x0, 224, colW, btnH) inView:self.scroll italic:YES];
+    // Row 2 (y = 196): [ VAL ], [ AKM ], [ M416 ], [ SCAR-L ]
+    self.btnVal = [self btn:@"VAL" frame:CGRectMake(x0, 196, colW, btnH) inView:self.scroll italic:YES];
     self.btnVal.on = g_pubgEspVal;
     self.btnVal.onToggle = ^(BOOL isOn) {
         g_pubgEspVal = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_val"];
     };
 
-    self.btnAkm = [self btn:@"AKM" frame:CGRectMake(x1, 224, colW, btnH) inView:self.scroll italic:YES];
+    self.btnAkm = [self btn:@"AKM" frame:CGRectMake(x1, 196, colW, btnH) inView:self.scroll italic:YES];
     self.btnAkm.on = g_pubgEspAkm;
     self.btnAkm.onToggle = ^(BOOL isOn) {
         g_pubgEspAkm = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_akm"];
     };
 
-    self.btnM416 = [self btn:@"M416" frame:CGRectMake(x2, 224, colW, btnH) inView:self.scroll italic:YES];
+    self.btnM416 = [self btn:@"M416" frame:CGRectMake(x2, 196, colW, btnH) inView:self.scroll italic:YES];
     self.btnM416.on = g_pubgEspM416;
     self.btnM416.onToggle = ^(BOOL isOn) {
         g_pubgEspM416 = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_m416"];
     };
 
-    self.btnScarl = [self btn:@"SCAR-L" frame:CGRectMake(x3, 224, colW, btnH) inView:self.scroll italic:YES];
+    self.btnScarl = [self btn:@"SCAR-L" frame:CGRectMake(x3, 196, colW, btnH) inView:self.scroll italic:YES];
     self.btnScarl.on = g_pubgEspScarl;
     self.btnScarl.onToggle = ^(BOOL isOn) {
         g_pubgEspScarl = isOn;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_scarl"];
     };
 
-    // Material Distance Slider (y = 252): [ 300 ]  DISTANCE
-    self.sliderItemDist = [[MenuSliderRow alloc] initWithFrame:CGRectMake(15, 252, 610, 24) min:50 max:500 value:g_pubgItemMaxDistance name:@"DISTANCE"];
+    // Material Distance Slider (y = 220): [ 300 ]  DISTANCE
+    self.sliderItemDist = [[MenuSliderRow alloc] initWithFrame:CGRectMake(12, 220, 476, 20) min:50 max:500 value:g_pubgItemMaxDistance name:@"DISTANCE"];
     self.sliderItemDist.displayMode = MenuSliderDisplayRaw;
     self.sliderItemDist.onChange = ^(float v) {
         g_pubgItemMaxDistance = v;
@@ -701,7 +716,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     };
     [self.scroll addSubview:self.sliderItemDist];
 
-    self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 290);
+    self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 250);
 }
 
 #pragma mark - Reset to Defaults
@@ -820,24 +835,24 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.panel.backgroundColor = [UIColor colorWithRed:0 green:0 blue:0 alpha:0.82];
     self.panel.layer.borderColor = [UIColor colorWithWhite:0.35 alpha:0.8].CGColor;
     self.panel.layer.borderWidth = 0.5;
-    self.panel.layer.cornerRadius = 12.0;
+    self.panel.layer.cornerRadius = 8.0;
 
     [self.handle removeGestureRecognizer:self.handleTap];
     self.handleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(controllview1)];
     [self.handle addGestureRecognizer:self.handleTap];
 
-    self.handleGlyph.frame = CGRectMake(0, 0, 26, 26);
+    self.handleGlyph.frame = CGRectMake(0, 0, 24, 24);
     self.handleGlyph.text = @"V";
-    self.handleGlyph.font = [UIFont boldSystemFontOfSize:14.0];
+    self.handleGlyph.font = [UIFont boldSystemFontOfSize:13.0];
 
-    self.titleBox.frame = CGRectMake(38, 3, targetW - 46, 26);
+    self.titleBox.frame = CGRectMake(34, 4, targetW - 42, 24);
     self.clockLabel.hidden = NO;
     self.batteryLabel.hidden = NO;
     self.sloganLabel.hidden = NO;
     self.scroll.hidden = NO;
 
     self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, targetW, targetH);
-    self.scroll.frame = CGRectMake(0, 54, targetW, targetH - 54);
+    self.scroll.frame = CGRectMake(0, 50, targetW, targetH - 50);
 }
 
 - (void)controllview1 {
@@ -847,7 +862,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     g_hostedMenuExpanded = NO;
 
     CGRect pf = self.panel.frame;
-    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 210, 32);
+    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 205, 30);
     self.panel.backgroundColor = UIColor.clearColor;
     self.panel.layer.borderWidth = 0.0;
     self.scroll.hidden = YES;
@@ -859,10 +874,10 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(controllview)];
     [self.handle addGestureRecognizer:self.handleTap];
 
-    self.handleGlyph.frame = CGRectMake(0, 0, 26, 26);
+    self.handleGlyph.frame = CGRectMake(0, 0, 24, 24);
     self.handleGlyph.text = @"⋗";
-    self.handleGlyph.font = [UIFont boldSystemFontOfSize:22.0];
-    self.titleBox.frame = CGRectMake(38, 3, 160, 26);
+    self.handleGlyph.font = [UIFont boldSystemFontOfSize:20.0];
+    self.titleBox.frame = CGRectMake(34, 3, 165, 24);
 }
 
 - (void)handleTapped:(UIButton *)sender {
@@ -872,6 +887,80 @@ static const CGFloat kMadnessPanelH = 325.0f;
 - (void)handleLongPress:(UILongPressGestureRecognizer *)gr {
     if (gr.state != UIGestureRecognizerStateBegan) return;
     if (self.asize) [self controllview1]; else [self controllview];
+}
+
+#pragma mark - UIGestureRecognizerDelegate & Pan Dragging
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    if (gestureRecognizer == self.panGesture || gestureRecognizer == self.titlePan) {
+        // Do not intercept taps on the expand/collapse handle button
+        if ([touch.view isDescendantOfView:self.handle]) {
+            return NO;
+        }
+        // Do not intercept taps on the contact button
+        if ([touch.view isDescendantOfView:self.contactBtn]) {
+            return NO;
+        }
+        // In collapsed mode: allow panning anywhere on the bar
+        if (!self.asize) {
+            return YES;
+        }
+        // In expanded mode: allow panning from top header area (above scroll view)
+        CGPoint loc = [touch locationInView:self.panel];
+        if (loc.y < 50.0f) {
+            return YES;
+        }
+        return NO;
+    }
+    return YES;
+}
+
+- (void)handlePanelPan:(UIPanGestureRecognizer *)pan {
+    UIView *superView = self.panel.superview ?: self;
+    CGPoint translation = [pan translationInView:superView];
+    CGPoint c = self.panel.center;
+    c.x += translation.x;
+    c.y += translation.y;
+
+    CGFloat halfW = self.panel.bounds.size.width * 0.5f;
+    CGFloat halfH = self.panel.bounds.size.height * 0.5f;
+    CGFloat maxW = superView.bounds.size.width;
+    CGFloat maxH = superView.bounds.size.height;
+    if (maxW > 100 && maxH > 100) {
+        c.x = MIN(MAX(c.x, halfW), maxW - halfW);
+        c.y = MIN(MAX(c.y, halfH), maxH - halfH);
+    }
+    self.panel.center = c;
+    [pan setTranslation:CGPointZero inView:superView];
+
+    if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
+        [NSUserDefaults.standardUserDefaults setDouble:c.x forKey:@"madness_menu_x"];
+        [NSUserDefaults.standardUserDefaults setDouble:c.y forKey:@"madness_menu_y"];
+    }
+}
+
+- (void)handleRadarPan:(UIPanGestureRecognizer *)pan {
+    UIView *superView = self.dragMap.superview ?: self;
+    CGPoint translation = [pan translationInView:superView];
+    CGPoint c = self.dragMap.center;
+    c.x += translation.x;
+    c.y += translation.y;
+
+    CGFloat halfW = self.dragMap.bounds.size.width * 0.5f;
+    CGFloat halfH = self.dragMap.bounds.size.height * 0.5f;
+    CGFloat maxW = superView.bounds.size.width;
+    CGFloat maxH = superView.bounds.size.height;
+    if (maxW > 100 && maxH > 100) {
+        c.x = MIN(MAX(c.x, halfW), maxW - halfW);
+        c.y = MIN(MAX(c.y, halfH), maxH - halfH);
+    }
+    self.dragMap.center = c;
+    [pan setTranslation:CGPointZero inView:superView];
+
+    if (pan.state == UIGestureRecognizerStateEnded || pan.state == UIGestureRecognizerStateCancelled) {
+        [NSUserDefaults.standardUserDefaults setDouble:c.x forKey:@"madness_radar_x"];
+        [NSUserDefaults.standardUserDefaults setDouble:c.y forKey:@"madness_radar_y"];
+    }
 }
 
 - (void)wasDragged:(UIButton *)sender withEvent:(UIEvent *)event {

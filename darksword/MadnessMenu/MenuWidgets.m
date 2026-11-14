@@ -6,10 +6,12 @@ UIColor *MADCardFill(void)  { return [UIColor colorWithRed:0 green:0 blue:0 alph
 /* UITextField: yellowColor colorWithAlphaComponent:0.7 */
 UIColor *MADFieldYellow(void){ return [[UIColor yellowColor] colorWithAlphaComponent:0.7]; }
 UIColor *MADBlack50(void)   { return [UIColor colorWithRed:0 green:0 blue:0 alpha:0.5]; }
-UIFont *MADBtnFont(void) { return [UIFont boldSystemFontOfSize:12.0]; }
+UIFont *MADBtnFont(void) { return [UIFont boldSystemFontOfSize:11.0]; }
 UIFont *MADItalicFont(CGFloat size) {
-    UIFont *f = [UIFont fontWithName:@"AvenirNextCondensed-HeavyItalic" size:size];
-    return f ?: [UIFont boldSystemFontOfSize:size];
+    UIFont *f = [UIFont fontWithName:@"Helvetica-BoldOblique" size:size];
+    if (!f) f = [UIFont italicSystemFontOfSize:size];
+    if (!f) f = [UIFont boldSystemFontOfSize:size];
+    return f;
 }
 
 @implementation MenuToggleButton
@@ -19,14 +21,14 @@ UIFont *MADItalicFont(CGFloat size) {
 - (instancetype)initWithTitle:(NSString *)title frame:(CGRect)frame italic:(BOOL)italic {
     if (!(self = [super initWithFrame:frame])) return nil;
     self.backgroundColor = MADBlack50();
-    self.layer.cornerRadius = frame.size.height * 0.5f;
+    self.layer.cornerRadius = 5.0;
     self.layer.borderWidth = 0.8;
     self.layer.borderColor = UIColor.darkGrayColor.CGColor;
     [self setTitle:title forState:UIControlStateNormal];
     [self setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    self.titleLabel.font = italic ? MADItalicFont(11.5) : MADBtnFont();
+    self.titleLabel.font = italic ? MADItalicFont(10.5) : MADBtnFont();
     self.titleLabel.adjustsFontSizeToFitWidth = YES;
-    self.titleLabel.minimumScaleFactor = 0.5;
+    self.titleLabel.minimumScaleFactor = 0.6;
     [self addTarget:self action:@selector(tap) forControlEvents:UIControlEventTouchUpInside];
     return self;
 }
@@ -52,7 +54,8 @@ UIFont *MADItalicFont(CGFloat size) {
 - (instancetype)initWithFrame:(CGRect)frame min:(float)min max:(float)max value:(float)value name:(NSString *)name {
     if (!(self = [super initWithFrame:frame])) return nil;
     _displayMode = MenuSliderDisplayRaw;
-    _s = [[UISlider alloc] initWithFrame:CGRectMake(0, 4, frame.size.width - 80, 14)];
+    CGFloat sliderW = frame.size.width - 70;
+    _s = [[UISlider alloc] initWithFrame:CGRectMake(0, 3, sliderW, 14)];
     _s.minimumValue = min; _s.maximumValue = max; _s.value = value;
     _s.minimumTrackTintColor = UIColor.yellowColor;
     _s.maximumTrackTintColor = [UIColor colorWithWhite:0.35 alpha:1.0];
@@ -60,18 +63,19 @@ UIFont *MADItalicFont(CGFloat size) {
     _s.continuous = YES;
     [_s addTarget:self action:@selector(changed) forControlEvents:UIControlEventValueChanged];
     [self addSubview:_s];
-    _bubble = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 38, 16)];
+    _bubble = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 32, 14)];
     _bubble.backgroundColor = UIColor.yellowColor;
     _bubble.textColor = UIColor.blackColor;
-    _bubble.font = [UIFont boldSystemFontOfSize:10];
+    _bubble.font = [UIFont boldSystemFontOfSize:9.5];
     _bubble.textAlignment = NSTextAlignmentCenter;
-    _bubble.layer.cornerRadius = 8.0;
+    _bubble.layer.cornerRadius = 3.5;
     _bubble.clipsToBounds = YES;
     [self addSubview:_bubble];
-    _name = [[UILabel alloc] initWithFrame:CGRectMake(frame.size.width - 76, 2, 74, 18)];
+    _name = [[UILabel alloc] initWithFrame:CGRectMake(frame.size.width - 66, 1, 64, 18)];
     _name.text = name;
     _name.textColor = UIColor.yellowColor;
-    _name.font = MADItalicFont(11.0);
+    _name.font = MADItalicFont(10.0);
+    _name.textAlignment = NSTextAlignmentRight;
     _name.adjustsFontSizeToFitWidth = YES;
     [self addSubview:_name];
     [self syncBubble];
