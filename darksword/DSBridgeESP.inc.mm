@@ -1094,10 +1094,10 @@ static inline void ds_pubg_draw_radar_arrow(CAShapeLayer *arrow,
     CGFloat cosA = cosf(angle);
     CGFloat sinA = sinf(angle);
 
-    // Radar perimeter: R = 125 pt from screen center / crosshair
-    const CGFloat R = 125.0f;
-    const CGFloat arrowLen = 22.0f;
-    const CGFloat halfBase = 7.0f;
+    // Radar perimeter: R = 85 pt from screen center / crosshair (compact & sleek)
+    const CGFloat R = 85.0f;
+    const CGFloat arrowLen = 13.0f;
+    const CGFloat halfBase = 4.5f;
 
     // Outward-pointing triangle:
     // Base center lies on circle of radius R
@@ -1125,17 +1125,17 @@ static inline void ds_pubg_draw_radar_arrow(CAShapeLayer *arrow,
     arrow.path = path.CGPath;
     arrow.fillColor = [UIColor clearColor].CGColor; // Hollow outline matching reference photo
     arrow.strokeColor = [UIColor colorWithRed:1.0f green:0.18f blue:0.18f alpha:0.95f].CGColor;
-    arrow.lineWidth = 1.8f;
+    arrow.lineWidth = 1.2f;
     arrow.lineJoin = kCALineJoinMiter;
     arrow.hidden = NO;
 
     if (arrowText) {
         if (isOffScreen) {
-            CGFloat textDist = R + arrowLen + 10.0f;
+            CGFloat textDist = R + arrowLen + 8.0f;
             CGFloat textCX = cx + textDist * cosA;
             CGFloat textCY = cy + textDist * sinA;
-            CGFloat lblW = 46.0f;
-            CGFloat lblH = 14.0f;
+            CGFloat lblW = 40.0f;
+            CGFloat lblH = 12.0f;
             arrowText.frame = CGRectMake(textCX - lblW * 0.5f, textCY - lblH * 0.5f, lblW, lblH);
             arrowText.string = [NSString stringWithFormat:@"%.0fm", distanceMeters];
             arrowText.foregroundColor = [UIColor colorWithRed:1.0f green:0.18f blue:0.18f alpha:0.95f].CGColor;
@@ -1235,30 +1235,24 @@ static void ds_hosted_apply_pubg(void) {
             if (ai) activeBotCount++;
             else activeEnemyCount++;
 
-            if (!g_pubgEspArrow || !arrow) {
+            // Arrow only shows for enemies BEHIND the player ("ở sau lưng", camRelZ <= 0.0f)
+            // Enemies in front do not show arrow ("còn trước đừng hiện")
+            if (!g_pubgEspArrow || !arrow || p.camRelZ > 0.0f) {
                 if (arrow) arrow.hidden = YES;
                 if (arrowText) arrowText.hidden = YES;
                 continue;
             }
 
-            // Direction for off-screen player
-            float dirX = 0.0f;
-            float dirY = 0.0f;
-            if (p.camRelZ > 10.0f) {
-                // In front of camera, but outside screen bounds
-                if (p.screenX != 0.0f || p.screenY != 0.0f) {
-                    dirX = (p.screenX + p.boxWidth * 0.5f) - cx;
-                    dirY = (p.screenY + p.boxHeight * 0.5f) - cy;
-                } else {
-                    dirX = p.camRelX;
-                    dirY = -p.camRelY;
-                }
+            // Behind camera
+            float dirX = p.camRelX;
+            float dirY = -p.camRelZ; // When camRelZ <= 0, -camRelZ >= 0 (points DOWN/behind in screen coords)
+            float h = hypotf(dirX, dirY);
+            if (h < 0.001f) {
+                dirX = 0.0f;
+                dirY = 1.0f;
             } else {
-                // Behind or beside camera
-                float h = hypotf(p.camRelX, p.camRelZ);
-                if (h < 0.001f) h = 0.001f;
-                dirX = p.camRelX / h;
-                dirY = -p.camRelZ / h; // When camRelZ < 0, -camRelZ > 0 (points DOWN/behind in screen coords)
+                dirX /= h;
+                dirY /= h;
             }
 
             ds_pubg_draw_radar_arrow(arrow, arrowText, cx, cy, dirX, dirY, p.distanceMeters, YES);
@@ -1272,20 +1266,9 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // Arrow 360 for on-screen player (authentic radar triangles matching reference screenshot)
-        if (g_pubgEspArrow && arrow) {
-            float dirX = centerX - cx;
-            float dirY = (p.screenY + p.boxHeight * 0.5f) - cy;
-            if (hypotf(dirX, dirY) > 25.0f) {
-                ds_pubg_draw_radar_arrow(arrow, arrowText, cx, cy, dirX, dirY, p.distanceMeters, NO);
-            } else {
-                arrow.hidden = YES;
-                if (arrowText) arrowText.hidden = YES;
-            }
-        } else {
-            if (arrow) arrow.hidden = YES;
-            if (arrowText) arrowText.hidden = YES;
-        }
+        // On-screen player is in front ("còn trước đừng hiện"): always hide arrow
+        if (arrow) arrow.hidden = YES;
+        if (arrowText) arrowText.hidden = YES;
 
         // Player Visibility & Colors (MADNESS 100% authentic: Green visible, Red occluded / knocked)
         BOOL isGreen = !p.isOccluded && !p.isKnocked;
