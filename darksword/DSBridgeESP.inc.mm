@@ -1213,8 +1213,9 @@ static void ds_hosted_apply_pubg(void) {
 
         const BOOL outsideBounds = (p.screenX < -150 || p.screenX > width + 150 ||
                                     p.screenY < -150 || p.screenY > height + 150);
+        const BOOL isOffScreen = (!p.isVisible || outsideBounds || p.boxWidth <= 0.0f || p.boxHeight <= 0.0f);
 
-        if (!p.isVisible || outsideBounds) {
+        if (isOffScreen) {
             box.hidden = YES;
             if (skel) skel.hidden = YES;
             line.hidden = YES;
@@ -1224,32 +1225,14 @@ static void ds_hosted_apply_pubg(void) {
             hpBar.hidden = YES;
             if (wLabel) wLabel.hidden = YES;
 
+            if (ai) activeBotCount++;
+            else activeEnemyCount++;
+
             if (!g_pubgEspArrow || !arrow) {
                 if (arrow) arrow.hidden = YES;
                 if (arrowText) arrowText.hidden = YES;
                 continue;
             }
-
-            if (ai && !g_pubgEspBot) {
-                arrow.hidden = YES;
-                arrowText.hidden = YES;
-                continue;
-            }
-
-            // Địch đã được chiếu lên màn hình nhưng bị gắn cờ "ẩn" (bị che khuất):
-            // vẫn vẽ vòng mũi tên 360° quanh chân địch, không vẽ mũi tên viền màn hình.
-            if (!outsideBounds && p.boxWidth > 0.0f && p.boxHeight > 0.0f) {
-                if (ai) activeBotCount++;
-                else activeEnemyCount++;
-                CGPoint swirlPivot = CGPointMake(p.screenX + p.boxWidth * 0.5f,
-                                                p.screenY + p.boxHeight);
-                ds_pubg_apply_arrow360(arrow, swirlPivot, ds_pubg_arrow360_phase());
-                if (arrowText) arrowText.hidden = YES;
-                continue;
-            }
-
-            if (ai) activeBotCount++;
-            else activeEnemyCount++;
 
             // 3D Direction Arrow around screen boundary
             float tx = p.camRelX;
@@ -1348,22 +1331,8 @@ static void ds_hosted_apply_pubg(void) {
             continue;
         }
 
-        // On-screen player: hide arrow
-        if (arrow) arrow.hidden = YES;
+        // On-screen player: hide boundary arrow text
         if (arrowText) arrowText.hidden = YES;
-
-        // Honor user filters
-        if (ai && !g_pubgEspBot) {
-            box.hidden = YES;
-            if (skel) skel.hidden = YES;
-            line.hidden = YES;
-            if (aiMark) aiMark.hidden = YES;
-            info.hidden = YES;
-            if (hpBg) hpBg.hidden = YES;
-            hpBar.hidden = YES;
-            if (wLabel) wLabel.hidden = YES;
-            continue;
-        }
 
         if (ai) activeBotCount++;
         else activeEnemyCount++;
@@ -1384,7 +1353,7 @@ static void ds_hosted_apply_pubg(void) {
         if (arrowText) arrowText.hidden = YES;
 
         // Player Visibility & Colors (MADNESS 100% authentic: Green visible, Red occluded / knocked)
-        BOOL isGreen = p.isVisible && !p.isKnocked;
+        BOOL isGreen = !p.isOccluded && !p.isKnocked;
         UIColor *playerColor = isGreen
             ? [UIColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:0.95]
             : [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:0.95];

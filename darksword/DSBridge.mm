@@ -878,6 +878,7 @@ typedef struct {
     bool isAI;
     bool isDead;
     bool isVisible;
+    bool isOccluded;
     bool isVehicle;
     float fuel;
     uint64_t actorPtr;

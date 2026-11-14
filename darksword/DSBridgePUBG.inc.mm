@@ -58,6 +58,11 @@ static const uint64_t kDSPUBGSceneCompRelativeLocOffset      = 0x1E4ULL;  // USc
 static const uint64_t kDSPUBGSceneCompAttachedParentOffset   = 0x188ULL;  // USceneComponent.AttachedParent (USceneComponent*)
 static const uint64_t kDSPUBGCharacterMeshOffset             = 0x510ULL;  // ASTExtraBaseCharacter.Mesh (USkeletalMeshComponent*)
 static const uint64_t kDSPUBGMeshBoxExtentZOffset            = 0xBA0ULL;  // Mesh.Bounds.BoxExtent.Z
+// UE4 UPrimitiveComponent render timestamps (inherited by USkeletalMeshComponent).
+// These are world-time values (seconds) written by the renderer every frame.
+static const uint64_t kDSPUGPrimitiveLastSubmitTime         = 0x484ULL;  // LastSubmitTime
+static const uint64_t kDSPUGPrimitiveLastRenderTime         = 0x488ULL;  // LastRenderTime
+static const uint64_t kDSPUGPrimitiveLastRenderTimeOnScreen = 0x48CULL;  // LastRenderTimeOnScreen
 static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL;  // UAECharacter.PlayerName (FString)
 static const uint64_t kDSPUBGCharacterNationOffset           = 0x970ULL;  // UAECharacter.Nation (FString)
 static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x990ULL;  // UAECharacter.PlayerKey (uint32_t) [DUMP updated]
@@ -3035,8 +3040,18 @@ static void ds_pubg_tick(void) {
     float screenW = (float)CGRectGetWidth(g_hostedContentBounds);
     float screenH = (float)CGRectGetHeight(g_hostedContentBounds);
     if (screenW <= 0.0f || screenH <= 0.0f) {
-        screenW = 844.0f;
-        screenH = 390.0f;
+        CGRect sb = [UIScreen mainScreen].bounds;
+        if (CGRectGetWidth(sb) < CGRectGetHeight(sb)) {
+            screenW = (float)CGRectGetHeight(sb);
+            screenH = (float)CGRectGetWidth(sb);
+        } else {
+            screenW = (float)CGRectGetWidth(sb);
+            screenH = (float)CGRectGetHeight(sb);
+        }
+        if (screenW <= 0.0f || screenH <= 0.0f) {
+            screenW = 844.0f;
+            screenH = 390.0f;
+        }
     }
 
     DSPUBGCamBasis basis = {};
@@ -3302,6 +3317,7 @@ static void ds_pubg_tick(void) {
         p.isDead = false;
         p.isKnocked = isKnocked;
         p.isVisible = false;
+        p.isOccluded = false;
         p.isVehicle = false;
         p.actorPtr = pawn;
         p.playerKey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
@@ -3363,9 +3379,9 @@ static void ds_pubg_tick(void) {
                     boxX = centerX - boxW * 0.5f;
                     boxY = topY;
 
-                    // Visible if inside screen bounds
-                    if (centerX + boxW * 0.5f >= 0.0f && centerX - boxW * 0.5f <= screenW &&
-                        topY + boxH >= 0.0f && topY <= screenH) {
+                    // Visible if projected on or near screen bounds (generous padding for partial entry)
+                    if (centerX + boxW * 0.5f >= -150.0f && centerX - boxW * 0.5f <= screenW + 150.0f &&
+                        topY + boxH >= -150.0f && topY <= screenH + 150.0f) {
                         onScreen = true;
                         p.screenX = boxX;
                         p.screenY = topY;
@@ -3401,16 +3417,26 @@ static void ds_pubg_tick(void) {
                         }
                         p.has3DBox = c3dOk;
 
-                        // Check UE4 PrimitiveComponent LastRenderTime vs LastSubmitTime for true occlusion
+                        // Occlusion check from the UE4 render timestamps of the character
+                        // mesh (UPrimitiveComponent): a primitive that is submitted AND
+                        // rendered in the same frame was actually drawn, i.e. it is not
+                        // hidden behind geometry.
+                        // The offsets are build specific: when the values do not look like
+                        // world times the layout does not match this build, so keep the
+                        // target visible instead of hiding every enemy.
                         if (meshComp && ds_pubg_valid(meshComp)) {
-                            float lastRender = ds_pubg_read_f32(meshComp + 0x334ULL);
-                            float lastSubmit = ds_pubg_read_f32(meshComp + 0x330ULL);
-                            if (isnan(lastRender) || lastRender <= 0.0f) {
-                                lastRender = ds_pubg_read_f32(meshComp + 0x338ULL);
-                                lastSubmit = ds_pubg_read_f32(meshComp + 0x334ULL);
-                            }
-                            if (!isnan(lastRender) && !isnan(lastSubmit) && lastRender > 1.0f && lastSubmit > 1.0f) {
-                                p.isVisible = (fabsf(lastSubmit - lastRender) <= 0.06f);
+                            float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
+                            float lastRender = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTime);
+                            float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
+                            bool timestampsLookValid =
+                                isfinite(lastSubmit) && isfinite(lastRender) && isfinite(lastOnScreen) &&
+                                lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
+                                lastRender > 1.0f && lastRender < 1.0e6f &&
+                                lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
+                            if (timestampsLookValid) {
+                                bool renderedThisFrame = fabsf(lastSubmit - lastRender) <= 0.1f;
+                                bool drawnOnScreen = lastOnScreen > 0.0f;
+                                p.isOccluded = !(renderedThisFrame && drawnOnScreen);
                             }
                         }
                     }
