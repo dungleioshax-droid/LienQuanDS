@@ -1388,8 +1388,8 @@ static void ds_hosted_apply_pubg(void) {
         CAShapeLayer *line = g_hostedPUBGLineLayers[i];
         CAShapeLayer *aiMark = g_hostedPUBGAIMarkLayers[i];
         CATextLayer *info = g_hostedPUBGInfoLabels[i];
-        CALayer *hpBg = g_hostedPUBGHealthBgLayers[i];
-        CALayer *hpBar = g_hostedPUBGHealthBarLayers[i];
+        CAShapeLayer *hpBg = g_hostedPUBGHealthBgLayers[i];
+        CAShapeLayer *hpBar = g_hostedPUBGHealthBarLayers[i];
         CATextLayer *wLabel = g_hostedPUBGWeaponLabels[i];
         CAShapeLayer *arrow = g_hostedPUBGArrowLayers[i];
         CATextLayer *arrowText = g_hostedPUBGArrowTextLayers[i];
