@@ -458,9 +458,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
 
     // Row 0 (y = 28): [ ENABLE ], [ DRAW LINE ], [ ENEMY NUMBER ], [ PLAYER HEALTH ]
     self.btnEspEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 28, colW, btnH) inView:self.scroll italic:YES];
-    self.btnEspEnable.on = ds_pubg_esp_is_enabled();
+    self.btnEspEnable.on = ds_hosted_esp_is_enabled();
     self.btnEspEnable.onToggle = ^(BOOL isOn) {
-        ds_pubg_esp_set_enabled(isOn);
+        ds_hosted_esp_set_enabled(isOn);
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:kDSHostedEspEnabledKey];
     };
 

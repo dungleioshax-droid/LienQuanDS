@@ -1634,35 +1634,36 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         // Tầng 3: Badge đen chứa tên / BOT (Line 3: Name / BOT Badge)
-        CGFloat badgeH = 14.0f;
+        CGFloat badgeH = 13.0f;
         CGFloat badgeY = anchorY - badgeH - 3.0f;
 
         BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
-        const char *displayName = haveNick ? p.name : (ai ? "BOT" : (g_pubgLanguage == 1 ? "ENEMY" : "ĐỊCH"));
-        NSString *nameStr = ds_safe_utf8_string(displayName, ai ? @"BOT" : @"ENEMY");
+        BOOL isBot = ai || (haveNick && (strstr(p.name, "ModelTarget") != NULL || strstr(p.name, "Target") != NULL || strstr(p.name, "AI") != NULL || strstr(p.name, "Bot") != NULL || strstr(p.name, "bot") != NULL));
+        NSString *nameStr = isBot ? @"BOT" : (haveNick ? [NSString stringWithUTF8String:p.name] : (g_pubgLanguage == 1 ? @"ENEMY" : @"ĐỊCH"));
         if (p.isKnocked) {
             nameStr = [NSString stringWithFormat:@"⚠️ %@", nameStr];
         }
 
         info.frame = CGRectMake(headerX, badgeY, headerW, badgeH);
-        info.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.75].CGColor;
-        info.cornerRadius = 3.0f;
+        info.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.80].CGColor;
+        info.cornerRadius = 2.0f;
         info.borderWidth = 0.5f;
         info.borderColor = [UIColor colorWithWhite:0.25 alpha:0.8].CGColor;
         info.alignmentMode = kCAAlignmentCenter;
-        info.fontSize = 9.0;
-        info.font = (__bridge CFTypeRef)[UIFont boldSystemFontOfSize:9.0];
+        info.fontSize = 10.0;
+        info.font = (__bridge CFTypeRef)[UIFont boldSystemFontOfSize:10.0];
         info.foregroundColor = [UIColor whiteColor].CGColor;
         info.shadowOpacity = 0.0f;
         info.string = nameStr;
         info.hidden = NO;
 
-        // Tầng 2: Thanh máu 3 vạch capsule viền đen (Line 2: 3-Segment Health Bar)
+        // Tầng 2: Thanh máu 4 vạch chuẩn PUBG (Line 2: 4-Segment Health Bar)
         BOOL showHp = (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0);
-        CGFloat barH = 4.5f;
-        CGFloat barY = badgeY - barH - 2.5f;
-        CGFloat segW = 23.0f;
-        CGFloat gap = 3.5f;
+        CGFloat barH = 3.5f;
+        CGFloat barY = badgeY - barH - 1.5f;
+        const int kNumSegs = 4;
+        CGFloat gap = 1.5f;
+        CGFloat segW = (headerW - (kNumSegs - 1) * gap) / (CGFloat)kNumSegs;
 
         if (showHp && hpBg && hpBar) {
             float hpVal = p.health;
@@ -1671,36 +1672,41 @@ static void ds_hosted_apply_pubg(void) {
             if (hpRatio < 0.0f) hpRatio = 0.0f;
             if (hpRatio > 1.0f) hpRatio = 1.0f;
 
-            int filledSegs = 0;
-            if (hpRatio >= 0.67f) filledSegs = 3;
-            else if (hpRatio >= 0.33f) filledSegs = 2;
-            else if (hpVal > 0.0f) filledSegs = 1;
-
-            // Nền 3 vạch tối màu có viền đen
+            // Nền 4 vạch tối màu có viền đen
             UIBezierPath *bgPath = [UIBezierPath bezierPath];
-            for (int s = 0; s < 3; s++) {
+            for (int s = 0; s < kNumSegs; s++) {
                 CGFloat sx = headerX + s * (segW + gap);
-                UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, segW, barH) cornerRadius:2.0f];
+                UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, segW, barH) cornerRadius:1.0f];
                 [bgPath appendPath:pill];
             }
             hpBg.path = bgPath.CGPath;
-            hpBg.fillColor = [UIColor colorWithWhite:0.0 alpha:0.65].CGColor;
+            hpBg.fillColor = [UIColor colorWithWhite:0.1 alpha:0.75].CGColor;
             hpBg.strokeColor = [UIColor blackColor].CGColor;
-            hpBg.lineWidth = 1.0f;
+            hpBg.lineWidth = 0.8f;
             hpBg.hidden = NO;
 
-            // Vạch máu đầy (Màu xanh khi thấy, đỏ khi khuất/gục)
-            if (filledSegs > 0) {
+            // 4 vạch máu đầy hoặc theo tỷ lệ máu
+            if (hpVal > 0.0f) {
                 UIBezierPath *fillPath = [UIBezierPath bezierPath];
-                for (int s = 0; s < filledSegs; s++) {
-                    CGFloat sx = headerX + s * (segW + gap);
-                    UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, segW, barH) cornerRadius:2.0f];
-                    [fillPath appendPath:pill];
+                for (int s = 0; s < kNumSegs; s++) {
+                    CGFloat segStart = s * (1.0f / (CGFloat)kNumSegs);
+                    CGFloat segEnd = (s + 1) * (1.0f / (CGFloat)kNumSegs);
+                    if (hpRatio >= segEnd) {
+                        CGFloat sx = headerX + s * (segW + gap);
+                        UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, segW, barH) cornerRadius:1.0f];
+                        [fillPath appendPath:pill];
+                    } else if (hpRatio > segStart) {
+                        CGFloat frac = (hpRatio - segStart) / (1.0f / (CGFloat)kNumSegs);
+                        CGFloat sx = headerX + s * (segW + gap);
+                        CGFloat curSegW = fmaxf(2.0f, segW * frac);
+                        UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, curSegW, barH) cornerRadius:1.0f];
+                        [fillPath appendPath:pill];
+                    }
                 }
                 hpBar.path = fillPath.CGPath;
                 hpBar.fillColor = playerColor.CGColor;
                 hpBar.strokeColor = [UIColor blackColor].CGColor;
-                hpBar.lineWidth = 1.0f;
+                hpBar.lineWidth = 0.8f;
                 hpBar.hidden = NO;
             } else {
                 hpBar.hidden = YES;
@@ -1712,7 +1718,7 @@ static void ds_hosted_apply_pubg(void) {
 
         // Tầng 1: Khoảng cách và Team ID dạng [67M]   [25] (Line 1: Distance & Team ID)
         CGFloat distH = 11.0f;
-        CGFloat distY = (showHp ? barY : badgeY) - distH - 2.0f;
+        CGFloat distY = (showHp ? barY : badgeY) - distH - 1.5f;
         if (wLabel) {
             int tId = (p.teamId > 0 && p.teamId <= 99) ? p.teamId : (int)(p.playerKey % 89 + 10);
             NSString *dtStr = @"";
@@ -1849,28 +1855,28 @@ static void ds_hosted_apply_pubg(void) {
         static UIFont *s_topCountFont = nil;
         static dispatch_once_t s_topCountOnce;
         dispatch_once(&s_topCountOnce, ^{
-            UIFont *f = [UIFont fontWithName:@"Arial Rounded MT Bold" size:15.0];
-            if (!f) f = [UIFont boldSystemFontOfSize:15.0];
+            UIFont *f = [UIFont fontWithName:@"Helvetica-Bold" size:13.5];
+            if (!f) f = [UIFont boldSystemFontOfSize:13.5];
             s_topCountFont = f;
         });
 
         if (g_pubgEspEnemyNumber && ds_pubg_has_render_source() && (totalEnemies + totalBots >= 0)) {
-            CGFloat lblW = 340.0f;
-            CGFloat lblH = 20.0f;
+            CGFloat lblW = 320.0f;
+            CGFloat lblH = 18.0f;
             CGFloat lblX = (width - lblW) * 0.5f;
-            CGFloat lblY = 28.0f;
+            CGFloat lblY = 25.0f;
 
             g_hostedPUBGTopCountLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
-            g_hostedPUBGTopCountLabel.fontSize = 15.0f;
+            g_hostedPUBGTopCountLabel.fontSize = 13.5f;
             g_hostedPUBGTopCountLabel.font = (__bridge CFTypeRef)s_topCountFont;
             g_hostedPUBGTopCountLabel.alignmentMode = kCAAlignmentCenter;
-            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.15 blue:0.15 alpha:1.0].CGColor;
+            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0].CGColor;
             g_hostedPUBGTopCountLabel.backgroundColor = UIColor.clearColor.CGColor;
             g_hostedPUBGTopCountLabel.shadowColor = UIColor.blackColor.CGColor;
-            g_hostedPUBGTopCountLabel.shadowRadius = 1.5f;
-            g_hostedPUBGTopCountLabel.shadowOpacity = 1.0f;
-            g_hostedPUBGTopCountLabel.shadowOffset = CGSizeZero;
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PLAYER AROUND [%d] | BOT AROUND [%d]", totalEnemies, totalBots];
+            g_hostedPUBGTopCountLabel.shadowRadius = 1.0f;
+            g_hostedPUBGTopCountLabel.shadowOpacity = 0.85f;
+            g_hostedPUBGTopCountLabel.shadowOffset = CGSizeMake(0.5f, 0.5f);
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PLAYER AROUND [%d]  BOT AROUND [%d]", totalEnemies, totalBots];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
             g_hostedPUBGTopCountLabel.hidden = YES;
