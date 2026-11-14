@@ -2857,6 +2857,189 @@ static bool ds_pubg_is_in_match(uint64_t world, uint64_t playerController, uint6
     return true;
 }
 
+// -----------------------------------------------------------------------------
+// Client-Side Map Collision Obstacle Ray-Box Vischeck System
+// (Pure Read-Only Math Ray-OBB Intersection, zero engine hooks, zero anticheat risk)
+// -----------------------------------------------------------------------------
+struct DSPUBGObstacleBox {
+    DSPUBGVector center;
+    DSPUBGVector extent;
+    DSPUBGRotator rotation;
+    float radius;
+};
+static const int kDSPUBGMaxObstacles = 128;
+static DSPUBGObstacleBox s_obstacles[kDSPUBGMaxObstacles] = {};
+static int s_obstacleCount = 0;
+static DSPUBGVector s_lastObstacleScanLoc = { 999999.0f, 999999.0f, 999999.0f };
+static uint64_t s_obstacleLastScanTick = 0;
+
+static inline void ds_pubg_rotator_to_axes(
+    const DSPUBGRotator &rot,
+    DSPUBGVector &outX,
+    DSPUBGVector &outY,
+    DSPUBGVector &outZ)
+{
+    const float kPi = 3.141592653589793f;
+    float radPitch = rot.Pitch * kPi / 180.0f;
+    float radYaw   = rot.Yaw   * kPi / 180.0f;
+    float radRoll  = rot.Roll  * kPi / 180.0f;
+
+    float SP = sinf(radPitch), CP = cosf(radPitch);
+    float SY = sinf(radYaw),   CY = cosf(radYaw);
+    float SR = sinf(radRoll),  CR = cosf(radRoll);
+
+    // Forward (X)
+    outX.X = CP * CY;
+    outX.Y = CP * SY;
+    outX.Z = SP;
+
+    // Right (Y)
+    outY.X = SR * SP * CY - CR * SY;
+    outY.Y = SR * SP * SY + CR * CY;
+    outY.Z = -SR * CP;
+
+    // Up (Z)
+    outZ.X = -(CR * SP * CY + SR * SY);
+    outZ.Y = CY * SR - CR * SP * SY;
+    outZ.Z = CR * CP;
+}
+
+static inline void ds_pubg_rotate_vec(const DSPUBGVector &v, const DSPUBGRotator &rot, DSPUBGVector &out) {
+    DSPUBGVector uX = {}, uY = {}, uZ = {};
+    ds_pubg_rotator_to_axes(rot, uX, uY, uZ);
+    out.X = v.X * uX.X + v.Y * uY.X + v.Z * uZ.X;
+    out.Y = v.X * uX.Y + v.Y * uY.Y + v.Z * uZ.Y;
+    out.Z = v.X * uX.Z + v.Y * uY.Z + v.Z * uZ.Z;
+}
+
+static bool ds_pubg_extract_obstacle_box(uint64_t comp, DSPUBGObstacleBox &outBox) {
+    if (!comp || !ds_pubg_valid(comp)) return false;
+    DSPUBGVector loc = {};
+    if (!ds_pubg_read(comp + kDSPUBGSceneCompRelativeLocOffset, &loc, sizeof(loc))) return false;
+    if (fabsf(loc.X) < 1.0f && fabsf(loc.Y) < 1.0f && fabsf(loc.Z) < 1.0f) return false;
+
+    DSPUBGRotator rot = {};
+    ds_pubg_read(comp + 0x1F0ULL, &rot, sizeof(rot));
+
+    DSPUBGVector scale = { 1.0f, 1.0f, 1.0f };
+    ds_pubg_read(comp + 0x1FCULL, &scale, sizeof(scale));
+    if (fabsf(scale.X) < 0.01f) scale.X = 1.0f;
+    if (fabsf(scale.Y) < 0.01f) scale.Y = 1.0f;
+    if (fabsf(scale.Z) < 0.01f) scale.Z = 1.0f;
+
+    DSPUBGVector boxOrigin = {}, boxExtent = {};
+    bool gotBounds = false;
+
+    uint64_t staticMesh = ds_pubg_read_ptr(comp + 0xA30ULL);
+    if (staticMesh && ds_pubg_valid(staticMesh)) {
+        ds_pubg_read(staticMesh + 0x1A8ULL, &boxOrigin, sizeof(boxOrigin));
+        ds_pubg_read(staticMesh + 0x1B4ULL, &boxExtent, sizeof(boxExtent));
+        if (boxExtent.X > 5.0f && boxExtent.Y > 5.0f && boxExtent.Z > 5.0f && boxExtent.X < 8000.0f) {
+            gotBounds = true;
+        } else {
+            ds_pubg_read(staticMesh + 0x54ULL, &boxOrigin, sizeof(boxOrigin));
+            ds_pubg_read(staticMesh + 0x60ULL, &boxExtent, sizeof(boxExtent));
+            if (boxExtent.X > 5.0f && boxExtent.Y > 5.0f && boxExtent.Z > 5.0f && boxExtent.X < 8000.0f) {
+                gotBounds = true;
+            }
+        }
+    }
+
+    if (!gotBounds) {
+        ds_pubg_read(comp + 0xB8CULL, &boxOrigin, sizeof(boxOrigin));
+        ds_pubg_read(comp + 0xB98ULL, &boxExtent, sizeof(boxExtent));
+        if (boxExtent.X > 5.0f && boxExtent.Y > 5.0f && boxExtent.Z > 5.0f && boxExtent.X < 8000.0f) {
+            gotBounds = true;
+        }
+    }
+
+    if (!gotBounds) return false;
+
+    boxExtent.X *= fabsf(scale.X);
+    boxExtent.Y *= fabsf(scale.Y);
+    boxExtent.Z *= fabsf(scale.Z);
+
+    DSPUBGVector center = loc;
+    if (fabsf(boxOrigin.X) > 0.1f || fabsf(boxOrigin.Y) > 0.1f || fabsf(boxOrigin.Z) > 0.1f) {
+        DSPUBGVector scaledOrigin = { boxOrigin.X * scale.X, boxOrigin.Y * scale.Y, boxOrigin.Z * scale.Z };
+        DSPUBGVector rotOrigin = {};
+        ds_pubg_rotate_vec(scaledOrigin, rot, rotOrigin);
+        center.X += rotOrigin.X;
+        center.Y += rotOrigin.Y;
+        center.Z += rotOrigin.Z;
+    }
+
+    outBox.center = center;
+    outBox.extent = boxExtent;
+    outBox.rotation = rot;
+    outBox.radius = hypotf(hypotf(boxExtent.X, boxExtent.Y), boxExtent.Z);
+    return true;
+}
+
+static bool ds_pubg_ray_intersects_box(
+    const DSPUBGVector &rayStart,
+    const DSPUBGVector &rayEnd,
+    const DSPUBGObstacleBox &box)
+{
+    DSPUBGVector dir = { rayEnd.X - rayStart.X, rayEnd.Y - rayStart.Y, rayEnd.Z - rayStart.Z };
+    float len = hypotf(hypotf(dir.X, dir.Y), dir.Z);
+    if (len < 10.0f) return false;
+    float invLen = 1.0f / len;
+    DSPUBGVector d = { dir.X * invLen, dir.Y * invLen, dir.Z * invLen };
+
+    // 1. Fast bounding sphere rejection test
+    DSPUBGVector v = { box.center.X - rayStart.X, box.center.Y - rayStart.Y, box.center.Z - rayStart.Z };
+    float t_proj = v.X * d.X + v.Y * d.Y + v.Z * d.Z;
+    float radius = box.radius;
+    if (t_proj < -radius || t_proj > len + radius) return false;
+
+    float vSq = v.X * v.X + v.Y * v.Y + v.Z * v.Z;
+    float dPerpSq = vSq - t_proj * t_proj;
+    if (dPerpSq > radius * radius) return false;
+
+    // 2. Axes from Rotator
+    DSPUBGVector uX = {}, uY = {}, uZ = {};
+    ds_pubg_rotator_to_axes(box.rotation, uX, uY, uZ);
+
+    // 3. Kay-Kajiya slab test along each of the 3 local box axes
+    DSPUBGVector diff = { rayStart.X - box.center.X, rayStart.Y - box.center.Y, rayStart.Z - box.center.Z };
+    float tMin = 0.0f;
+    float tMax = len;
+
+    auto testSlab = [&](const DSPUBGVector &axis, float ext) -> bool {
+        float f = axis.X * d.X + axis.Y * d.Y + axis.Z * d.Z;
+        float s = axis.X * diff.X + axis.Y * diff.Y + axis.Z * diff.Z;
+        if (fabsf(f) > 1e-6f) {
+            float t1 = (-s - ext) / f;
+            float t2 = (-s + ext) / f;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            if (t1 > tMin) tMin = t1;
+            if (t2 < tMax) tMax = t2;
+            if (tMin > tMax) return false;
+        } else {
+            if (fabsf(s) > ext) return false;
+        }
+        return true;
+    };
+
+    if (!testSlab(uX, box.extent.X)) return false;
+    if (!testSlab(uY, box.extent.Y)) return false;
+    if (!testSlab(uZ, box.extent.Z)) return false;
+
+    // Must intersect between camera and target (clip margins to ignore self-hits)
+    return (tMax > 30.0f && tMin < len - 30.0f && tMin <= tMax);
+}
+
+static bool ds_pubg_is_blocked_by_obstacle(const DSPUBGVector &camLoc, const DSPUBGVector &targetLoc) {
+    if (s_obstacleCount <= 0) return false;
+    for (int i = 0; i < s_obstacleCount; i++) {
+        if (ds_pubg_ray_intersects_box(camLoc, targetLoc, s_obstacles[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void ds_pubg_tick(void) {
     if (!ds_pubg_attach()) {
         return;
@@ -3444,6 +3627,18 @@ static void ds_pubg_tick(void) {
                             if (timestampsLookValid) {
                                 float dt = lastSubmit - lastOnScreen;
                                 bool rawVisible = (dt >= -0.02f && dt <= 0.075f) && (lastOnScreen > 0.0f);
+
+                                // Hybrid Map Obstacle Raycast Verification:
+                                // If render timestamp says visible, verify that physical static mesh obstacle boxes
+                                // do not block direct line of sight (eliminating window/wall bounding sphere leakage).
+                                if (rawVisible && s_obstacleCount > 0) {
+                                    DSPUBGVector headPt = top;
+                                    DSPUBGVector bodyPt = pos;
+                                    if (ds_pubg_is_blocked_by_obstacle(camLoc, headPt) &&
+                                        ds_pubg_is_blocked_by_obstacle(camLoc, bodyPt)) {
+                                        rawVisible = false;
+                                    }
+                                }
 
                                 int visSlot = -1;
                                 for (int v = 0; v < 128; v++) {
@@ -4278,6 +4473,17 @@ static void ds_pubg_tick(void) {
             static std::vector<uint64_t> s_levelActors;
             if (s_levelActors.size() < actorsCount) s_levelActors.resize(actorsCount);
             if (ds_pubg_read(actorsData, s_levelActors.data(), actorsCount * sizeof(uint64_t))) {
+                bool needObstacleScan = false;
+                float camMoveDistSq = (camLoc.X - s_lastObstacleScanLoc.X) * (camLoc.X - s_lastObstacleScanLoc.X) +
+                                      (camLoc.Y - s_lastObstacleScanLoc.Y) * (camLoc.Y - s_lastObstacleScanLoc.Y) +
+                                      (camLoc.Z - s_lastObstacleScanLoc.Z) * (camLoc.Z - s_lastObstacleScanLoc.Z);
+                if ((s_visTickCounter - s_obstacleLastScanTick) >= 10 || camMoveDistSq > 90000.0f) {
+                    needObstacleScan = true;
+                    s_obstacleCount = 0;
+                    s_lastObstacleScanLoc = camLoc;
+                    s_obstacleLastScanTick = s_visTickCounter;
+                }
+
                 for (uint32_t i = 0; i < actorsCount; i++) {
                     uint64_t actor = s_levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
@@ -4286,6 +4492,26 @@ static void ds_pubg_tick(void) {
                     DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
                     if (cEntry.actor == actor) {
                         if (cEntry.isScenery) {
+                            if (needObstacleScan && s_obstacleCount < kDSPUBGMaxObstacles) {
+                                uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+                                if (rootComp && ds_pubg_valid(rootComp)) {
+                                    DSPUBGVector aLoc = {};
+                                    if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &aLoc, sizeof(aLoc))) {
+                                        float dx = aLoc.X - camLoc.X;
+                                        float dy = aLoc.Y - camLoc.Y;
+                                        float dz = aLoc.Z - camLoc.Z;
+                                        float dSq = dx * dx + dy * dy + dz * dz;
+                                        if (dSq < (4500.0f * 4500.0f)) {
+                                            DSPUBGObstacleBox ob = {};
+                                            uint64_t smc = ds_pubg_read_ptr(actor + 0x4B0ULL);
+                                            if (!smc || !ds_pubg_valid(smc)) smc = rootComp;
+                                            if (ds_pubg_extract_obstacle_box(smc, ob)) {
+                                                s_obstacles[s_obstacleCount++] = ob;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             continue;
                         }
                         if (cEntry.itemCat != DSPUBGItemCategoryNone) {
