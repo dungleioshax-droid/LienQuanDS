@@ -1073,7 +1073,78 @@ static NSString *ds_country_code_to_flag_emoji(const char *code) {
     return [NSString stringWithCharacters:chars length:4];
 }
 
+static inline void ds_pubg_draw_radar_arrow(CAShapeLayer *arrow,
+                                             CATextLayer *arrowText,
+                                             CGFloat cx, CGFloat cy,
+                                             float dirX, float dirY,
+                                             float distanceMeters,
+                                             BOOL isOffScreen) {
+    if (!arrow) return;
 
+    float dirLen = hypotf(dirX, dirY);
+    if (dirLen < 0.001f) {
+        dirX = 0.0f;
+        dirY = 1.0f;
+    } else {
+        dirX /= dirLen;
+        dirY /= dirLen;
+    }
+
+    CGFloat angle = atan2f(dirY, dirX);
+    CGFloat cosA = cosf(angle);
+    CGFloat sinA = sinf(angle);
+
+    // Radar perimeter: R = 125 pt from screen center / crosshair
+    const CGFloat R = 125.0f;
+    const CGFloat arrowLen = 22.0f;
+    const CGFloat halfBase = 7.0f;
+
+    // Outward-pointing triangle:
+    // Base center lies on circle of radius R
+    CGFloat baseCX = cx + R * cosA;
+    CGFloat baseCY = cy + R * sinA;
+    // Apex points radially outwards at R + arrowLen
+    CGFloat tipX = cx + (R + arrowLen) * cosA;
+    CGFloat tipY = cy + (R + arrowLen) * sinA;
+
+    // Tangent perpendicular vector
+    CGFloat normX = -sinA;
+    CGFloat normY = cosA;
+
+    CGFloat p1X = baseCX + normX * halfBase;
+    CGFloat p1Y = baseCY + normY * halfBase;
+    CGFloat p2X = baseCX - normX * halfBase;
+    CGFloat p2Y = baseCY - normY * halfBase;
+
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    [path moveToPoint:CGPointMake(tipX, tipY)];
+    [path addLineToPoint:CGPointMake(p1X, p1Y)];
+    [path addLineToPoint:CGPointMake(p2X, p2Y)];
+    [path closePath];
+
+    arrow.path = path.CGPath;
+    arrow.fillColor = [UIColor clearColor].CGColor; // Hollow outline matching reference photo
+    arrow.strokeColor = [UIColor colorWithRed:1.0f green:0.18f blue:0.18f alpha:0.95f].CGColor;
+    arrow.lineWidth = 1.8f;
+    arrow.lineJoin = kCALineJoinMiter;
+    arrow.hidden = NO;
+
+    if (arrowText) {
+        if (isOffScreen) {
+            CGFloat textDist = R + arrowLen + 10.0f;
+            CGFloat textCX = cx + textDist * cosA;
+            CGFloat textCY = cy + textDist * sinA;
+            CGFloat lblW = 46.0f;
+            CGFloat lblH = 14.0f;
+            arrowText.frame = CGRectMake(textCX - lblW * 0.5f, textCY - lblH * 0.5f, lblW, lblH);
+            arrowText.string = [NSString stringWithFormat:@"%.0fm", distanceMeters];
+            arrowText.foregroundColor = [UIColor colorWithRed:1.0f green:0.18f blue:0.18f alpha:0.95f].CGColor;
+            arrowText.hidden = NO;
+        } else {
+            arrowText.hidden = YES;
+        }
+    }
+}
 
 static void ds_hosted_apply_pubg(void) {
     @try {
@@ -1100,6 +1171,8 @@ static void ds_hosted_apply_pubg(void) {
 
     const CGFloat width = CGRectGetWidth(g_hostedLayer.bounds);
     const CGFloat height = CGRectGetHeight(g_hostedLayer.bounds);
+    const CGFloat cx = width * 0.5f;
+    const CGFloat cy = height * 0.5f;
 
     static UIFont *s_infoFont = nil;
     static UIFont *s_wFont = nil;
@@ -1168,105 +1241,29 @@ static void ds_hosted_apply_pubg(void) {
                 continue;
             }
 
-            // 3D Direction Arrow around screen boundary
-            float tx = p.camRelX;
-            float ty = p.camRelY;
-            float tz = p.camRelZ;
-
+            // Direction for off-screen player
             float dirX = 0.0f;
             float dirY = 0.0f;
-            if (tz > 0.1f) {
-                dirX = tx;
-                dirY = -ty; // Negative Y is UP in screen coords
+            if (p.camRelZ > 10.0f) {
+                // In front of camera, but outside screen bounds
+                if (p.screenX != 0.0f || p.screenY != 0.0f) {
+                    dirX = (p.screenX + p.boxWidth * 0.5f) - cx;
+                    dirY = (p.screenY + p.boxHeight * 0.5f) - cy;
+                } else {
+                    dirX = p.camRelX;
+                    dirY = -p.camRelY;
+                }
             } else {
-                float h = hypotf(tx, tz);
+                // Behind or beside camera
+                float h = hypotf(p.camRelX, p.camRelZ);
                 if (h < 0.001f) h = 0.001f;
-                dirX = tx / h;
-                dirY = -tz / h; // When tz < 0, -tz > 0 (points DOWN/behind)
+                dirX = p.camRelX / h;
+                dirY = -p.camRelZ / h; // When camRelZ < 0, -camRelZ > 0 (points DOWN/behind in screen coords)
             }
 
-            float dirLen = hypotf(dirX, dirY);
-            if (dirLen < 0.001f) {
-                dirX = 0.0f;
-                dirY = 1.0f;
-            } else {
-                dirX /= dirLen;
-                dirY /= dirLen;
-            }
-
-            // Screen boundary clamping with safe device margins
-            const CGFloat padX = 38.0f;
-            const CGFloat padY = 32.0f;
-            CGFloat minX = padX;
-            CGFloat maxX = width - padX;
-            CGFloat minY = padY;
-            CGFloat maxY = height - padY;
-            CGFloat cx = width * 0.5f;
-            CGFloat cy = height * 0.5f;
-
-            CGFloat tx_bound = (dirX > 0.0001f) ? (maxX - cx) / dirX : ((dirX < -0.0001f) ? (minX - cx) / dirX : 1e9f);
-            CGFloat ty_bound = (dirY > 0.0001f) ? (maxY - cy) / dirY : ((dirY < -0.0001f) ? (minY - cy) / dirY : 1e9f);
-            CGFloat t = fminf(tx_bound, ty_bound);
-
-            CGFloat arrowTipX = cx + t * dirX;
-            CGFloat arrowTipY = cy + t * dirY;
-            CGFloat angle = atan2f(dirY, dirX);
-
-            CGFloat arrowLen = 14.0f;
-            CGFloat arrowHalfW = 6.0f;
-            CGFloat cosA = cosf(angle);
-            CGFloat sinA = sinf(angle);
-
-            CGFloat baseCX = arrowTipX - cosA * arrowLen;
-            CGFloat baseCY = arrowTipY - sinA * arrowLen;
-            CGFloat normX = -sinA;
-            CGFloat normY = cosA;
-
-            CGFloat p1X = baseCX + normX * arrowHalfW;
-            CGFloat p1Y = baseCY + normY * arrowHalfW;
-            CGFloat p2X = baseCX - normX * arrowHalfW;
-            CGFloat p2Y = baseCY - normY * arrowHalfW;
-
-            UIBezierPath *arrowPath = [UIBezierPath bezierPath];
-            [arrowPath moveToPoint:CGPointMake(arrowTipX, arrowTipY)];
-            [arrowPath addLineToPoint:CGPointMake(p1X, p1Y)];
-            [arrowPath addLineToPoint:CGPointMake(p2X, p2Y)];
-            [arrowPath closePath];
-
-            arrow.path = arrowPath.CGPath;
-
-            UIColor *arrowColor;
-            if (ai) {
-                arrowColor = [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.95];
-            } else if (p.isKnocked) {
-                arrowColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:0.95];
-            } else if (p.distanceMeters < 50.0f) {
-                arrowColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95];
-            } else {
-                arrowColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:0.95];
-            }
-
-            arrow.fillColor = arrowColor.CGColor;
-            arrow.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-            arrow.lineWidth = 1.0;
-            arrow.hidden = NO;
-
-            // Distance text label placed inside the arrow (towards screen center)
-            CGFloat textOffset = arrowLen + 11.0f;
-            CGFloat textCX = arrowTipX - cosA * textOffset;
-            CGFloat textCY = arrowTipY - sinA * textOffset;
-
-            CGFloat lblW = 46.0f;
-            CGFloat lblH = 14.0f;
-            arrowText.frame = CGRectMake(textCX - lblW * 0.5f, textCY - lblH * 0.5f, lblW, lblH);
-            arrowText.string = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
-            arrowText.foregroundColor = arrowColor.CGColor;
-            arrowText.hidden = NO;
+            ds_pubg_draw_radar_arrow(arrow, arrowText, cx, cy, dirX, dirY, p.distanceMeters, YES);
             continue;
         }
-
-        // On-screen player: hide boundary arrow text
-        if (arrowText) arrowText.hidden = YES;
 
         if (ai) activeBotCount++;
         else activeEnemyCount++;
@@ -1275,9 +1272,20 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // On-screen player: hide off-screen boundary arrow
-        if (arrow) arrow.hidden = YES;
-        if (arrowText) arrowText.hidden = YES;
+        // Arrow 360 for on-screen player (authentic radar triangles matching reference screenshot)
+        if (g_pubgEspArrow && arrow) {
+            float dirX = centerX - cx;
+            float dirY = (p.screenY + p.boxHeight * 0.5f) - cy;
+            if (hypotf(dirX, dirY) > 25.0f) {
+                ds_pubg_draw_radar_arrow(arrow, arrowText, cx, cy, dirX, dirY, p.distanceMeters, NO);
+            } else {
+                arrow.hidden = YES;
+                if (arrowText) arrowText.hidden = YES;
+            }
+        } else {
+            if (arrow) arrow.hidden = YES;
+            if (arrowText) arrowText.hidden = YES;
+        }
 
         // Player Visibility & Colors (MADNESS 100% authentic: Green visible, Red occluded / knocked)
         BOOL isGreen = !p.isOccluded && !p.isKnocked;
