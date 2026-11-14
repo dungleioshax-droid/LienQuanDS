@@ -9,18 +9,13 @@
 @property (nonatomic, strong) UIView *titleBox;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UIImageView *mascotView;
-@property (nonatomic, strong) UIView *tabBarHost;
-@property (nonatomic, strong) MADSW *pageSwitch;
-@property (nonatomic, strong) MADSW *socialSwitch;
 @property (nonatomic, strong) UIScrollView *scroll;
 @property (nonatomic, strong) UILabel *clockLabel;
 @property (nonatomic, strong) UILabel *batteryLabel;
-@property (nonatomic, strong) UILabel *moreFutureLabel;
 @property (nonatomic, strong) UIButton *handle;
 @property (nonatomic, strong) UILabel *handleGlyph;
 @property (nonatomic, strong) UITapGestureRecognizer *handleTap;
 @property (nonatomic, strong) UILongPressGestureRecognizer *handleLong;
-@property (nonatomic, strong) UIView *rightColumnHost;
 @property (nonatomic, strong) NSDateFormatter *ttime;
 @property (nonatomic, strong) NSTimer *clockTimer;
 @property (nonatomic, strong) CAShapeLayer *triangleMaskLayer;
@@ -29,7 +24,6 @@
 @property (nonatomic, strong) CAShapeLayer *radacircle3;
 @property (nonatomic, strong) CAShapeLayer *ViewLine;
 @property (nonatomic, strong) UIButton *dragMap;
-@property (nonatomic) NSInteger cosview;
 @property (nonatomic) BOOL asize;
 @property (nonatomic, strong) UIImpactFeedbackGenerator *haptic;
 
@@ -63,7 +57,6 @@
     self.backgroundColor = UIColor.clearColor;
     self.userInteractionEnabled = YES;
     self.haptic = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    self.cosview = 0;
 
     // Load persisted settings
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -95,7 +88,6 @@
     [self buildChrome];
     [self buildRadarLayersHidden];
     [self buildLeftColumn];
-    [self buildRightColumn];
     [self startClock];
     return self;
 }
@@ -170,7 +162,7 @@
     self.titleBox.userInteractionEnabled = NO;
     [self.panel addSubview:self.titleBox];
 
-    /* labelobgos (5,3.5,70,18): looadmenu boldSystem 12; visual/FACTS last-writer HeavyItalic */
+    /* labelobgos (5,3.5,70,18) */
     self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(5, 3.5, 70, 18)];
     self.titleLabel.text = @"MADNESS";
     self.titleLabel.textColor = UIColor.yellowColor;
@@ -189,39 +181,8 @@
     self.mascotView.userInteractionEnabled = NO;
     [self.titleBox addSubview:self.mascotView];
 
-    self.tabBarHost = [[UIView alloc] initWithFrame:CGRectMake(135, 7.5, 105, 20)];
-    self.tabBarHost.backgroundColor = MADBlack50();
-    self.tabBarHost.layer.cornerRadius = 7.5;
-    self.tabBarHost.clipsToBounds = YES;
-    self.tabBarHost.hidden = YES;
-    [self.panel addSubview:self.tabBarHost];
-
-    self.pageSwitch = [[MADSW alloc] initWithStringsArray:@[@"E̷S̷P̷", @"O̷T̷H̷E̷R̷"]];
-    self.pageSwitch.frame = CGRectMake(0, 0, 100, 20);
-    self.pageSwitch.cornerRadius = 5.0;
-    self.pageSwitch.backgroundColor = UIColor.clearColor;
-    self.pageSwitch.sliderColor = UIColor.yellowColor;
-    self.pageSwitch.labelTextColorInsideSlider = UIColor.blackColor;
-    self.pageSwitch.labelTextColorOutsideSlider = UIColor.whiteColor;
-    self.pageSwitch.font = [UIFont boldSystemFontOfSize:10.0];
-    __weak typeof(self) weakSelf = self;
-    [self.pageSwitch setPressedHandler:^(NSUInteger index) { [weakSelf applyTabSwitchToIndex:index]; }];
-    [self.tabBarHost addSubview:self.pageSwitch];
-
-    self.socialSwitch = [[MADSW alloc] initWithStringsArray:@[@"CONTACT->", @"@LuBaiUwU", @"MADNESS-CHANNEL"]];
-    self.socialSwitch.frame = CGRectMake(120, 0, 230, 20);
-    self.socialSwitch.cornerRadius = 5.0;
-    self.socialSwitch.backgroundColor = UIColor.clearColor;
-    self.socialSwitch.sliderColor = UIColor.yellowColor;
-    self.socialSwitch.labelTextColorInsideSlider = UIColor.blackColor;
-    self.socialSwitch.labelTextColorOutsideSlider = UIColor.whiteColor;
-    self.socialSwitch.font = [UIFont boldSystemFontOfSize:10.0];
-    self.socialSwitch.hidden = YES;
-    [self.socialSwitch setPressedHandler:^(NSUInteger index) { NSLog(@"[MadnessMenu] social %lu", (unsigned long)index); }];
-    [self.tabBarHost addSubview:self.socialSwitch];
-
     self.scroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 30, 250, 315)];
-    self.scroll.contentSize = CGSizeMake(250, 890);
+    self.scroll.contentSize = CGSizeMake(250, 1025);
     self.scroll.alwaysBounceHorizontal = NO;
     self.scroll.showsHorizontalScrollIndicator = NO;
     self.scroll.directionalLockEnabled = YES;
@@ -259,14 +220,6 @@
     self.batteryLabel.userInteractionEnabled = NO;
     [self.scroll addSubview:self.batteryLabel];
 
-    self.moreFutureLabel = [[UILabel alloc] initWithFrame:CGRectMake(255, 0, 235, 18)];
-    self.moreFutureLabel.text = @"MORE FUTURE SOON INJOY ;)";
-    self.moreFutureLabel.textColor = UIColor.yellowColor;
-    self.moreFutureLabel.font = [UIFont boldSystemFontOfSize:11.0];
-    self.moreFutureLabel.textAlignment = NSTextAlignmentRight;
-    self.moreFutureLabel.hidden = YES;
-    [self.scroll addSubview:self.moreFutureLabel];
-
     /* Handle: cornerRadius 10.0 */
     self.handle = [UIButton buttonWithType:UIButtonTypeCustom];
     self.handle.frame = CGRectMake(5, 5, 25, 25);
@@ -294,10 +247,6 @@
 
     self.ttime = [[NSDateFormatter alloc] init];
     self.ttime.dateFormat = @"yyyy/MM/dd • hh:mm:ss";
-
-    self.rightColumnHost = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 500, 890)];
-    self.rightColumnHost.hidden = YES;
-    [self.scroll addSubview:self.rightColumnHost];
 }
 
 #pragma mark - Radar (hidden)
@@ -564,67 +513,20 @@
     [self btn:@"𝙅𝙐𝙈𝙋 𝘾𝘼𝙍" frame:CGRectMake(135,12,100,BH) inView:mv italic:YES];
     [self btn:@"𝙁𝘼𝙎𝙏 𝙎𝙒𝙄𝙏𝘾𝙃" frame:CGRectMake(5,44,100,BH) inView:mv italic:YES];
     [self btn:@"𝙂𝙊𝘿 𝙑𝙄𝙀𝙒" frame:CGRectMake(135,44,100,BH) inView:mv italic:YES];
-}
 
-- (void)buildRightColumn {
-    UIView *host = self.rightColumnHost;
-    const CGFloat BH = 18;
-    __weak typeof(self) weakSelf = self;
+    [self addHeader:@"ADVANCED PANEL" at:CGPointMake(2, 895)];
+    UIView *adv = [self cardAt:CGRectMake(5, 922, 240, 85)];
+    [self.scroll addSubview:adv];
 
-    [host addSubview:[[MenuSectionHeader alloc] initWithTitle:@"CUSTOM IGG" origin:CGPointMake(252, 18)]];
-    UIView *igg = [self cardAt5:CGRectMake(255, 46, 240, 175)];
-    [host addSubview:igg];
-    [igg addSubview:[[MenuYellowField alloc] initWithFrame:CGRectMake(5,10,170,20) placeholder:@"VALUE OR NEARBY OR BATCH"]];
-    MenuYellowField *hx = [[MenuYellowField alloc] initWithFrame:CGRectMake(185,10,50,20) placeholder:@"0x20"];
-    hx.textAlignment = NSTextAlignmentCenter;
-    [igg addSubview:hx];
-    [self btn:@"SEARCH" frame:CGRectMake(5,42,100,BH) inView:igg italic:NO];
-    [self btn:@"NEARBY" frame:CGRectMake(135,42,100,BH) inView:igg italic:NO];
-    [self btn:@"BATCH ALL" frame:CGRectMake(70,72,100,BH) inView:igg italic:NO];
-    [self madsw:@[@"F32",@"F64",@"I8",@"I16",@"I32",@"I64",@"U8",@"U16",@"U32",@"U64"]
-          frame:CGRectMake(5,108,230,20) parent:igg];
-
-    [host addSubview:[[MenuSectionHeader alloc] initWithTitle:@"CUSTOM OFFSET" origin:CGPointMake(252, 222)]];
-    UIView *off = [self cardAt5:CGRectMake(255, 250, 240, 240)];
-    [host addSubview:off];
-    [off addSubview:[[MenuYellowField alloc] initWithFrame:CGRectMake(5,10,230,20) placeholder:@"OFFSET"]];
-    [off addSubview:[[MenuYellowField alloc] initWithFrame:CGRectMake(5,40,230,20) placeholder:@"BYTE"]];
-    [self btn:@"𝙍𝙀𝙏" frame:CGRectMake(16,68,48,BH) inView:off italic:YES];
-    [self btn:@"𝙋𝘼𝙏𝘾𝙃" frame:CGRectMake(72,68,96,BH) inView:off italic:YES];
-    [self btn:@"𝙉𝙊𝙋" frame:CGRectMake(176,68,48,BH) inView:off italic:YES];
-    NSMutableArray *sArr=[NSMutableArray array]; for(int i=0;i<=10;i++)[sArr addObject:[NSString stringWithFormat:@"S%d",i]];
-    [self madsw:sArr frame:CGRectMake(5,100,230,18) parent:off];
-    NSMutableArray *wArr=[NSMutableArray array]; for(int i=0;i<=10;i++)[wArr addObject:[NSString stringWithFormat:@"W%d",i]];
-    [self madsw:wArr frame:CGRectMake(5,148,230,18) parent:off];
-    [self madsw:@[@"𝙈𝘼𝙓",@"𝙈𝙄𝙉"] frame:CGRectMake(80,123,80,18) parent:off];
-    [self madsw:@[@"𝙊𝙉",@"𝙊𝙁𝙁"] frame:CGRectMake(80,170,80,18) parent:off];
-    UILabel *jail=[[UILabel alloc] initWithFrame:CGRectMake(5,194,230,36)];
-    jail.text=@"CUSTOM OFFSET FOR JAILBREAK USER ONLY >";
-    jail.textColor=UIColor.yellowColor; jail.font=MADItalicFont(9);
-    jail.numberOfLines=2; jail.textAlignment=NSTextAlignmentCenter;
-    [off addSubview:jail];
-
-    [host addSubview:[[MenuSectionHeader alloc] initWithTitle:@"ADVANCED PANEL" origin:CGPointMake(252, 492)]];
-    UIView *adv=[self cardAt:CGRectMake(255,520,240,255)];
-    [host addSubview:adv];
-    MenuToggleButton *bReset = [self btn:@"𝙍𝙀𝙎𝙀𝙏 𝙂𝘼𝙈𝙀" frame:CGRectMake(5,15,100,BH) inView:adv italic:YES];
+    MenuToggleButton *bReset = [self btn:@"𝙍𝙀𝙎𝙀𝙏 𝙂𝘼𝙈𝙀" frame:CGRectMake(5,12,100,BH) inView:adv italic:YES];
     bReset.onToggle = ^(BOOL isOn) {
         [weakSelf resetToDefaults];
     };
-    [self btn:@"𝙉𝙊𝙏 𝙃𝘼𝘾𝙆" frame:CGRectMake(135,15,100,BH) inView:adv italic:YES];
-    [self madsw:@[@"DRAW1s",@"DRAW2s"] frame:CGRectMake(5,50,100,20) parent:adv];
-    [self madsw:@[@" ENGLISH ",@"عربي"] frame:CGRectMake(135,50,100,18) parent:adv];
-    [self btn:@"𝙎𝙋𝙀𝙀𝘿 𝙆𝙉𝙊𝘾𝙆" frame:CGRectMake(5,85,100,BH) inView:adv italic:YES];
-    [self btn:@"𝙁𝘼𝙎𝙏 𝘿𝙍𝙊𝙋" frame:CGRectMake(135,85,100,BH) inView:adv italic:YES];
-    MenuSliderRow *s1=[[MenuSliderRow alloc] initWithFrame:CGRectMake(5,120,230,22) min:0 max:500 value:500 name:@"𝘼𝙄𝙈 𝘿𝙄𝙎"];
-    s1.displayMode = MenuSliderDisplayRaw;
-    s1.onChange=^(float v){ weakSelf.aimdis=v; }; [adv addSubview:s1];
-    MenuSliderRow *s2=[[MenuSliderRow alloc] initWithFrame:CGRectMake(5,148,230,22) min:100000 max:800000 value:800000 name:@"𝙁𝘼𝙎𝙏 𝘽𝙐𝙇𝙇𝙀𝙏"];
-    s2.displayMode = MenuSliderDisplayTimes001;
-    s2.onChange=^(float v){ weakSelf.fastbulletval=v; }; [adv addSubview:s2];
-    self.sliderThickness = [[MenuSliderRow alloc] initWithFrame:CGRectMake(5,176,230,22) min:80 max:170 value:80 + (g_pubgEspThickness - 0.8f) * 33.0f name:@"𝘾𝘼𝙈 𝙁𝙊𝙑"];
+    [self btn:@"𝙉𝙊𝙏 𝙃𝘼𝘾𝙆" frame:CGRectMake(135,12,100,BH) inView:adv italic:YES];
+
+    self.sliderThickness = [[MenuSliderRow alloc] initWithFrame:CGRectMake(5,44,230,22) min:80 max:170 value:80 + (g_pubgEspThickness - 0.8f) * 33.0f name:@"𝘾𝘼𝙈 𝙁𝙊𝙑"];
     self.sliderThickness.displayMode = MenuSliderDisplayMinus80;
-    self.sliderThickness.onChange=^(float v){
+    self.sliderThickness.onChange = ^(float v){
         float th = 0.8f + ((v - 80.0f) / 90.0f) * 2.7f;
         if (th < 0.8f) th = 0.8f;
         if (th > 3.5f) th = 3.5f;
@@ -632,17 +534,8 @@
         [NSUserDefaults.standardUserDefaults setFloat:th forKey:@"pubg_thickness"];
     };
     [adv addSubview:self.sliderThickness];
-    MenuSliderRow *s4=[[MenuSliderRow alloc] initWithFrame:CGRectMake(5,204,230,22) min:0 max:0.098f value:0 name:@"𝙁𝙄𝙍𝙀 𝙍𝘼𝙏𝙀"];
-    s4.displayMode = MenuSliderDisplayRaw;
-    [adv addSubview:s4];
 
-    [host addSubview:[[MenuSectionHeader alloc] initWithTitle:@"IGG PANEL" origin:CGPointMake(252, 778)]];
-    UIView *ig=[self cardAt:CGRectMake(255,805,240,80)];
-    [host addSubview:ig];
-    [self btn:@"𝙎𝙀𝙏 𝙎𝘾𝙊𝙋𝙀" frame:CGRectMake(5,12,100,BH) inView:ig italic:YES];
-    [self btn:@"𝙁𝙇𝙔 𝙋𝙇𝘼𝙔𝙀𝙍" frame:CGRectMake(135,12,100,BH) inView:ig italic:YES];
-    [self btn:@"𝙃𝙄𝙂𝙃 𝙅𝙐𝙈𝙋" frame:CGRectMake(5,44,100,BH) inView:ig italic:YES];
-    [self btn:@"𝙈𝘼𝙂𝙄𝘾 𝘽𝙐𝙇𝙇𝙀𝙏" frame:CGRectMake(135,44,100,BH) inView:ig italic:YES];
+    self.scroll.contentSize = CGSizeMake(250, 1025);
 }
 
 #pragma mark - Reset to Defaults
@@ -713,41 +606,7 @@
     [self.sliderThickness setSliderValue:80.0f + (1.5f - 0.8f) / 2.7f * 90.0f];
 }
 
-#pragma mark - Open / close / tab (controllview order)
-
-- (void)applyTabSwitchToIndex:(NSUInteger)index {
-    self.cosview = (NSInteger)index;
-    CGRect pf = self.panel.frame;
-    CGRect tb = self.titleBox.frame;
-
-    // Clamp horizontally if expanding to 500 would overflow
-    if (self.superview && self.superview.bounds.size.width > 200) {
-        CGFloat maxW = (index == 0) ? 250.0 : 500.0;
-        if (pf.origin.x + maxW > self.superview.bounds.size.width) {
-            pf.origin.x = MAX(10.0, self.superview.bounds.size.width - maxW - 10.0);
-        }
-    }
-
-    if (index == 0) {
-        self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 250, 350);
-        self.titleBox.frame = CGRectMake(tb.origin.x, tb.origin.y, 205, 25);
-        self.scroll.frame = CGRectMake(0, 30, 250, 315);
-        self.tabBarHost.frame = CGRectMake(135, 7.5, 105, 20);
-        self.socialSwitch.hidden = YES;
-        self.rightColumnHost.hidden = YES;
-        self.moreFutureLabel.hidden = YES;
-    } else {
-        self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 500, 350);
-        self.titleBox.frame = CGRectMake(tb.origin.x, tb.origin.y, 455, 25);
-        self.scroll.frame = CGRectMake(0, 30, 500, 315);
-        self.tabBarHost.frame = CGRectMake(135, 7.5, 360, 20);
-        self.socialSwitch.hidden = NO;
-        self.rightColumnHost.hidden = NO;
-        self.moreFutureLabel.hidden = NO;
-    }
-    self.scroll.contentSize = CGSizeMake(250, 890);
-    NSLog(@"[MadnessMenu] Did switch to index %lu", (unsigned long)index);
-}
+#pragma mark - Open / close (controllview order)
 
 - (void)controllview {
     [self.haptic impactOccurred];
@@ -764,37 +623,21 @@
     self.handleGlyph.text = @"\u27C7";
     self.handleGlyph.font = [UIFont boldSystemFontOfSize:20.0];
     self.scroll.hidden = NO;
-    self.tabBarHost.hidden = NO;
     CGRect tb = self.titleBox.frame;
     self.titleBox.frame = CGRectMake(tb.origin.x, tb.origin.y, 205, 25);
     CGRect pf = self.panel.frame;
 
     if (self.superview && self.superview.bounds.size.width > 200) {
-        CGFloat maxW = (self.cosview == 0) ? 250.0 : 500.0;
-        if (pf.origin.x + maxW > self.superview.bounds.size.width) {
-            pf.origin.x = MAX(10.0, self.superview.bounds.size.width - maxW - 10.0);
+        if (pf.origin.x + 250.0 > self.superview.bounds.size.width) {
+            pf.origin.x = MAX(10.0, self.superview.bounds.size.width - 250.0 - 10.0);
         }
         if (pf.origin.y + 350.0 > self.superview.bounds.size.height) {
             pf.origin.y = MAX(10.0, self.superview.bounds.size.height - 350.0 - 10.0);
         }
     }
 
-    if (self.cosview == 0) {
-        self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 250, 350);
-        self.scroll.frame = CGRectMake(0, 30, 250, 315);
-        self.tabBarHost.frame = CGRectMake(135, 7.5, 105, 20);
-        self.socialSwitch.hidden = YES;
-        self.rightColumnHost.hidden = YES;
-        self.moreFutureLabel.hidden = YES;
-    } else {
-        self.titleBox.frame = CGRectMake(tb.origin.x, tb.origin.y, 455, 25);
-        self.tabBarHost.frame = CGRectMake(135, 7.5, 360, 20);
-        self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 500, 350);
-        self.scroll.frame = CGRectMake(0, 30, 500, 315);
-        self.socialSwitch.hidden = NO;
-        self.rightColumnHost.hidden = NO;
-        self.moreFutureLabel.hidden = NO;
-    }
+    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 250, 350);
+    self.scroll.frame = CGRectMake(0, 30, 250, 315);
 }
 
 - (void)controllview1 {
@@ -802,15 +645,9 @@
     self.asize = NO;
     self.isShowMenu = NO;
     g_hostedMenuExpanded = NO;
-    CGRect tb = self.titleBox.frame;
-    self.titleBox.frame = CGRectMake(tb.origin.x, tb.origin.y, 205, 25);
     CGRect pf = self.panel.frame;
     self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 210, 30);
     self.scroll.hidden = YES;
-    self.tabBarHost.hidden = YES;
-    self.socialSwitch.hidden = YES;
-    self.rightColumnHost.hidden = YES;
-    self.moreFutureLabel.hidden = YES;
     self.panel.backgroundColor = UIColor.clearColor;
     [self.handle removeGestureRecognizer:self.handleTap];
     self.handleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(controllview)];
@@ -818,7 +655,7 @@
     self.handleGlyph.frame = CGRectMake(6, 0, 15, 18);
     self.handleGlyph.text = @"⋗";
     self.handleGlyph.font = [UIFont boldSystemFontOfSize:25.0];
-    tb = self.titleBox.frame;
+    CGRect tb = self.titleBox.frame;
     self.titleBox.frame = CGRectMake(tb.origin.x, tb.origin.y, 105, 25);
 }
 
@@ -873,10 +710,7 @@
 
 - (void)previewOpen { [self controllview]; }
 - (void)previewClose { [self controllview1]; }
-- (void)previewSelectTab:(NSUInteger)index {
-    [self.pageSwitch selectIndex:index animated:YES];
-    [self applyTabSwitchToIndex:index];
-}
+- (void)previewSelectTab:(NSUInteger)index { (void)index; }
 - (void)previewLongPressToggle {
     if (self.asize) [self controllview1]; else [self controllview];
 }
@@ -885,7 +719,7 @@
     self.panel.center = CGPointMake(c.x + delta.x, c.y + delta.y);
 }
 - (UIView *)menuPanel { return self.panel; }
-- (id)previewPageSwitch { return self.pageSwitch; }
+- (id)previewPageSwitch { return nil; }
 - (UIScrollView *)previewScroll { return self.scroll; }
 - (void)previewSetScrollOffset:(CGPoint)o { self.scroll.contentOffset = o; }
 - (void)previewToggleFirstButton {
