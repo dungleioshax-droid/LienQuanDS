@@ -834,125 +834,60 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     UILabel *_watermarkLabel;
     UILabel *_resizeHandleLabel;
     UIButton *_toggleButton;
-    UIButton *_collapseButton;
     UIButton *_closeButton;
     UILabel *_titleLabel;
 
-    // Tab Bar
-    int _pubgCurrentTab;
-    UIView *_pubgTabBar;
-    UIButton *_pubgTabButtonPlayer;
-    UIButton *_pubgTabButtonItems;
-    UIButton *_pubgTabButtonVehicles;
-    UIButton *_pubgTabButtonSettings;
-    UIView *_tabDividers[3];
-
-    // Scroll View & Content Containers
+    // Scroll View
     UIScrollView *_scrollView;
-    UIView *_tabContentViewPlayer;
-    UIView *_tabContentViewItems;
-    UIView *_tabContentViewVehicles;
-    UIView *_tabContentViewSettings;
 
-    // Tab 0: Player ESP Controls
-    UIView *_rowMasterEsp;
-    UILabel *_espLabel;
-    UISwitch *_espSwitch;
-
-    UIView *_rowBox;
-    UILabel *_pubgBoxLabel;
-    UISwitch *_pubgBoxSwitch;
-
-    UIView *_rowSkeleton;
-    UILabel *_pubgSkeletonLabel;
-    UISwitch *_pubgSkeletonSwitch;
-
-    UIView *_rowLine;
-    UILabel *_pubgLineLabel;
-    UISwitch *_pubgLineSwitch;
-
-    UIView *_rowHealth;
-    UILabel *_pubgHealthLabel;
-    UISwitch *_pubgHealthSwitch;
-
-    UIView *_rowName;
-    UILabel *_pubgNameLabel;
-    UISwitch *_pubgNameSwitch;
-
-    UIView *_rowDist;
-    UILabel *_pubgDistLabel;
-    UISwitch *_pubgDistSwitch;
-
-    UIView *_rowBot;
-    UILabel *_pubgBotLabel;
-    UISwitch *_pubgBotSwitch;
-
-    UIView *_rowArrow;
-    UILabel *_pubgArrowLabel;
-    UISwitch *_pubgArrowSwitch;
-
-    UIView *_rowGrenade;
-    UILabel *_pubgGrenadeLabel;
-    UISwitch *_pubgGrenadeSwitch;
-
-    UIView *_rowZoom;
+    // Section 1: ESP Panel
+    UILabel *_espIconLabel;
+    UILabel *_espSectionLabel;
+    UIView *_cardEsp;
+    UIButton *_btnBox;
+    UIButton *_btnLine;
+    UIButton *_btnSkeleton;
+    UIButton *_btnName;
+    UIButton *_btnHealth;
+    UIButton *_btnBot;
+    UIButton *_btnArrow;
+    UIButton *_btnGrenade;
     UILabel *_zoomLabel;
-    UISlider *_zoomSlider;
     UILabel *_zoomValueLabel;
+    UISlider *_zoomSlider;
 
-    // Tab 1: Item ESP Controls
-    UIView *_rowWeapon;
-    UILabel *_pubgWeaponLabel;
-    UISwitch *_pubgWeaponSwitch;
-
-    UIView *_rowArmor;
-    UILabel *_pubgArmorLabel;
-    UISwitch *_pubgArmorSwitch;
-
-    UIView *_rowBag;
-    UILabel *_pubgBagLabel;
-    UISwitch *_pubgBagSwitch;
-
-    UIView *_rowScope;
-    UILabel *_pubgScopeLabel;
-    UISwitch *_pubgScopeSwitch;
-
-    UIView *_rowCrate;
-    UILabel *_pubgCrateLabel;
-    UISwitch *_pubgCrateSwitch;
-
-    UIView *_rowItemScan;
+    // Section 2: Items / Material Panel
+    UILabel *_itemsIconLabel;
+    UILabel *_itemsSectionLabel;
+    UIView *_cardItems;
+    UIButton *_btnWeapon;
+    UIButton *_btnArmor;
+    UIButton *_btnBag;
+    UIButton *_btnScope;
+    UIButton *_btnCrate;
     UILabel *_pubgItemScanLabel;
     UILabel *_pubgItemScanValueLabel;
     UISlider *_pubgItemScanSlider;
 
-    // Tab 2: Vehicle ESP Controls
-    UIView *_rowVehicle;
-    UILabel *_pubgVehicleLabel;
-    UISwitch *_pubgVehicleSwitch;
+    // Section 3: Vehicles Panel
+    UILabel *_vehiclesIconLabel;
+    UILabel *_vehiclesSectionLabel;
+    UIView *_cardVehicles;
+    UIButton *_btnVehicle;
+    UIButton *_btnVehicleHp;
+    UIButton *_btnVehicleFuel;
 
-    UIView *_rowVehicleHp;
-    UILabel *_pubgVehicleHpLabel;
-    UISwitch *_pubgVehicleHpSwitch;
-
-    UIView *_rowVehicleFuel;
-    UILabel *_pubgVehicleFuelLabel;
-    UISwitch *_pubgVehicleFuelSwitch;
-
-    // Tab 3: Settings Controls
-    UIView *_rowLang;
+    // Section 4: Settings Panel
+    UILabel *_settingsIconLabel;
+    UILabel *_settingsSectionLabel;
+    UIView *_cardSettings;
     UILabel *_pubgSettingLangLabel;
     UISegmentedControl *_pubgLangSegment;
-
-    UIView *_rowThickness;
     UILabel *_pubgSettingThicknessLabel;
     UILabel *_pubgSettingThicknessValueLabel;
     UISlider *_pubgSettingThicknessSlider;
-
-    UIView *_rowInfo;
     UILabel *_pubgSettingInfoLabel;
     UILabel *_pubgSettingInfoDescLabel;
-
     UIButton *_resetButton;
 
     // Anchors & Orientation
@@ -966,63 +901,56 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
     CGRect _appliedWindowBounds;
 }
 
-static UIView *ds_create_pill_row(CGFloat y, CGFloat width, CGFloat height) {
-    UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, y, width, height)];
-    row.backgroundColor = [UIColor colorWithRed:0.04 green:0.04 blue:0.04 alpha:0.65];
-    row.layer.cornerRadius = 6.0;
-    row.layer.borderWidth = 0.8;
-    row.layer.borderColor = [UIColor colorWithWhite:0.22 alpha:0.6].CGColor;
-    row.clipsToBounds = YES;
-    row.userInteractionEnabled = YES;
-    return row;
+static UIImpactFeedbackGenerator *g_madnessImpact = nil;
+
+static void ds_update_madness_btn_state(UIButton *btn, BOOL isOn) {
+    if (!btn) return;
+    if (isOn) {
+        btn.layer.borderColor = [UIColor orangeColor].CGColor;
+        btn.backgroundColor = [UIColor colorWithRed:1.0 green:0.55 blue:0.0 alpha:0.18];
+    } else {
+        btn.layer.borderColor = [UIColor darkGrayColor].CGColor;
+        btn.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.50];
+    }
 }
 
-static UILabel *ds_create_row_label(UIView *parent, NSString *text, CGFloat width, CGFloat height) {
-    UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 0, width - 64.0, height)];
-    lbl.text = text;
-    lbl.textColor = [UIColor whiteColor];
-    lbl.font = [UIFont boldSystemFontOfSize:13.0];
-    lbl.userInteractionEnabled = NO;
-    [parent addSubview:lbl];
-    return lbl;
-}
-
-static UISwitch *ds_create_row_switch(UIView *parent, id target, SEL action, BOOL isOn, CGFloat width, CGFloat height) {
-    UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectZero];
-    sw.onTintColor = [UIColor colorWithRed:0.89 green:0.23 blue:0.21 alpha:1.00];
-    sw.thumbTintColor = [UIColor whiteColor];
-    sw.transform = CGAffineTransformMakeScale(0.72, 0.72);
-    sw.center = CGPointMake(width - 28.0, height * 0.5);
-    sw.on = isOn;
-    [sw addTarget:target action:action forControlEvents:UIControlEventValueChanged];
-    [parent addSubview:sw];
-    return sw;
+static UIButton *ds_create_madness_btn(CGRect frame, NSString *title, id target, SEL action) {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.frame = frame;
+    btn.layer.cornerRadius = 5.0;
+    btn.layer.borderWidth = 0.8;
+    btn.clipsToBounds = YES;
+    btn.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
+    [btn setTitle:title forState:UIControlStateNormal];
+    [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [btn addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+    return btn;
 }
 
 static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UISlider *sl,
                                 NSString *title, float minVal, float maxVal, float curVal,
                                 id target, SEL action, CGFloat width) {
-    tLbl.frame = CGRectMake(12.0, 6.0, width - 85.0, 18.0);
+    tLbl.frame = CGRectMake(10.0, 4.0, width - 85.0, 16.0);
     tLbl.text = title;
     tLbl.textColor = [UIColor whiteColor];
-    tLbl.font = [UIFont boldSystemFontOfSize:12.5];
+    tLbl.font = [UIFont boldSystemFontOfSize:11.5];
     tLbl.userInteractionEnabled = NO;
     [parent addSubview:tLbl];
 
-    vLbl.frame = CGRectMake(width - 75.0, 6.0, 65.0, 18.0);
+    vLbl.frame = CGRectMake(width - 75.0, 4.0, 65.0, 16.0);
     vLbl.textColor = [UIColor orangeColor];
-    vLbl.font = [UIFont monospacedDigitSystemFontOfSize:12.5 weight:UIFontWeightBold];
+    vLbl.font = [UIFont monospacedDigitSystemFontOfSize:11.5 weight:UIFontWeightBold];
     vLbl.textAlignment = NSTextAlignmentRight;
     vLbl.userInteractionEnabled = NO;
     [parent addSubview:vLbl];
 
-    sl.frame = CGRectMake(10.0, 26.0, width - 20.0, 24.0);
+    sl.frame = CGRectMake(8.0, 22.0, width - 16.0, 22.0);
     sl.minimumValue = minVal;
     sl.maximumValue = maxVal;
     sl.value = curVal;
     sl.continuous = YES;
-    sl.minimumTrackTintColor = [UIColor colorWithRed:0.89 green:0.23 blue:0.21 alpha:1.00];
-    sl.maximumTrackTintColor = [UIColor colorWithWhite:0.22 alpha:0.8];
+    sl.minimumTrackTintColor = [UIColor orangeColor];
+    sl.maximumTrackTintColor = [UIColor colorWithWhite:0.25 alpha:0.8];
     [sl addTarget:target action:action forControlEvents:UIControlEventValueChanged];
     [parent addSubview:sl];
 }
@@ -1034,6 +962,11 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.view.opaque = NO;
     self.view.backgroundColor = UIColor.clearColor;
+
+    if (!g_madnessImpact) {
+        g_madnessImpact = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleHeavy];
+        [g_madnessImpact prepare];
+    }
 
     _contentView = [[UIView alloc] initWithFrame:self.view.bounds];
     _contentView.opaque = NO;
@@ -1062,7 +995,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
     // 2. Menu Window Card (MADNESS dark semi-transparent card with orange border)
     _panelView = [[UIView alloc] initWithFrame:CGRectZero];
-    _panelView.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.82];
+    _panelView.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.75];
     _panelView.layer.cornerRadius = 12.0;
     _panelView.layer.borderWidth = 1.0;
     _panelView.layer.borderColor = [UIColor orangeColor].CGColor;
@@ -1074,9 +1007,9 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [_contentView addSubview:_panelView];
 
     // 3. Watermark Label (Subtle translucent "MADNESS" centered behind rows)
-    _watermarkLabel = [[UILabel alloc] initWithFrame:CGRectMake(10.0, 100.0, 290.0, 110.0)];
+    _watermarkLabel = [[UILabel alloc] initWithFrame:CGRectMake(10.0, 60.0, 410.0, 150.0)];
     _watermarkLabel.text = @"MADNESS";
-    _watermarkLabel.font = [UIFont systemFontOfSize:46.0 weight:UIFontWeightHeavy];
+    _watermarkLabel.font = [UIFont systemFontOfSize:60.0 weight:UIFontWeightHeavy];
     _watermarkLabel.textColor = [UIColor colorWithRed:1.0 green:0.55 blue:0.0 alpha:0.04];
     _watermarkLabel.textAlignment = NSTextAlignmentCenter;
     _watermarkLabel.userInteractionEnabled = NO;
@@ -1106,13 +1039,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     _titleLabel.font = [UIFont boldSystemFontOfSize:14.5];
     [_headerView addSubview:_titleLabel];
 
-    _collapseButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [_collapseButton setTitle:@"⌃" forState:UIControlStateNormal];
-    [_collapseButton setTitleColor:[UIColor orangeColor] forState:UIControlStateNormal];
-    _collapseButton.titleLabel.font = [UIFont systemFontOfSize:18.0 weight:UIFontWeightBold];
-    [_collapseButton addTarget:self action:@selector(dsToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [_headerView addSubview:_collapseButton];
-
     _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_closeButton setTitle:@"✕" forState:UIControlStateNormal];
     [_closeButton setTitleColor:[UIColor orangeColor] forState:UIControlStateNormal];
@@ -1120,56 +1046,15 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [_closeButton addTarget:self action:@selector(dsCloseTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_headerView addSubview:_closeButton];
 
-    // 6. Tab Bar (Capsule container with 4 tabs separated by dividers)
-    _pubgTabBar = [[UIView alloc] initWithFrame:CGRectZero];
-    _pubgTabBar.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.08 alpha:0.85];
-    _pubgTabBar.layer.cornerRadius = 6.0;
-    _pubgTabBar.layer.borderWidth = 0.8;
-    _pubgTabBar.layer.borderColor = [UIColor colorWithWhite:0.25 alpha:0.6].CGColor;
-    _pubgTabBar.clipsToBounds = YES;
-    [_panelView addSubview:_pubgTabBar];
-
-    auto createTabBtn = ^(NSString *title) {
-        UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
-        [b setTitle:title forState:UIControlStateNormal];
-        b.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-        [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [b addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [self->_pubgTabBar addSubview:b];
-        return b;
-    };
-    _pubgTabButtonPlayer = createTabBtn(@"ESP");
-    _pubgTabButtonItems = createTabBtn(@"Vật Phẩm");
-    _pubgTabButtonVehicles = createTabBtn(@"Xe");
-    _pubgTabButtonSettings = createTabBtn(@"Cài Đặt");
-
-    for (int di = 0; di < 3; di++) {
-        UIView *div = [[UIView alloc] initWithFrame:CGRectZero];
-        div.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.5];
-        [_pubgTabBar addSubview:div];
-        _tabDividers[di] = div;
-    }
-
-    // 7. Scroll View & Containers for each tab
+    // 6. Scroll View (MADNESS Orange-bordered inner scroll view)
     _scrollView = [[UIScrollView alloc] initWithFrame:CGRectZero];
     _scrollView.backgroundColor = [UIColor clearColor];
     _scrollView.layer.borderColor = [UIColor orangeColor].CGColor;
     _scrollView.layer.borderWidth = 0.8;
-    _scrollView.layer.cornerRadius = 10.0;
+    _scrollView.layer.cornerRadius = 12.0;
     _scrollView.showsVerticalScrollIndicator = YES;
     _scrollView.alwaysBounceVertical = YES;
     [_panelView addSubview:_scrollView];
-
-    CGFloat rowW = 286.0;
-    _tabContentViewPlayer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 514.0)];
-    _tabContentViewItems = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 284.0)];
-    _tabContentViewVehicles = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 132.0)];
-    _tabContentViewSettings = [[UIView alloc] initWithFrame:CGRectMake(0, 0, rowW, 230.0)];
-
-    [_scrollView addSubview:_tabContentViewPlayer];
-    [_scrollView addSubview:_tabContentViewItems];
-    [_scrollView addSubview:_tabContentViewVehicles];
-    [_scrollView addSubview:_tabContentViewSettings];
 
     // Seed controls from persisted state
     NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
@@ -1198,148 +1083,181 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         if (g_pubgEspThickness > 3.5f) g_pubgEspThickness = 3.5f;
     }
 
-    // --- Tab 0: Player ESP Controls ---
-    CGFloat y0 = 0;
-    _rowMasterEsp = ds_create_pill_row(y0, rowW, 40.0);
-    _espLabel = ds_create_row_label(_rowMasterEsp, @"Bật ESP Master", rowW, 40.0);
-    _espSwitch = ds_create_row_switch(_rowMasterEsp, self, @selector(dsEspSwitchChanged:), ds_hosted_esp_enabled(), rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowMasterEsp];
+    CGFloat cardW = 398.0;
+    CGFloat btnW = (cardW - 24.0) * 0.5;
+    CGFloat btnH = 26.0;
+    CGFloat curY = 12.0;
 
-    y0 += 46.0;
-    _rowBox = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgBoxLabel = ds_create_row_label(_rowBox, @"Khung 2D (Box)", rowW, 40.0);
-    _pubgBoxSwitch = ds_create_row_switch(_rowBox, self, @selector(dsPubgBoxChanged:), g_pubgEspBox, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowBox];
+    // --- Section 1: ESP PANEL ---
+    _espIconLabel = [[UILabel alloc] initWithFrame:CGRectMake(8.0, curY, 20.0, 22.0)];
+    _espIconLabel.text = @"⟇";
+    _espIconLabel.textColor = [UIColor orangeColor];
+    _espIconLabel.font = [UIFont boldSystemFontOfSize:22.0];
+    _espIconLabel.textAlignment = NSTextAlignmentCenter;
+    [_scrollView addSubview:_espIconLabel];
 
-    y0 += 46.0;
-    _rowSkeleton = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgSkeletonLabel = ds_create_row_label(_rowSkeleton, @"Khung Xương (Skeleton)", rowW, 40.0);
-    _pubgSkeletonSwitch = ds_create_row_switch(_rowSkeleton, self, @selector(dsPubgSkeletonChanged:), g_pubgEspSkeleton, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowSkeleton];
+    _espSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, curY, 220.0, 22.0)];
+    _espSectionLabel.text = @"ESP PANEL";
+    _espSectionLabel.textColor = [UIColor whiteColor];
+    _espSectionLabel.font = [UIFont boldSystemFontOfSize:12.5];
+    [_scrollView addSubview:_espSectionLabel];
+    curY += 24.0;
 
-    y0 += 46.0;
-    _rowLine = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgLineLabel = ds_create_row_label(_rowLine, @"Đường Kẻ (Line)", rowW, 40.0);
-    _pubgLineSwitch = ds_create_row_switch(_rowLine, self, @selector(dsPubgLineChanged:), g_pubgEspLine, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowLine];
+    _cardEsp = [[UIView alloc] initWithFrame:CGRectMake(8.0, curY, cardW, 186.0)];
+    _cardEsp.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.5];
+    _cardEsp.layer.cornerRadius = 6.0;
+    _cardEsp.clipsToBounds = YES;
+    [_scrollView addSubview:_cardEsp];
 
-    y0 += 46.0;
-    _rowHealth = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgHealthLabel = ds_create_row_label(_rowHealth, @"Thanh Máu (Health)", rowW, 40.0);
-    _pubgHealthSwitch = ds_create_row_switch(_rowHealth, self, @selector(dsPubgHealthChanged:), g_pubgEspHealth, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowHealth];
+    _btnBox = ds_create_madness_btn(CGRectMake(8.0, 8.0, btnW, btnH), @"Drow Box", self, @selector(dsBtnBoxTapped:));
+    _btnLine = ds_create_madness_btn(CGRectMake(16.0 + btnW, 8.0, btnW, btnH), @"Drow Line", self, @selector(dsBtnLineTapped:));
+    _btnSkeleton = ds_create_madness_btn(CGRectMake(8.0, 40.0, btnW, btnH), @"Drow Bone", self, @selector(dsBtnSkeletonTapped:));
+    _btnName = ds_create_madness_btn(CGRectMake(16.0 + btnW, 40.0, btnW, btnH), @"Show Info", self, @selector(dsBtnNameTapped:));
+    _btnHealth = ds_create_madness_btn(CGRectMake(8.0, 72.0, btnW, btnH), @"Show Health", self, @selector(dsBtnHealthTapped:));
+    _btnBot = ds_create_madness_btn(CGRectMake(16.0 + btnW, 72.0, btnW, btnH), @"Show Bot", self, @selector(dsBtnBotTapped:));
+    _btnArrow = ds_create_madness_btn(CGRectMake(8.0, 104.0, btnW, btnH), @"360 Radar", self, @selector(dsBtnArrowTapped:));
+    _btnGrenade = ds_create_madness_btn(CGRectMake(16.0 + btnW, 104.0, btnW, btnH), @"Cảnh Báo Lựu Đạn", self, @selector(dsBtnGrenadeTapped:));
 
-    y0 += 46.0;
-    _rowName = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgNameLabel = ds_create_row_label(_rowName, @"Tên Địch (Name)", rowW, 40.0);
-    _pubgNameSwitch = ds_create_row_switch(_rowName, self, @selector(dsPubgNameChanged:), g_pubgEspName, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowName];
+    ds_update_madness_btn_state(_btnBox, g_pubgEspBox);
+    ds_update_madness_btn_state(_btnLine, g_pubgEspLine);
+    ds_update_madness_btn_state(_btnSkeleton, g_pubgEspSkeleton);
+    ds_update_madness_btn_state(_btnName, g_pubgEspName);
+    ds_update_madness_btn_state(_btnHealth, g_pubgEspHealth);
+    ds_update_madness_btn_state(_btnBot, g_pubgEspBot);
+    ds_update_madness_btn_state(_btnArrow, g_pubgEspArrow);
+    ds_update_madness_btn_state(_btnGrenade, g_pubgEspGrenade);
 
-    y0 += 46.0;
-    _rowDist = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgDistLabel = ds_create_row_label(_rowDist, @"Khoảng Cách (Distance)", rowW, 40.0);
-    _pubgDistSwitch = ds_create_row_switch(_rowDist, self, @selector(dsPubgDistChanged:), g_pubgEspDist, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowDist];
+    [_cardEsp addSubview:_btnBox];
+    [_cardEsp addSubview:_btnLine];
+    [_cardEsp addSubview:_btnSkeleton];
+    [_cardEsp addSubview:_btnName];
+    [_cardEsp addSubview:_btnHealth];
+    [_cardEsp addSubview:_btnBot];
+    [_cardEsp addSubview:_btnArrow];
+    [_cardEsp addSubview:_btnGrenade];
 
-    y0 += 46.0;
-    _rowBot = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgBotLabel = ds_create_row_label(_rowBot, @"Hiện Bot AI", rowW, 40.0);
-    _pubgBotSwitch = ds_create_row_switch(_rowBot, self, @selector(dsPubgBotChanged:), g_pubgEspBot, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowBot];
-
-    y0 += 46.0;
-    _rowArrow = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgArrowLabel = ds_create_row_label(_rowArrow, @"Cảnh Báo 360 (Radar)", rowW, 40.0);
-    _pubgArrowSwitch = ds_create_row_switch(_rowArrow, self, @selector(dsPubgArrowChanged:), g_pubgEspArrow, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowArrow];
-
-    y0 += 46.0;
-    _rowGrenade = ds_create_pill_row(y0, rowW, 40.0);
-    _pubgGrenadeLabel = ds_create_row_label(_rowGrenade, @"Cảnh Báo Lựu Đạn", rowW, 40.0);
-    _pubgGrenadeSwitch = ds_create_row_switch(_rowGrenade, self, @selector(dsPubgGrenadeChanged:), g_pubgEspGrenade, rowW, 40.0);
-    [_tabContentViewPlayer addSubview:_rowGrenade];
-
-    y0 += 46.0;
-    _rowZoom = ds_create_pill_row(y0, rowW, 54.0);
+    UIView *zoomRow = [[UIView alloc] initWithFrame:CGRectMake(8.0, 136.0, cardW - 16.0, 44.0)];
     _zoomLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _zoomValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _zoomSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    ds_setup_slider_row(_rowZoom, _zoomLabel, _zoomValueLabel, _zoomSlider,
+    ds_setup_slider_row(zoomRow, _zoomLabel, _zoomValueLabel, _zoomSlider,
                         @"Khoảng cách hiện địch", 50.0f, 500.0f, g_dspubgMaxDistance,
-                        self, @selector(dsZoomSliderChanged:), rowW);
-    [_tabContentViewPlayer addSubview:_rowZoom];
+                        self, @selector(dsZoomSliderChanged:), cardW - 16.0);
+    [_cardEsp addSubview:zoomRow];
+    curY += 186.0 + 14.0;
 
-    // --- Tab 1: Item ESP Controls ---
-    CGFloat y1 = 0;
-    _rowWeapon = ds_create_pill_row(y1, rowW, 40.0);
-    _pubgWeaponLabel = ds_create_row_label(_rowWeapon, @"Hiện Súng & Vũ Khí", rowW, 40.0);
-    _pubgWeaponSwitch = ds_create_row_switch(_rowWeapon, self, @selector(dsPubgWeaponChanged:), g_pubgEspWeapon, rowW, 40.0);
-    [_tabContentViewItems addSubview:_rowWeapon];
+    // --- Section 2: MATERIAL / ITEMS PANEL ---
+    _itemsIconLabel = [[UILabel alloc] initWithFrame:CGRectMake(8.0, curY, 20.0, 22.0)];
+    _itemsIconLabel.text = @"⟇";
+    _itemsIconLabel.textColor = [UIColor orangeColor];
+    _itemsIconLabel.font = [UIFont boldSystemFontOfSize:22.0];
+    _itemsIconLabel.textAlignment = NSTextAlignmentCenter;
+    [_scrollView addSubview:_itemsIconLabel];
 
-    y1 += 46.0;
-    _rowArmor = ds_create_pill_row(y1, rowW, 40.0);
-    _pubgArmorLabel = ds_create_row_label(_rowArmor, @"Giáp & Mũ Bảo Hiểm", rowW, 40.0);
-    _pubgArmorSwitch = ds_create_row_switch(_rowArmor, self, @selector(dsPubgArmorChanged:), g_pubgEspArmor, rowW, 40.0);
-    [_tabContentViewItems addSubview:_rowArmor];
+    _itemsSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, curY, 220.0, 22.0)];
+    _itemsSectionLabel.text = @"MATERIAL PANEL";
+    _itemsSectionLabel.textColor = [UIColor whiteColor];
+    _itemsSectionLabel.font = [UIFont boldSystemFontOfSize:12.5];
+    [_scrollView addSubview:_itemsSectionLabel];
+    curY += 24.0;
 
-    y1 += 46.0;
-    _rowBag = ds_create_pill_row(y1, rowW, 40.0);
-    _pubgBagLabel = ds_create_row_label(_rowBag, @"Balo & Túi Đồ", rowW, 40.0);
-    _pubgBagSwitch = ds_create_row_switch(_rowBag, self, @selector(dsPubgBagChanged:), g_pubgEspBag, rowW, 40.0);
-    [_tabContentViewItems addSubview:_rowBag];
+    _cardItems = [[UIView alloc] initWithFrame:CGRectMake(8.0, curY, cardW, 154.0)];
+    _cardItems.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.5];
+    _cardItems.layer.cornerRadius = 6.0;
+    _cardItems.clipsToBounds = YES;
+    [_scrollView addSubview:_cardItems];
 
-    y1 += 46.0;
-    _rowScope = ds_create_pill_row(y1, rowW, 40.0);
-    _pubgScopeLabel = ds_create_row_label(_rowScope, @"Ống Ngắm (Scopes)", rowW, 40.0);
-    _pubgScopeSwitch = ds_create_row_switch(_rowScope, self, @selector(dsPubgScopeChanged:), g_pubgEspScope, rowW, 40.0);
-    [_tabContentViewItems addSubview:_rowScope];
+    _btnWeapon = ds_create_madness_btn(CGRectMake(8.0, 8.0, btnW, btnH), @"Weapon", self, @selector(dsBtnWeaponTapped:));
+    _btnArmor = ds_create_madness_btn(CGRectMake(16.0 + btnW, 8.0, btnW, btnH), @"Armor", self, @selector(dsBtnArmorTapped:));
+    _btnBag = ds_create_madness_btn(CGRectMake(8.0, 40.0, btnW, btnH), @"Backpack", self, @selector(dsBtnBagTapped:));
+    _btnScope = ds_create_madness_btn(CGRectMake(16.0 + btnW, 40.0, btnW, btnH), @"Scoop", self, @selector(dsBtnScopeTapped:));
+    _btnCrate = ds_create_madness_btn(CGRectMake(8.0, 72.0, cardW - 16.0, btnH), @"AirDrop & Boxes", self, @selector(dsBtnCrateTapped:));
 
-    y1 += 46.0;
-    _rowCrate = ds_create_pill_row(y1, rowW, 40.0);
-    _pubgCrateLabel = ds_create_row_label(_rowCrate, @"Thùng Thính & Hòm Xác", rowW, 40.0);
-    _pubgCrateSwitch = ds_create_row_switch(_rowCrate, self, @selector(dsPubgCrateChanged:), g_pubgEspCrate, rowW, 40.0);
-    [_tabContentViewItems addSubview:_rowCrate];
+    ds_update_madness_btn_state(_btnWeapon, g_pubgEspWeapon);
+    ds_update_madness_btn_state(_btnArmor, g_pubgEspArmor);
+    ds_update_madness_btn_state(_btnBag, g_pubgEspBag);
+    ds_update_madness_btn_state(_btnScope, g_pubgEspScope);
+    ds_update_madness_btn_state(_btnCrate, g_pubgEspCrate);
 
-    y1 += 46.0;
-    _rowItemScan = ds_create_pill_row(y1, rowW, 54.0);
+    [_cardItems addSubview:_btnWeapon];
+    [_cardItems addSubview:_btnArmor];
+    [_cardItems addSubview:_btnBag];
+    [_cardItems addSubview:_btnScope];
+    [_cardItems addSubview:_btnCrate];
+
+    UIView *itemScanRow = [[UIView alloc] initWithFrame:CGRectMake(8.0, 104.0, cardW - 16.0, 44.0)];
     _pubgItemScanLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _pubgItemScanValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _pubgItemScanSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    ds_setup_slider_row(_rowItemScan, _pubgItemScanLabel, _pubgItemScanValueLabel, _pubgItemScanSlider,
+    ds_setup_slider_row(itemScanRow, _pubgItemScanLabel, _pubgItemScanValueLabel, _pubgItemScanSlider,
                         @"Khoảng cách vật phẩm", 50.0f, 300.0f, g_pubgItemMaxDistance,
-                        self, @selector(dsPubgItemScanSliderChanged:), rowW);
+                        self, @selector(dsPubgItemScanSliderChanged:), cardW - 16.0);
+    [_cardItems addSubview:itemScanRow];
+    curY += 154.0 + 14.0;
 
-    // --- Tab 2: Vehicle ESP Controls ---
-    CGFloat y2 = 0;
-    _rowVehicle = ds_create_pill_row(y2, rowW, 40.0);
-    _pubgVehicleLabel = ds_create_row_label(_rowVehicle, @"Hiện Phương Tiện (Xe)", rowW, 40.0);
-    _pubgVehicleSwitch = ds_create_row_switch(_rowVehicle, self, @selector(dsPubgVehicleChanged:), g_pubgEspVehicle, rowW, 40.0);
-    [_tabContentViewVehicles addSubview:_rowVehicle];
+    // --- Section 3: VEHICLES PANEL ---
+    _vehiclesIconLabel = [[UILabel alloc] initWithFrame:CGRectMake(8.0, curY, 20.0, 22.0)];
+    _vehiclesIconLabel.text = @"⟇";
+    _vehiclesIconLabel.textColor = [UIColor orangeColor];
+    _vehiclesIconLabel.font = [UIFont boldSystemFontOfSize:22.0];
+    _vehiclesIconLabel.textAlignment = NSTextAlignmentCenter;
+    [_scrollView addSubview:_vehiclesIconLabel];
 
-    y2 += 46.0;
-    _rowVehicleHp = ds_create_pill_row(y2, rowW, 40.0);
-    _pubgVehicleHpLabel = ds_create_row_label(_rowVehicleHp, @"Hiện Máu Xe", rowW, 40.0);
-    _pubgVehicleHpSwitch = ds_create_row_switch(_rowVehicleHp, self, @selector(dsPubgVehicleHpChanged:), g_pubgEspVehicleHp, rowW, 40.0);
-    [_tabContentViewVehicles addSubview:_rowVehicleHp];
+    _vehiclesSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, curY, 220.0, 22.0)];
+    _vehiclesSectionLabel.text = @"VEHICLES PANEL";
+    _vehiclesSectionLabel.textColor = [UIColor whiteColor];
+    _vehiclesSectionLabel.font = [UIFont boldSystemFontOfSize:12.5];
+    [_scrollView addSubview:_vehiclesSectionLabel];
+    curY += 24.0;
 
-    y2 += 46.0;
-    _rowVehicleFuel = ds_create_pill_row(y2, rowW, 40.0);
-    _pubgVehicleFuelLabel = ds_create_row_label(_rowVehicleFuel, @"Hiện Bình Xăng Xe", rowW, 40.0);
-    _pubgVehicleFuelSwitch = ds_create_row_switch(_rowVehicleFuel, self, @selector(dsPubgVehicleFuelChanged:), g_pubgEspVehicleFuel, rowW, 40.0);
-    [_tabContentViewVehicles addSubview:_rowVehicleFuel];
+    _cardVehicles = [[UIView alloc] initWithFrame:CGRectMake(8.0, curY, cardW, 76.0)];
+    _cardVehicles.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.5];
+    _cardVehicles.layer.cornerRadius = 6.0;
+    _cardVehicles.clipsToBounds = YES;
+    [_scrollView addSubview:_cardVehicles];
 
-    // --- Tab 3: Settings Controls ---
-    CGFloat y3 = 0;
-    _rowLang = ds_create_pill_row(y3, rowW, 62.0);
-    _pubgSettingLangLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 6.0, rowW - 24.0, 18.0)];
+    _btnVehicle = ds_create_madness_btn(CGRectMake(8.0, 8.0, btnW, btnH), @"Vehicle", self, @selector(dsBtnVehicleTapped:));
+    _btnVehicleHp = ds_create_madness_btn(CGRectMake(16.0 + btnW, 8.0, btnW, btnH), @"Vehicle HP", self, @selector(dsBtnVehicleHpTapped:));
+    _btnVehicleFuel = ds_create_madness_btn(CGRectMake(8.0, 40.0, cardW - 16.0, btnH), @"Vehicle Fuel", self, @selector(dsBtnVehicleFuelTapped:));
+
+    ds_update_madness_btn_state(_btnVehicle, g_pubgEspVehicle);
+    ds_update_madness_btn_state(_btnVehicleHp, g_pubgEspVehicleHp);
+    ds_update_madness_btn_state(_btnVehicleFuel, g_pubgEspVehicleFuel);
+
+    [_cardVehicles addSubview:_btnVehicle];
+    [_cardVehicles addSubview:_btnVehicleHp];
+    [_cardVehicles addSubview:_btnVehicleFuel];
+    curY += 76.0 + 14.0;
+
+    // --- Section 4: SETTINGS PANEL ---
+    _settingsIconLabel = [[UILabel alloc] initWithFrame:CGRectMake(8.0, curY, 20.0, 22.0)];
+    _settingsIconLabel.text = @"⟇";
+    _settingsIconLabel.textColor = [UIColor orangeColor];
+    _settingsIconLabel.font = [UIFont boldSystemFontOfSize:22.0];
+    _settingsIconLabel.textAlignment = NSTextAlignmentCenter;
+    [_scrollView addSubview:_settingsIconLabel];
+
+    _settingsSectionLabel = [[UILabel alloc] initWithFrame:CGRectMake(30.0, curY, 220.0, 22.0)];
+    _settingsSectionLabel.text = @"SETTINGS PANEL";
+    _settingsSectionLabel.textColor = [UIColor whiteColor];
+    _settingsSectionLabel.font = [UIFont boldSystemFontOfSize:12.5];
+    [_scrollView addSubview:_settingsSectionLabel];
+    curY += 24.0;
+
+    _cardSettings = [[UIView alloc] initWithFrame:CGRectMake(8.0, curY, cardW, 204.0)];
+    _cardSettings.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.5];
+    _cardSettings.layer.cornerRadius = 6.0;
+    _cardSettings.clipsToBounds = YES;
+    [_scrollView addSubview:_cardSettings];
+
+    _pubgSettingLangLabel = [[UILabel alloc] initWithFrame:CGRectMake(10.0, 6.0, cardW - 20.0, 16.0)];
     _pubgSettingLangLabel.text = @"Ngôn ngữ giao diện";
     _pubgSettingLangLabel.textColor = [UIColor whiteColor];
-    _pubgSettingLangLabel.font = [UIFont boldSystemFontOfSize:12.5];
-    _pubgSettingLangLabel.userInteractionEnabled = NO;
-    [_rowLang addSubview:_pubgSettingLangLabel];
+    _pubgSettingLangLabel.font = [UIFont boldSystemFontOfSize:11.5];
+    [_cardSettings addSubview:_pubgSettingLangLabel];
 
     _pubgLangSegment = [[UISegmentedControl alloc] initWithItems:@[@"Tiếng Việt", @"English"]];
-    _pubgLangSegment.frame = CGRectMake(10.0, 28.0, rowW - 20.0, 26.0);
+    _pubgLangSegment.frame = CGRectMake(8.0, 26.0, cardW - 16.0, 26.0);
     _pubgLangSegment.selectedSegmentIndex = g_pubgLanguage;
     _pubgLangSegment.backgroundColor = [UIColor colorWithRed:0.20 green:0.20 blue:0.20 alpha:1.00];
     [_pubgLangSegment addTarget:self action:@selector(dsPubgLangChanged:) forControlEvents:UIControlEventValueChanged];
@@ -1354,49 +1272,44 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         NSForegroundColorAttributeName: [UIColor whiteColor],
         NSFontAttributeName: [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium]
     } forState:UIControlStateNormal];
-    [_rowLang addSubview:_pubgLangSegment];
-    [_tabContentViewSettings addSubview:_rowLang];
+    [_cardSettings addSubview:_pubgLangSegment];
 
-    y3 += 68.0;
-    _rowThickness = ds_create_pill_row(y3, rowW, 54.0);
+    UIView *thickRow = [[UIView alloc] initWithFrame:CGRectMake(8.0, 58.0, cardW - 16.0, 44.0)];
     _pubgSettingThicknessLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _pubgSettingThicknessValueLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _pubgSettingThicknessSlider = [[UISlider alloc] initWithFrame:CGRectZero];
-    ds_setup_slider_row(_rowThickness, _pubgSettingThicknessLabel, _pubgSettingThicknessValueLabel, _pubgSettingThicknessSlider,
+    ds_setup_slider_row(thickRow, _pubgSettingThicknessLabel, _pubgSettingThicknessValueLabel, _pubgSettingThicknessSlider,
                         @"Độ dày nét vẽ địch", 0.8f, 3.5f, g_pubgEspThickness,
-                        self, @selector(dsPubgThicknessChanged:), rowW);
-    [_tabContentViewSettings addSubview:_rowThickness];
+                        self, @selector(dsPubgThicknessChanged:), cardW - 16.0);
+    [_cardSettings addSubview:thickRow];
 
-    y3 += 60.0;
-    _rowInfo = ds_create_pill_row(y3, rowW, 56.0);
-    _pubgSettingInfoLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 6.0, rowW - 24.0, 16.0)];
-    _pubgSettingInfoLabel.text = @"Hệ thống & Tối ưu";
+    _pubgSettingInfoLabel = [[UILabel alloc] initWithFrame:CGRectMake(10.0, 108.0, cardW - 20.0, 16.0)];
+    _pubgSettingInfoLabel.text = @"MADNESS SYSTEM";
     _pubgSettingInfoLabel.textColor = [UIColor orangeColor];
     _pubgSettingInfoLabel.font = [UIFont boldSystemFontOfSize:12.0];
-    _pubgSettingInfoLabel.userInteractionEnabled = NO;
-    [_rowInfo addSubview:_pubgSettingInfoLabel];
+    [_cardSettings addSubview:_pubgSettingInfoLabel];
 
-    _pubgSettingInfoDescLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 24.0, rowW - 24.0, 26.0)];
+    _pubgSettingInfoDescLabel = [[UILabel alloc] initWithFrame:CGRectMake(10.0, 126.0, cardW - 20.0, 26.0)];
     _pubgSettingInfoDescLabel.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
-    _pubgSettingInfoDescLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightRegular];
+    _pubgSettingInfoDescLabel.font = [UIFont systemFontOfSize:10.0 weight:UIFontWeightRegular];
     _pubgSettingInfoDescLabel.numberOfLines = 2;
     _pubgSettingInfoDescLabel.text = @"• Tần số quét: 60/120 FPS Zero-Lag\n• Trạng thái: Direct Memory QoS Active";
-    _pubgSettingInfoDescLabel.userInteractionEnabled = NO;
-    [_rowInfo addSubview:_pubgSettingInfoDescLabel];
-    [_tabContentViewSettings addSubview:_rowInfo];
+    [_cardSettings addSubview:_pubgSettingInfoDescLabel];
 
-    y3 += 62.0;
-    _resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _resetButton.frame = CGRectMake(0, y3, rowW, 40.0);
+    _resetButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _resetButton.frame = CGRectMake(8.0, 158.0, cardW - 16.0, 34.0);
     [_resetButton setTitle:@"Khôi phục cài đặt gốc" forState:UIControlStateNormal];
     [_resetButton setTitleColor:[UIColor colorWithRed:1.0 green:0.4 blue:0.4 alpha:1.0] forState:UIControlStateNormal];
-    _resetButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
+    _resetButton.titleLabel.font = [UIFont boldSystemFontOfSize:12.5];
     _resetButton.backgroundColor = [UIColor colorWithRed:0.18 green:0.04 blue:0.04 alpha:0.8];
-    _resetButton.layer.cornerRadius = 8.0;
+    _resetButton.layer.cornerRadius = 6.0;
     _resetButton.layer.borderWidth = 0.8;
-    _resetButton.layer.borderColor = [UIColor colorWithRed:0.89 green:0.23 blue:0.21 alpha:0.8].CGColor;
+    _resetButton.layer.borderColor = [UIColor orangeColor].CGColor;
     [_resetButton addTarget:self action:@selector(dsResetTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [_tabContentViewSettings addSubview:_resetButton];
+    [_cardSettings addSubview:_resetButton];
+    curY += 204.0 + 20.0;
+
+    _scrollView.contentSize = CGSizeMake(cardW + 16.0, curY);
 
     // Persisted anchors
     id storedAnchorX = [defaults objectForKey:kDSHostedMenuAnchorXKey];
@@ -1442,49 +1355,12 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [self dsLayoutMenu];
 }
 
-- (void)dsUpdateTabSelection {
-    UIButton *buttons[4] = { _pubgTabButtonPlayer, _pubgTabButtonItems, _pubgTabButtonVehicles, _pubgTabButtonSettings };
-    UIView *views[4] = { _tabContentViewPlayer, _tabContentViewItems, _tabContentViewVehicles, _tabContentViewSettings };
-    CGFloat heights[4] = { 514.0, 284.0, 132.0, 230.0 };
-
-    for (int i = 0; i < 4; i++) {
-        UIButton *b = buttons[i];
-        if (i == _pubgCurrentTab) {
-            b.backgroundColor = [UIColor orangeColor];
-            b.layer.cornerRadius = 5.0;
-            b.layer.shadowColor = [UIColor orangeColor].CGColor;
-            b.layer.shadowRadius = 4.0;
-            b.layer.shadowOffset = CGSizeZero;
-            b.layer.shadowOpacity = 0.5;
-            [b setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
-            b.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
-            views[i].hidden = NO;
-        } else {
-            b.backgroundColor = [UIColor clearColor];
-            b.layer.shadowOpacity = 0.0;
-            [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-            b.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
-            views[i].hidden = YES;
-        }
-    }
-    _scrollView.contentSize = CGSizeMake(286.0, heights[_pubgCurrentTab] + 10.0);
-    [_scrollView setContentOffset:CGPointZero animated:NO];
-}
-
-- (void)dsPubgTabTapped:(UIButton *)sender {
-    if (sender == _pubgTabButtonPlayer) _pubgCurrentTab = 0;
-    else if (sender == _pubgTabButtonItems) _pubgCurrentTab = 1;
-    else if (sender == _pubgTabButtonVehicles) _pubgCurrentTab = 2;
-    else if (sender == _pubgTabButtonSettings) _pubgCurrentTab = 3;
-    [self dsUpdateTabSelection];
-}
-
 - (void)dsLayoutMenu {
     CGRect bounds = _contentView.bounds;
     CGFloat boundsW = CGRectGetWidth(bounds);
-    CGFloat panelW = 310.0;
-    CGFloat panelH = 345.0;
     CGFloat boundsH = CGRectGetHeight(bounds);
+    CGFloat panelW = MIN((CGFloat)430.0, boundsW - 20.0);
+    CGFloat panelH = MIN((CGFloat)270.0, boundsH - 20.0);
     CGFloat defaultPanelY = MIN((CGFloat)82.0, MAX((CGFloat)10.0, boundsH - panelH - 10.0));
     CGPoint buttonAnchor = _hasButtonAnchor
         ? CGPointMake(_buttonAnchorUnit.x * boundsW, _buttonAnchorUnit.y * boundsH)
@@ -1503,35 +1379,22 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
     CGPoint panelAnchor = _hasPanelAnchor
         ? CGPointMake(_panelAnchorUnit.x * boundsW, _panelAnchorUnit.y * boundsH)
-        : CGPointMake(14.0 + panelW * 0.5, defaultPanelY + panelH * 0.5);
+        : CGPointMake(boundsW * 0.5, boundsH * 0.5);
     panelAnchor.x = MIN(MAX(panelAnchor.x, panelW * 0.5 + 10.0), boundsW - panelW * 0.5 - 10.0);
     panelAnchor.y = MIN(MAX(panelAnchor.y, panelH * 0.5 + 10.0), boundsH - panelH * 0.5 - 10.0);
     _panelAnchorUnit = CGPointMake(panelAnchor.x / MAX(boundsW, 1.0), panelAnchor.y / MAX(boundsH, 1.0));
     CGFloat panelX = panelAnchor.x - panelW * 0.5;
     CGFloat panelY = panelAnchor.y - panelH * 0.5;
     _panelView.frame = CGRectMake(panelX, panelY, panelW, panelH);
-    _headerView.frame = CGRectMake(0, 0, panelW, 38.0);
-    _titleLabel.frame = CGRectMake(14.0, 9.0, panelW - 90.0, 22.0);
-    _collapseButton.frame = CGRectMake(panelW - 64.0, 7.0, 26.0, 26.0);
-    _closeButton.frame = CGRectMake(panelW - 34.0, 7.0, 26.0, 26.0);
-    _pubgTabBar.frame = CGRectMake(12.0, 38.0, panelW - 24.0, 32.0);
+    _headerView.frame = CGRectMake(0, 0, panelW, 30.0);
+    _titleLabel.frame = CGRectMake(12.0, 5.0, panelW - 50.0, 20.0);
+    _closeButton.frame = CGRectMake(panelW - 32.0, 4.0, 24.0, 22.0);
 
-    CGFloat tabTotalW = panelW - 24.0;
-    CGFloat tabW = floorf(tabTotalW / 4.0);
-    _pubgTabButtonPlayer.frame = CGRectMake(0, 0, tabW, 32.0);
-    _pubgTabButtonItems.frame = CGRectMake(tabW, 0, tabW, 32.0);
-    _pubgTabButtonVehicles.frame = CGRectMake(tabW * 2, 0, tabW, 32.0);
-    _pubgTabButtonSettings.frame = CGRectMake(tabW * 3, 0, tabTotalW - tabW * 3, 32.0);
-
-    _tabDividers[0].frame = CGRectMake(tabW, 8.0, 1.0, 16.0);
-    _tabDividers[1].frame = CGRectMake(tabW * 2, 8.0, 1.0, 16.0);
-    _tabDividers[2].frame = CGRectMake(tabW * 3, 8.0, 1.0, 16.0);
-
-    _watermarkLabel.frame = CGRectMake(10.0, 100.0, panelW - 20.0, 110.0);
+    CGFloat scrollW = panelW - 16.0;
+    CGFloat scrollH = panelH - 38.0;
+    _scrollView.frame = CGRectMake(8.0, 30.0, scrollW, scrollH);
+    _watermarkLabel.frame = CGRectMake(10.0, 60.0, panelW - 20.0, 150.0);
     _resizeHandleLabel.frame = CGRectMake(panelW - 20.0, panelH - 20.0, 16.0, 16.0);
-    _scrollView.frame = CGRectMake(12.0, 76.0, panelW - 24.0, panelH - 84.0);
-
-    [self dsUpdateTabSelection];
 }
 
 - (void)dsToggleTapped:(UIButton *)sender {
@@ -1553,7 +1416,6 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         _dragStartAnchor = CGPointMake(_buttonAnchorUnit.x * boundsW, _buttonAnchorUnit.y * boundsH);
     }
     CGPoint translation = [gesture translationInView:_contentView];
-    CGFloat distance = hypot(translation.x, translation.y);
     CGPoint anchor = CGPointMake(_dragStartAnchor.x + translation.x, _dragStartAnchor.y + translation.y);
     CGFloat halfW = kDSHostedMenuButtonWidth * 0.5;
     CGFloat halfH = kDSHostedMenuButtonHeight * 0.5;
@@ -1654,53 +1516,48 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     return _toggleButton;
 }
 
-- (void)dsEspSwitchChanged:(UISwitch *)sender {
-    ds_hosted_esp_set_enabled(sender.on);
+- (void)dsHandleMadnessBtnTap:(UIButton *)btn key:(NSString *)key flag:(BOOL *)flag {
+    if (g_madnessImpact) [g_madnessImpact impactOccurred];
+    *flag = !(*flag);
+    ds_update_madness_btn_state(btn, *flag);
+    [NSUserDefaults.standardUserDefaults setBool:*flag forKey:key];
 }
 
-- (void)dsPubgBoxChanged:(UISwitch *)sender {
-    g_pubgEspBox = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_box"];
+- (void)dsBtnBoxTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_box" flag:&g_pubgEspBox];
 }
 
-- (void)dsPubgSkeletonChanged:(UISwitch *)sender {
-    g_pubgEspSkeleton = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_skeleton"];
+- (void)dsBtnLineTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_line" flag:&g_pubgEspLine];
 }
 
-- (void)dsPubgLineChanged:(UISwitch *)sender {
-    g_pubgEspLine = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_line"];
+- (void)dsBtnSkeletonTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_skeleton" flag:&g_pubgEspSkeleton];
 }
 
-- (void)dsPubgHealthChanged:(UISwitch *)sender {
-    g_pubgEspHealth = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_health"];
+- (void)dsBtnNameTapped:(UIButton *)sender {
+    if (g_madnessImpact) [g_madnessImpact impactOccurred];
+    g_pubgEspName = !g_pubgEspName;
+    g_pubgEspDist = g_pubgEspName;
+    ds_update_madness_btn_state(sender, g_pubgEspName);
+    [NSUserDefaults.standardUserDefaults setBool:g_pubgEspName forKey:@"pubg_name"];
+    [NSUserDefaults.standardUserDefaults setBool:g_pubgEspDist forKey:@"pubg_dist"];
 }
 
-- (void)dsPubgNameChanged:(UISwitch *)sender {
-    g_pubgEspName = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_name"];
+- (void)dsBtnHealthTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_health" flag:&g_pubgEspHealth];
 }
 
-- (void)dsPubgDistChanged:(UISwitch *)sender {
-    g_pubgEspDist = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_dist"];
+- (void)dsBtnBotTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_bot" flag:&g_pubgEspBot];
 }
 
-- (void)dsPubgBotChanged:(UISwitch *)sender {
-    g_pubgEspBot = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bot"];
+- (void)dsBtnArrowTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_arrow" flag:&g_pubgEspArrow];
 }
 
-- (void)dsPubgArrowChanged:(UISwitch *)sender {
-    g_pubgEspArrow = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_arrow"];
-}
-
-- (void)dsPubgGrenadeChanged:(UISwitch *)sender {
-    g_pubgEspGrenade = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_grenade"];
+- (void)dsBtnGrenadeTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_grenade" flag:&g_pubgEspGrenade];
 }
 
 - (void)dsZoomSliderChanged:(UISlider *)sender {
@@ -1709,29 +1566,24 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [NSUserDefaults.standardUserDefaults setFloat:sender.value forKey:@"pubg_zoom_dist"];
 }
 
-- (void)dsPubgWeaponChanged:(UISwitch *)sender {
-    g_pubgEspWeapon = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_weapon"];
+- (void)dsBtnWeaponTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_weapon" flag:&g_pubgEspWeapon];
 }
 
-- (void)dsPubgArmorChanged:(UISwitch *)sender {
-    g_pubgEspArmor = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_armor"];
+- (void)dsBtnArmorTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_armor" flag:&g_pubgEspArmor];
 }
 
-- (void)dsPubgBagChanged:(UISwitch *)sender {
-    g_pubgEspBag = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_bag"];
+- (void)dsBtnBagTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_bag" flag:&g_pubgEspBag];
 }
 
-- (void)dsPubgScopeChanged:(UISwitch *)sender {
-    g_pubgEspScope = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_scope"];
+- (void)dsBtnScopeTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_scope" flag:&g_pubgEspScope];
 }
 
-- (void)dsPubgCrateChanged:(UISwitch *)sender {
-    g_pubgEspCrate = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_crate"];
+- (void)dsBtnCrateTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_crate" flag:&g_pubgEspCrate];
 }
 
 - (void)dsPubgItemScanSliderChanged:(UISlider *)sender {
@@ -1740,19 +1592,16 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [NSUserDefaults.standardUserDefaults setFloat:sender.value forKey:@"pubg_item_dist"];
 }
 
-- (void)dsPubgVehicleChanged:(UISwitch *)sender {
-    g_pubgEspVehicle = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle"];
+- (void)dsBtnVehicleTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_vehicle" flag:&g_pubgEspVehicle];
 }
 
-- (void)dsPubgVehicleHpChanged:(UISwitch *)sender {
-    g_pubgEspVehicleHp = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle_hp"];
+- (void)dsBtnVehicleHpTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_vehicle_hp" flag:&g_pubgEspVehicleHp];
 }
 
-- (void)dsPubgVehicleFuelChanged:(UISwitch *)sender {
-    g_pubgEspVehicleFuel = sender.on;
-    [NSUserDefaults.standardUserDefaults setBool:sender.on forKey:@"pubg_vehicle_fuel"];
+- (void)dsBtnVehicleFuelTapped:(UIButton *)sender {
+    [self dsHandleMadnessBtnTap:sender key:@"pubg_vehicle_fuel" flag:&g_pubgEspVehicleFuel];
 }
 
 - (void)dsPubgLangChanged:(UISegmentedControl *)sender {
@@ -1769,152 +1618,143 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
 - (void)dsResetTapped:(UIButton *)sender {
     (void)sender;
-    [_espSwitch setOn:YES animated:YES];
-    ds_hosted_esp_set_enabled(true);
-    [_pubgBoxSwitch setOn:YES animated:YES];
-    [_pubgSkeletonSwitch setOn:YES animated:YES];
-    [_pubgLineSwitch setOn:YES animated:YES];
-    [_pubgHealthSwitch setOn:YES animated:YES];
-    [_pubgNameSwitch setOn:YES animated:YES];
-    [_pubgDistSwitch setOn:YES animated:YES];
-    [_pubgBotSwitch setOn:YES animated:YES];
-    [_pubgArrowSwitch setOn:YES animated:YES];
-    [_pubgGrenadeSwitch setOn:YES animated:YES];
-    [_zoomSlider setValue:400.0f animated:YES];
+    if (g_madnessImpact) [g_madnessImpact impactOccurred];
     g_pubgEspBox = YES;
-    g_pubgEspSkeleton = YES;
     g_pubgEspLine = YES;
-    g_pubgEspHealth = YES;
+    g_pubgEspSkeleton = YES;
     g_pubgEspName = YES;
     g_pubgEspDist = YES;
+    g_pubgEspHealth = YES;
     g_pubgEspBot = YES;
     g_pubgEspArrow = YES;
     g_pubgEspGrenade = YES;
     g_dspubgMaxDistance = 400.0f;
-
-    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
-    [defaults setBool:YES forKey:@"pubg_box"];
-    [defaults setBool:YES forKey:@"pubg_skeleton"];
-    [defaults setBool:YES forKey:@"pubg_line"];
-    [defaults setBool:YES forKey:@"pubg_health"];
-    [defaults setBool:YES forKey:@"pubg_name"];
-    [defaults setBool:YES forKey:@"pubg_dist"];
-    [defaults setBool:YES forKey:@"pubg_bot"];
-    [defaults setBool:YES forKey:@"pubg_arrow"];
-    [defaults setBool:YES forKey:@"pubg_grenade"];
-    [defaults setFloat:400.0f forKey:@"pubg_zoom_dist"];
-
-    [_pubgVehicleSwitch setOn:YES animated:YES];
-    [_pubgVehicleHpSwitch setOn:YES animated:YES];
-    [_pubgVehicleFuelSwitch setOn:YES animated:YES];
-    [_pubgWeaponSwitch setOn:YES animated:YES];
-    [_pubgArmorSwitch setOn:YES animated:YES];
-    [_pubgBagSwitch setOn:YES animated:YES];
-    [_pubgScopeSwitch setOn:YES animated:YES];
-    [_pubgCrateSwitch setOn:YES animated:YES];
-    [_pubgItemScanSlider setValue:150.0f animated:YES];
-    _pubgItemScanValueLabel.text = @"150m";
-
-    g_pubgEspVehicle = YES;
-    g_pubgEspVehicleHp = YES;
-    g_pubgEspVehicleFuel = YES;
     g_pubgEspWeapon = YES;
     g_pubgEspArmor = YES;
     g_pubgEspBag = YES;
     g_pubgEspScope = YES;
     g_pubgEspCrate = YES;
     g_pubgItemMaxDistance = 150.0f;
+    g_pubgEspVehicle = YES;
+    g_pubgEspVehicleHp = YES;
+    g_pubgEspVehicleFuel = YES;
+    g_pubgLanguage = 0;
+    g_pubgEspThickness = 1.5f;
 
-    [defaults setBool:YES forKey:@"pubg_vehicle"];
-    [defaults setBool:YES forKey:@"pubg_vehicle_hp"];
-    [defaults setBool:YES forKey:@"pubg_vehicle_fuel"];
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    [defaults setBool:YES forKey:@"pubg_box"];
+    [defaults setBool:YES forKey:@"pubg_line"];
+    [defaults setBool:YES forKey:@"pubg_skeleton"];
+    [defaults setBool:YES forKey:@"pubg_name"];
+    [defaults setBool:YES forKey:@"pubg_dist"];
+    [defaults setBool:YES forKey:@"pubg_health"];
+    [defaults setBool:YES forKey:@"pubg_bot"];
+    [defaults setBool:YES forKey:@"pubg_arrow"];
+    [defaults setBool:YES forKey:@"pubg_grenade"];
+    [defaults setFloat:400.0f forKey:@"pubg_zoom_dist"];
     [defaults setBool:YES forKey:@"pubg_weapon"];
     [defaults setBool:YES forKey:@"pubg_armor"];
     [defaults setBool:YES forKey:@"pubg_bag"];
     [defaults setBool:YES forKey:@"pubg_scope"];
     [defaults setBool:YES forKey:@"pubg_crate"];
     [defaults setFloat:150.0f forKey:@"pubg_item_dist"];
-
-    g_pubgLanguage = 0;
-    g_pubgEspThickness = 1.5f;
+    [defaults setBool:YES forKey:@"pubg_vehicle"];
+    [defaults setBool:YES forKey:@"pubg_vehicle_hp"];
+    [defaults setBool:YES forKey:@"pubg_vehicle_fuel"];
     [defaults setInteger:0 forKey:@"pubg_lang"];
     [defaults setFloat:1.5f forKey:@"pubg_thickness"];
-    _pubgLangSegment.selectedSegmentIndex = 0;
+
+    ds_update_madness_btn_state(_btnBox, YES);
+    ds_update_madness_btn_state(_btnLine, YES);
+    ds_update_madness_btn_state(_btnSkeleton, YES);
+    ds_update_madness_btn_state(_btnName, YES);
+    ds_update_madness_btn_state(_btnHealth, YES);
+    ds_update_madness_btn_state(_btnBot, YES);
+    ds_update_madness_btn_state(_btnArrow, YES);
+    ds_update_madness_btn_state(_btnGrenade, YES);
+    ds_update_madness_btn_state(_btnWeapon, YES);
+    ds_update_madness_btn_state(_btnArmor, YES);
+    ds_update_madness_btn_state(_btnBag, YES);
+    ds_update_madness_btn_state(_btnScope, YES);
+    ds_update_madness_btn_state(_btnCrate, YES);
+    ds_update_madness_btn_state(_btnVehicle, YES);
+    ds_update_madness_btn_state(_btnVehicleHp, YES);
+    ds_update_madness_btn_state(_btnVehicleFuel, YES);
+
+    [_zoomSlider setValue:400.0f animated:YES];
+    [_pubgItemScanSlider setValue:150.0f animated:YES];
     [_pubgSettingThicknessSlider setValue:1.5f animated:YES];
-    _pubgSettingThicknessValueLabel.text = @"1.5 px";
+    _pubgLangSegment.selectedSegmentIndex = 0;
+
     [self dsUpdatePubgLanguage];
     [self dsUpdateValueLabel];
 }
 
 - (void)dsUpdatePubgLanguage {
-    if (g_pubgLanguage == 1) {
+    if (g_pubgLanguage == 1) { // English
         _titleLabel.text = @"⟇ MADNESS";
-        [_pubgTabButtonPlayer setTitle:@"ESP" forState:UIControlStateNormal];
-        [_pubgTabButtonItems setTitle:@"Items" forState:UIControlStateNormal];
-        [_pubgTabButtonVehicles setTitle:@"Vehicles" forState:UIControlStateNormal];
-        [_pubgTabButtonSettings setTitle:@"Settings" forState:UIControlStateNormal];
+        _espSectionLabel.text = @"ESP PANEL";
+        _itemsSectionLabel.text = @"MATERIAL PANEL";
+        _vehiclesSectionLabel.text = @"VEHICLES PANEL";
+        _settingsSectionLabel.text = @"SETTINGS PANEL";
 
-        _espLabel.text = @"Master ESP";
-        _pubgBoxLabel.text = @"2D Box";
-        _pubgSkeletonLabel.text = @"Skeleton";
-        _pubgLineLabel.text = @"Snapline";
-        _pubgHealthLabel.text = @"Health Bar";
-        _pubgNameLabel.text = @"Player Name";
-        _pubgDistLabel.text = @"Distance";
-        _pubgBotLabel.text = @"Bot ESP";
-        _pubgArrowLabel.text = @"360 Radar Warning";
-        _pubgGrenadeLabel.text = @"Grenade Warning";
-        _zoomLabel.text = @"Enemy Scan Distance";
+        [_btnBox setTitle:@"Drow Box" forState:UIControlStateNormal];
+        [_btnLine setTitle:@"Drow Line" forState:UIControlStateNormal];
+        [_btnSkeleton setTitle:@"Drow Bone" forState:UIControlStateNormal];
+        [_btnName setTitle:@"Show Info" forState:UIControlStateNormal];
+        [_btnHealth setTitle:@"Show Health" forState:UIControlStateNormal];
+        [_btnBot setTitle:@"Show Bot" forState:UIControlStateNormal];
+        [_btnArrow setTitle:@"360 Radar" forState:UIControlStateNormal];
+        [_btnGrenade setTitle:@"Grenade Alert" forState:UIControlStateNormal];
+        _zoomLabel.text = @"Player ESP Distance";
 
-        _pubgWeaponLabel.text = @"Weapons & Ammo";
-        _pubgArmorLabel.text = @"Armor & Helmet";
-        _pubgBagLabel.text = @"Backpacks";
-        _pubgScopeLabel.text = @"Scopes";
-        _pubgCrateLabel.text = @"Airdrops & Crates";
+        [_btnWeapon setTitle:@"Weapon" forState:UIControlStateNormal];
+        [_btnArmor setTitle:@"Armor" forState:UIControlStateNormal];
+        [_btnBag setTitle:@"Backpack" forState:UIControlStateNormal];
+        [_btnScope setTitle:@"Scoop" forState:UIControlStateNormal];
+        [_btnCrate setTitle:@"AirDrop & Boxes" forState:UIControlStateNormal];
         _pubgItemScanLabel.text = @"Item Scan Distance";
 
-        _pubgVehicleLabel.text = @"Vehicles";
-        _pubgVehicleHpLabel.text = @"Vehicle HP";
-        _pubgVehicleFuelLabel.text = @"Vehicle Fuel";
+        [_btnVehicle setTitle:@"Vehicle" forState:UIControlStateNormal];
+        [_btnVehicleHp setTitle:@"Vehicle HP" forState:UIControlStateNormal];
+        [_btnVehicleFuel setTitle:@"Vehicle Fuel" forState:UIControlStateNormal];
 
-        _pubgSettingLangLabel.text = @"UI Language";
+        _pubgSettingLangLabel.text = @"Interface Language";
         _pubgSettingThicknessLabel.text = @"ESP Line Thickness";
-        _pubgSettingInfoLabel.text = @"System & Performance";
-        _pubgSettingInfoDescLabel.text = @"• Refresh Rate: 60/120 FPS Zero-Lag\n• Status: Direct Memory QoS Active";
-        [_resetButton setTitle:@"Reset to Defaults" forState:UIControlStateNormal];
-    } else {
+        _pubgSettingInfoLabel.text = @"MADNESS SYSTEM";
+        _pubgSettingInfoDescLabel.text = @"• Scan Rate: 60/120 FPS Zero-Lag\n• Status: Direct Memory QoS Active";
+        [_resetButton setTitle:@"Reset All Settings" forState:UIControlStateNormal];
+    } else { // Tiếng Việt
         _titleLabel.text = @"⟇ MADNESS";
-        [_pubgTabButtonPlayer setTitle:@"ESP" forState:UIControlStateNormal];
-        [_pubgTabButtonItems setTitle:@"Vật Phẩm" forState:UIControlStateNormal];
-        [_pubgTabButtonVehicles setTitle:@"Xe" forState:UIControlStateNormal];
-        [_pubgTabButtonSettings setTitle:@"Cài Đặt" forState:UIControlStateNormal];
+        _espSectionLabel.text = @"ESP PANEL";
+        _itemsSectionLabel.text = @"VẬT PHẨM (MATERIAL)";
+        _vehiclesSectionLabel.text = @"PHƯƠNG TIỆN (VEHICLE)";
+        _settingsSectionLabel.text = @"CÀI ĐẶT (SETTINGS)";
 
-        _espLabel.text = @"Bật ESP Master";
-        _pubgBoxLabel.text = @"Khung 2D (Box)";
-        _pubgSkeletonLabel.text = @"Khung Xương (Skeleton)";
-        _pubgLineLabel.text = @"Đường Kẻ (Line)";
-        _pubgHealthLabel.text = @"Thanh Máu (Health)";
-        _pubgNameLabel.text = @"Tên Địch (Name)";
-        _pubgDistLabel.text = @"Khoảng Cách (Distance)";
-        _pubgBotLabel.text = @"Hiện Bot AI";
-        _pubgArrowLabel.text = @"Cảnh Báo 360 (Radar)";
-        _pubgGrenadeLabel.text = @"Cảnh Báo Lựu Đạn";
+        [_btnBox setTitle:@"Khung 2D (Box)" forState:UIControlStateNormal];
+        [_btnLine setTitle:@"Đường Kẻ (Line)" forState:UIControlStateNormal];
+        [_btnSkeleton setTitle:@"Khung Xương (Bone)" forState:UIControlStateNormal];
+        [_btnName setTitle:@"Tên & KC (Info)" forState:UIControlStateNormal];
+        [_btnHealth setTitle:@"Thanh Máu (Health)" forState:UIControlStateNormal];
+        [_btnBot setTitle:@"Hiện Bot AI" forState:UIControlStateNormal];
+        [_btnArrow setTitle:@"Cảnh Báo 360" forState:UIControlStateNormal];
+        [_btnGrenade setTitle:@"Báo Lựu Đạn" forState:UIControlStateNormal];
         _zoomLabel.text = @"Khoảng cách hiện địch";
 
-        _pubgWeaponLabel.text = @"Hiện Súng & Vũ Khí";
-        _pubgArmorLabel.text = @"Giáp & Mũ Bảo Hiểm";
-        _pubgBagLabel.text = @"Balo & Túi Đồ";
-        _pubgScopeLabel.text = @"Ống Ngắm (Scopes)";
-        _pubgCrateLabel.text = @"Thùng Thính & Hòm Xác";
+        [_btnWeapon setTitle:@"Hiện Súng (Weapon)" forState:UIControlStateNormal];
+        [_btnArmor setTitle:@"Giáp & Mũ (Armor)" forState:UIControlStateNormal];
+        [_btnBag setTitle:@"Balo & Túi Đồ" forState:UIControlStateNormal];
+        [_btnScope setTitle:@"Ống Ngắm (Scope)" forState:UIControlStateNormal];
+        [_btnCrate setTitle:@"Thùng Thính & Hòm" forState:UIControlStateNormal];
         _pubgItemScanLabel.text = @"Khoảng cách vật phẩm";
 
-        _pubgVehicleLabel.text = @"Hiện Phương Tiện (Xe)";
-        _pubgVehicleHpLabel.text = @"Hiện Máu Xe";
-        _pubgVehicleFuelLabel.text = @"Hiện Bình Xăng Xe";
+        [_btnVehicle setTitle:@"Hiện Phương Tiện" forState:UIControlStateNormal];
+        [_btnVehicleHp setTitle:@"Máu Xe (HP)" forState:UIControlStateNormal];
+        [_btnVehicleFuel setTitle:@"Bình Xăng Xe" forState:UIControlStateNormal];
 
         _pubgSettingLangLabel.text = @"Ngôn ngữ giao diện";
         _pubgSettingThicknessLabel.text = @"Độ dày nét vẽ địch";
-        _pubgSettingInfoLabel.text = @"Hệ thống & Tối ưu";
+        _pubgSettingInfoLabel.text = @"MADNESS SYSTEM";
         _pubgSettingInfoDescLabel.text = @"• Tần số quét: 60/120 FPS Zero-Lag\n• Trạng thái: Direct Memory QoS Active";
         [_resetButton setTitle:@"Khôi phục cài đặt gốc" forState:UIControlStateNormal];
     }
@@ -1922,6 +1762,8 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
 - (void)dsUpdateValueLabel {
     _zoomValueLabel.text = [NSString stringWithFormat:@"%.0fm", _zoomSlider.value];
+    _pubgItemScanValueLabel.text = [NSString stringWithFormat:@"%.0fm", _pubgItemScanSlider.value];
+    _pubgSettingThicknessValueLabel.text = [NSString stringWithFormat:@"%.1f px", _pubgSettingThicknessSlider.value];
 }
 
 @end
@@ -2565,7 +2407,11 @@ static void ds_hosted_apply_pubg(void) {
             [boxPath addLineToPoint:CGPointMake(bx + bw, by + bh - lineH)];
 
             box.path = boxPath.CGPath;
-            box.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+            if (p.isKnocked) {
+                box.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95].CGColor;
+            } else {
+                box.strokeColor = [UIColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:0.95].CGColor;
+            }
             box.lineWidth = g_pubgEspThickness;
             box.lineCap = kCALineCapSquare;
             box.lineJoin = kCALineJoinMiter;
@@ -2580,7 +2426,11 @@ static void ds_hosted_apply_pubg(void) {
             [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
             line.path = linePath.CGPath;
-            line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+            if (p.isKnocked) {
+                line.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.85].CGColor;
+            } else {
+                line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
+            }
             line.lineWidth = g_pubgEspThickness;
             line.hidden = NO;
         } else {
@@ -2855,7 +2705,11 @@ static void ds_hosted_apply_pubg(void) {
 
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
-                    skel.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
+                    if (p.isKnocked) {
+                        skel.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95].CGColor;
+                    } else {
+                        skel.strokeColor = [UIColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:0.95].CGColor;
+                    }
                     skel.lineWidth = g_pubgEspThickness;
                     skel.hidden = NO;
                 } else {
@@ -2890,25 +2744,27 @@ static void ds_hosted_apply_pubg(void) {
         static UIFont *s_topCountFont = nil;
         static dispatch_once_t s_topCountOnce;
         dispatch_once(&s_topCountOnce, ^{
-            s_topCountFont = [UIFont monospacedDigitSystemFontOfSize:16.0 weight:UIFontWeightHeavy];
+            UIFont *f = [UIFont fontWithName:@"Arial Rounded MT Bold" size:28.0];
+            if (!f) f = [UIFont boldSystemFontOfSize:28.0];
+            s_topCountFont = f;
         });
 
-        if (ds_pubg_has_render_source()) {
-            CGFloat lblW = 440.0f;
-            CGFloat lblH = 26.0f;
+        if (ds_pubg_has_render_source() && (totalEnemies + totalBots > 0)) {
+            CGFloat lblW = 200.0f;
+            CGFloat lblH = 36.0f;
             CGFloat lblX = (width - lblW) * 0.5f;
-            CGFloat lblY = 14.0f;
+            CGFloat lblY = 22.0f;
 
             g_hostedPUBGTopCountLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
-            g_hostedPUBGTopCountLabel.fontSize = 16.0f;
+            g_hostedPUBGTopCountLabel.fontSize = 28.0f;
             g_hostedPUBGTopCountLabel.font = (__bridge CFTypeRef)s_topCountFont;
-            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
+            g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:255.0/255.0 green:40.0/255.0 blue:40.0/255.0 alpha:1.0].CGColor;
             g_hostedPUBGTopCountLabel.backgroundColor = UIColor.clearColor.CGColor;
             g_hostedPUBGTopCountLabel.shadowColor = UIColor.blackColor.CGColor;
-            g_hostedPUBGTopCountLabel.shadowRadius = 1.5f;
+            g_hostedPUBGTopCountLabel.shadowRadius = 2.0f;
             g_hostedPUBGTopCountLabel.shadowOpacity = 1.0f;
             g_hostedPUBGTopCountLabel.shadowOffset = CGSizeZero;
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PLAYER AROUNO[ %d ]   BOT AROUNO[ %d ]", totalEnemies, totalBots];
+            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"%d", totalEnemies + totalBots];
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
             g_hostedPUBGTopCountLabel.hidden = YES;
