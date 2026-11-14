@@ -916,6 +916,7 @@ typedef struct {
     uint64_t actorPtr;
     uint32_t playerKey;
     char name[32];
+    char nation[16];
     char weaponName[32];
     bool isKnocked;
     bool hasSkeleton;

@@ -38,6 +38,7 @@ static const uint64_t kDSPUBGGameStatePlayerArrayOffset      = 0x4C8ULL;  // AGa
 static const uint64_t kDSPUBGPlayerStatePawnPrivateOffset    = 0x528ULL;  // APlayerState.PawnPrivate (APawn*)
 static const uint64_t kDSPUBGPlayerStateIsABotOffset         = 0x4DCULL;  // byte bitfield: bit 2 is bIsABot
 static const uint64_t kDSPUBGPlayerStatePlayerNameOffset     = 0x4B8ULL;  // APlayerState.PlayerName (FString)
+static const uint64_t kDSPUBGPlayerStateNationOffset         = 0x6F0ULL;  // AUAEPlayerState.Nation (FString)
 
 // LocalPlayer & Camera Chain
 static const uint64_t kDSPUBGGameInstanceLocalPlayersOffset  = 0x48ULL;   // UGameInstance.LocalPlayers (TArray<ULocalPlayer*>)
@@ -62,7 +63,9 @@ static const uint64_t kDSPUBGCharacterMovementOffset         = 0x518ULL;  // ACh
 static const uint64_t kDSPUBGCharacterCapsuleOffset          = 0x520ULL;  // ACharacter.CapsuleComponent (UCapsuleComponent*)
 static const uint64_t kDSPUBGMeshBoxExtentZOffset            = 0xBA0ULL;  // Mesh.Bounds.BoxExtent.Z
 static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL;  // UAECharacter.PlayerName (FString)
+static const uint64_t kDSPUBGCharacterNationOffset           = 0x970ULL;  // UAECharacter.Nation (FString)
 static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x990ULL;  // UAECharacter.PlayerKey (uint32_t) [DUMP updated]
+static const uint64_t kDSPUBGCharacterPlayerUIDOffset        = 0x998ULL;  // UAECharacter.PlayerUID (FString)
 static const uint64_t kDSPUBGCharacterTeamIDOffset           = 0x9A8ULL;  // UAECharacter.TeamID (int32_t) [DUMP updated]
 static const uint64_t kDSPUBGCharacterIsAIOffset             = 0xA50ULL;  // UAECharacter.bIsAI (bool) [DUMP updated]
 static const uint64_t kDSPUBGCharacterHealthOffset           = 0xE70ULL;  // STExtraCharacter.Health (float) [DUMP updated]
@@ -343,6 +346,26 @@ static bool ds_pubg_read_fstring_nick(uint64_t fstr, char *out, int outCap) {
     if (!ds_pubg_read(dataPtr, raw, (size_t)want)) return false;
     int n = ds_pubg_ucs2_to_utf8(raw, (int)(want / 2), out, outCap);
     return n >= 2;
+}
+
+static bool ds_pubg_read_fstring_nation(uint64_t fstr, char *out, int outCap) {
+    if (!fstr || !ds_pubg_valid(fstr) || !out || outCap <= 1) return false;
+    out[0] = '\0';
+    uint64_t dataPtr = ds_pubg_read_ptr(fstr);
+    uint32_t num = ds_pubg_read_u32(fstr + 8);
+    if (!dataPtr || !ds_pubg_valid(dataPtr) || num < 2 || num > 16) return false;
+    uint8_t raw[32] = {0};
+    uint64_t want = (uint64_t)num * 2;
+    if (want > sizeof(raw)) want = sizeof(raw);
+    if (!ds_pubg_read(dataPtr, raw, (size_t)want)) return false;
+    int n = ds_pubg_ucs2_to_utf8(raw, (int)(want / 2), out, outCap);
+    if (n >= 2) {
+        for (int i = 0; i < n; i++) {
+            out[i] = (char)toupper((unsigned char)out[i]);
+        }
+        return true;
+    }
+    return false;
 }
 
 // Check whether candidate pointer points to a valid Unreal Engine UWorld.
@@ -3247,12 +3270,65 @@ static void ds_pubg_tick(void) {
 
         uint64_t ps = psHint ? psHint : ds_pubg_read_ptr(pawn + 0x4D0ULL);
         bool isAI = knownBot;
+
+        // 1. Check Character AI flags (UAECharacter.bIsAI, bIsMLAI, bIsAIWithPet)
+        if (!isAI) {
+            uint8_t a50 = ds_pubg_read_u8(pawn + kDSPUBGCharacterIsAIOffset); // 0xA50 UAECharacter.bIsAI
+            uint8_t a51 = ds_pubg_read_u8(pawn + 0xA51ULL);                 // 0xA51 UAECharacter.bIsMLAI
+            uint8_t a52 = ds_pubg_read_u8(pawn + 0xA52ULL);                 // 0xA52 UAECharacter.bIsAIWithPet
+            uint8_t a40 = ds_pubg_read_u8(pawn + 0xA40ULL);                 // Older UAECharacter.bIsAI
+            uint8_t a41 = ds_pubg_read_u8(pawn + 0xA41ULL);                 // Older UAECharacter.bIsMLAI
+            if (a50 == 1 || a51 == 1 || a52 == 1 || a40 == 1 || a41 == 1) {
+                isAI = true;
+            }
+        }
+
+        // 2. Check PlayerState AI flags
         if (!isAI && ps && ds_pubg_valid(ps)) {
             uint8_t botByte = ds_pubg_read_u8(ps + kDSPUBGPlayerStateIsABotOffset);
-            isAI = (botByte & 0x4) != 0;
+            if ((botByte & 0x4) != 0) {
+                isAI = true;
+            }
+            uint64_t mlaiUid = ds_pubg_read_ptr(ps + 0x6D0ULL); // AUAEPlayerState.MLAIDisplayUID
+            if (mlaiUid != 0) {
+                isAI = true;
+            }
         }
+
+        // 3. Check AI Controller on Pawn (Remote players on client have Controller == 0)
         if (!isAI) {
-            isAI = (ds_pubg_read_u8(pawn + kDSPUBGCharacterIsAIOffset) != 0); // UAECharacter.bIsAI
+            uint64_t ctrl = ds_pubg_read_ptr(pawn + 0x4E8ULL);
+            if (ctrl && ds_pubg_valid(ctrl)) {
+                char ctrlName[64] = {0};
+                if (ds_pubg_get_actor_name(ctrl, ctrlName, sizeof(ctrlName))) {
+                    if (strcasestr(ctrlName, "AI") || strcasestr(ctrlName, "Fake")) {
+                        isAI = true;
+                    }
+                } else {
+                    isAI = true;
+                }
+            }
+        }
+
+        // 4. Read Nation & PlayerUID to verify real player presence
+        char readNation[16] = {0};
+        bool hasNation = ds_pubg_read_fstring_nation(pawn + kDSPUBGCharacterNationOffset, readNation, sizeof(readNation));
+        if (!hasNation && ps && ds_pubg_valid(ps)) {
+            hasNation = ds_pubg_read_fstring_nation(ps + kDSPUBGPlayerStateNationOffset, readNation, sizeof(readNation));
+        }
+
+        char readUID[32] = {0};
+        bool hasUID = ds_pubg_read_fstring_nick(pawn + kDSPUBGCharacterPlayerUIDOffset, readUID, sizeof(readUID)) && strlen(readUID) >= 5;
+        if (!hasUID && ps && ds_pubg_valid(ps)) {
+            hasUID = ds_pubg_read_fstring_nick(ps + 0x668ULL, readUID, sizeof(readUID)) && strlen(readUID) >= 5;
+        }
+
+        if (!isAI) {
+            // Real players in multiplayer ALWAYS have at least a valid PlayerState, PlayerUID, or Nation.
+            // If pawn has neither PlayerState nor PlayerUID nor Nation, it is an AI pawn.
+            if ((!ps || !ds_pubg_valid(ps)) && !hasUID && !hasNation) {
+                isAI = true;
+            }
         }
 
         // 360-Degree Radar Enemy & Bot Counter (independent of camera viewport)
@@ -3273,6 +3349,9 @@ static void ds_pubg_tick(void) {
         p.healthMax = (healthMax >= 20.0f) ? healthMax : 100.0f;
         p.teamId = teamId;
         p.isAI = isAI;
+        if (!isAI && hasNation) {
+            strncpy(p.nation, readNation, sizeof(p.nation) - 1);
+        }
         p.isDead = false;
         p.isKnocked = isKnocked;
         p.isVisible = false;
@@ -3410,6 +3489,13 @@ static void ds_pubg_tick(void) {
             }
             if (p.name[0] == '\0') {
                 strncpy(p.name, isAI ? "Bot" : "Enemy", sizeof(p.name) - 1);
+            }
+            if (!isAI && p.nation[0] == '\0') {
+                if (!ds_pubg_read_fstring_nation(pawn + kDSPUBGCharacterNationOffset, p.nation, sizeof(p.nation))) {
+                    if (ps && ds_pubg_valid(ps)) {
+                        ds_pubg_read_fstring_nation(ps + kDSPUBGPlayerStateNationOffset, p.nation, sizeof(p.nation));
+                    }
+                }
             }
 
             // Real Skeletal Bones (16 joints, 15 bone links)

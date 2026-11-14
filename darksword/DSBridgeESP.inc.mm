@@ -1327,6 +1327,18 @@ static inline NSString *ds_safe_utf8_string(const char *str, NSString *fallback)
     return (s && s.length > 0) ? s : (fallback ?: @"");
 }
 
+static NSString *ds_country_code_to_flag_emoji(const char *code) {
+    if (!code || strlen(code) < 2) return nil;
+    char c1 = (char)toupper((unsigned char)code[0]);
+    char c2 = (char)toupper((unsigned char)code[1]);
+    if (c1 < 'A' || c1 > 'Z' || c2 < 'A' || c2 > 'Z') return nil;
+    unichar chars[4] = {
+        0xD83C, (unichar)(0xDDE6 + (c1 - 'A')),
+        0xD83C, (unichar)(0xDDE6 + (c2 - 'A'))
+    };
+    return [NSString stringWithCharacters:chars length:4];
+}
+
 static void ds_hosted_apply_pubg(void) {
     @try {
     if (!g_hostedLayer) return;
@@ -1617,8 +1629,26 @@ static void ds_hosted_apply_pubg(void) {
             aiMark.hidden = YES;
         }
 
+        BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
+        BOOL isBot = ai || (haveNick && (strstr(p.name, "ModelTarget") != NULL || strstr(p.name, "Target") != NULL || strstr(p.name, "AI") != NULL || strstr(p.name, "Bot") != NULL || strstr(p.name, "bot") != NULL));
+        NSString *nameStr = isBot ? @"BOT" : (haveNick ? [NSString stringWithUTF8String:p.name] : (g_pubgLanguage == 1 ? @"ENEMY" : @"ĐỊCH"));
+        if (!isBot && g_pubgEspFlag && p.nation[0] != '\0') {
+            NSString *flagEmoji = ds_country_code_to_flag_emoji(p.nation);
+            if (flagEmoji && flagEmoji.length > 0) {
+                nameStr = [NSString stringWithFormat:@"%@ %@", flagEmoji, nameStr];
+            } else {
+                nameStr = [NSString stringWithFormat:@"[%s] %@", p.nation, nameStr];
+            }
+        }
+        if (p.isKnocked) {
+            nameStr = [NSString stringWithFormat:@"⚠️ %@", nameStr];
+        }
+
         // 4. MADNESS Player Info Tag (3 tầng: [67M] [25] -> Thanh máu 3 vạch -> Badge đen BOT)
         CGFloat headerW = 76.0f;
+        if (!isBot && g_pubgEspFlag && p.nation[0] != '\0') {
+            headerW = 92.0f;
+        }
         CGFloat headerX = centerX - headerW * 0.5f;
 
         CGFloat anchorY = topY;
@@ -1636,13 +1666,6 @@ static void ds_hosted_apply_pubg(void) {
         // Tầng 3: Badge đen chứa tên / BOT (Line 3: Name / BOT Badge)
         CGFloat badgeH = 13.0f;
         CGFloat badgeY = anchorY - badgeH - 3.0f;
-
-        BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
-        BOOL isBot = ai || (haveNick && (strstr(p.name, "ModelTarget") != NULL || strstr(p.name, "Target") != NULL || strstr(p.name, "AI") != NULL || strstr(p.name, "Bot") != NULL || strstr(p.name, "bot") != NULL));
-        NSString *nameStr = isBot ? @"BOT" : (haveNick ? [NSString stringWithUTF8String:p.name] : (g_pubgLanguage == 1 ? @"ENEMY" : @"ĐỊCH"));
-        if (p.isKnocked) {
-            nameStr = [NSString stringWithFormat:@"⚠️ %@", nameStr];
-        }
 
         info.frame = CGRectMake(headerX, badgeY, headerW, badgeH);
         info.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.80].CGColor;
