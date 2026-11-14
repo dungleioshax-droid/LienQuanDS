@@ -492,7 +492,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnName setTitle:@"TÊN ĐỊCH" forState:UIControlStateNormal];
         [self.btnDist setTitle:@"KHOẢNG CÁCH" forState:UIControlStateNormal];
         [self.btn3D setTitle:@"HỘP 3D" forState:UIControlStateNormal];
-        [self.btnArrow setTitle:@"MŨI TÊN 360" forState:UIControlStateNormal];
+        [self.btnArrow setTitle:@"MŨI TÊN" forState:UIControlStateNormal];
         [self.btnTeam setTitle:@"ĐỒNG ĐỘI" forState:UIControlStateNormal];
         [self.btnFlag setTitle:@"QUỐC KỲ" forState:UIControlStateNormal];
 
@@ -514,7 +514,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnName setTitle:@"PLAYER NAME" forState:UIControlStateNormal];
         [self.btnDist setTitle:@"PLAYER DIS" forState:UIControlStateNormal];
         [self.btn3D setTitle:@"3D BOX" forState:UIControlStateNormal];
-        [self.btnArrow setTitle:@"ARROW 360" forState:UIControlStateNormal];
+        [self.btnArrow setTitle:@"DRAW ARROW" forState:UIControlStateNormal];
         [self.btnTeam setTitle:@"PLAYER TEAM" forState:UIControlStateNormal];
         [self.btnFlag setTitle:@"PLAYER FLAG" forState:UIControlStateNormal];
 
@@ -616,7 +616,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_box"];
     };
 
-    self.btnArrow = [self btn:@"ARROW 360" frame:CGRectMake(x1, 72, colW, btnH) inView:self.scroll italic:YES];
+    self.btnArrow = [self btn:@"DRAW ARROW" frame:CGRectMake(x1, 72, colW, btnH) inView:self.scroll italic:YES];
     self.btnArrow.on = g_pubgEspArrow;
     self.btnArrow.onToggle = ^(BOOL isOn) {
         g_pubgEspArrow = isOn;

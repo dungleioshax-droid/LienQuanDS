@@ -1073,73 +1073,7 @@ static NSString *ds_country_code_to_flag_emoji(const char *code) {
     return [NSString stringWithCharacters:chars length:4];
 }
 
-#pragma mark - Arrow 360 (vòng mũi tên rỗng xoay 360° quanh mục tiêu)
 
-// Bán kính vòng tròn các mũi tên (điểm) quanh mục tiêu.
-static const CGFloat kDSPUBGArrow360Radius = 52.0f;
-// Chiều dài một mũi tên tam giác rỗng.
-static const CGFloat kDSPUBGArrow360DartLength = 22.0f;
-// Nửa chiều rộng đáy tam giác.
-static const CGFloat kDSPUBGArrow360DartHalfWidth = 7.0f;
-// Số mũi tên trong một lần quét.
-static const int kDSPUBGArrow360DartCount = 5;
-// Góc tổng của cung mũi tên (độ).
-static const CGFloat kDSPUBGArrow360SpreadDeg = 26.0f;
-// Thời gian quét hết một vòng 360° (giây).
-static const CGFloat kDSPUBGArrow360Period = 1.2f;
-// Độ dày nét viền tam giác.
-static const CGFloat kDSPUBGArrow360LineWidth = 1.2f;
-
-static UIColor *ds_pubg_arrow360_color(void) {
-    return [UIColor colorWithRed:1.0 green:0.18 blue:0.18 alpha:0.95];
-}
-
-// Góc quét hiện tại (0..2π) — dùng thời gian thực để xoay mượt 120FPS.
-static CGFloat ds_pubg_arrow360_phase(void) {
-    const CGFloat kTwoPi = (CGFloat)(2.0 * M_PI);
-    double turns = CACurrentMediaTime() / (double)kDSPUBGArrow360Period;
-    return (CGFloat)fmod(turns * (double)kTwoPi, (double)kTwoPi);
-}
-
-// Dựng cung tam giác rỗng: mũi tên nằm trên vòng tròn, hướng ra ngoài (radial).
-static UIBezierPath *ds_pubg_arrow360_path(CGPoint pivot, CGFloat phase) {
-    UIBezierPath *path = [UIBezierPath bezierPath];
-    const CGFloat step = (kDSPUBGArrow360SpreadDeg * (CGFloat)M_PI / 180.0f) /
-                         (CGFloat)(kDSPUBGArrow360DartCount - 1);
-    const CGFloat halfLen = kDSPUBGArrow360DartLength * 0.5f;
-    for (int i = 0; i < kDSPUBGArrow360DartCount; i++) {
-        CGFloat a = phase - (CGFloat)i * step;
-        CGFloat cx = pivot.x + cosf(a) * kDSPUBGArrow360Radius;
-        CGFloat cy = pivot.y + sinf(a) * kDSPUBGArrow360Radius;
-        CGFloat dirX = cosf(a);
-        CGFloat dirY = sinf(a);
-        CGFloat normX = -dirY;
-        CGFloat normY = dirX;
-        CGFloat tipX = cx + dirX * halfLen;
-        CGFloat tipY = cy + dirY * halfLen;
-        CGFloat baseX = cx - dirX * halfLen;
-        CGFloat baseY = cy - dirY * halfLen;
-        [path moveToPoint:CGPointMake(tipX, tipY)];
-        [path addLineToPoint:CGPointMake(baseX + normX * kDSPUBGArrow360DartHalfWidth,
-                                         baseY + normY * kDSPUBGArrow360DartHalfWidth)];
-        [path addLineToPoint:CGPointMake(baseX - normX * kDSPUBGArrow360DartHalfWidth,
-                                         baseY - normY * kDSPUBGArrow360DartHalfWidth)];
-        [path closePath];
-    }
-    return path;
-}
-
-// Gán path + style cho lớp mũi tên (dùng chung cho cung 360°).
-static void ds_pubg_apply_arrow360(CAShapeLayer *arrow, CGPoint pivot, CGFloat phase) {
-    if (!arrow) return;
-    arrow.path = ds_pubg_arrow360_path(pivot, phase).CGPath;
-    arrow.fillColor = [UIColor clearColor].CGColor;
-    arrow.strokeColor = ds_pubg_arrow360_color().CGColor;
-    arrow.lineWidth = kDSPUBGArrow360LineWidth;
-    arrow.lineJoin = kCALineJoinMiter;
-    arrow.lineCap = kCALineCapButt;
-    arrow.hidden = NO;
-}
 
 static void ds_hosted_apply_pubg(void) {
     @try {
@@ -1341,15 +1275,8 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 2. Arrow 360: vòng tam giác rỗng màu đỏ xoay 360° quanh chân mục tiêu
-        if (arrow) {
-            if (g_pubgEspArrow) {
-                ds_pubg_apply_arrow360(arrow, CGPointMake(centerX, bottomY),
-                                       ds_pubg_arrow360_phase());
-            } else {
-                arrow.hidden = YES;
-            }
-        }
+        // On-screen player: hide off-screen boundary arrow
+        if (arrow) arrow.hidden = YES;
         if (arrowText) arrowText.hidden = YES;
 
         // Player Visibility & Colors (MADNESS 100% authentic: Green visible, Red occluded / knocked)
