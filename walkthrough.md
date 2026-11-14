@@ -317,4 +317,6 @@ Từ 2 ảnh thực tế của người dùng:
    - Bắt buộc có **2 frame liên tiếp** (`occludedStreak >= 2`) không được render mới chuyển về màu Đỏ.
 
 ### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `daf93ec` (`fix(vischeck): isolate actor vis history slots, dual-render timestamp check, and eliminate bounding box leakage`).
+- **GitHub Actions Run**: [Workflow Run 43601677187](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43601677187) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
