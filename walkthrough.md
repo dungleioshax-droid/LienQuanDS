@@ -248,7 +248,36 @@ ImGui::GetForegroundDrawList()->AddText(NULL ,25,{glWidth / 2,66}, 红色, extra
    - **Độ dày viền**: giảm từ $1.8\,\text{pt} \to 1.2\,\text{pt}$ (nét vẽ thanh mảnh, sắc nét).
    - **Vị trí nhãn khoảng cách**: cách tâm $85 + 13 + 8 = 106\,\text{pt}$, kích thước $40 \times 12\,\text{pt}$.
 
-### C. Kết quả Build & File IPA Mới Nhất:
+### C. Kết quả Build & File IPA (Bản trước):
 - **Commit**: `8158ba4` (`fix(esp): scale down radar arrow 360 and restrict display strictly to rear enemies`).
 - **GitHub Actions Run**: [Workflow Run 43597788856](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43597788856) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 15. Khắc Phục Lỗi App Bị Kill Mất HUD, Ổn Định Hóa Vischeck & Cảnh Báo Lựu Đạn Chuẩn 7 Giây
+
+### A. Vấn đề người dùng phản hồi:
+1. **HUD đang chạy thì app bị kill dẫn đến mất luôn HUD**:
+   - Khi chuyển sang game hoặc chạy ngầm một lúc, app DarkPubg bị iOS kill và toàn bộ menu/overlay HUD trong SpringBoard biến mất.
+2. **Vischeck hoạt động không ổn định**:
+   - Khung nhân vật bị chớp nháy liên tục giữa màu Xanh (nhìn thấy) và Đỏ (sau tường), hoặc đứng sau tường nhưng vẫn bị nhận nhầm thành màu xanh.
+3. **Cảnh báo quả bom chuyển sang màu đỏ chưa chính xác**:
+   - Lựu đạn nổ trong PUBG Mobile có thời gian nổ là 7 giây, nhưng mã nguồn cũ cài đặt 5 giây khiến cảnh báo chuyển đỏ quá sớm trước khi nổ.
+
+### B. Các giải pháp đã triển khai:
+1. **Khắc phục lỗi App bị Kill và duy trì HUD vĩnh viễn**:
+   - Trong [MainApplicationDelegate.mm](file:///home/dungle/DarkPubg/sources/MainApplicationDelegate.mm#L104-L117): Sửa lỗi điều kiện trong `applicationDidEnterBackground`. Trước đây chỉ kiểm tra `DSBridgeIsRunning()` (vốn bị false ngay sau khi khởi tạo HUD), nay kiểm tra chuẩn xác `DSBridgeHUDEnabled() || DSBridgeIsRunning()`.
+   - Luôn kích hoạt `BypassJetsamByProcess(getpid(), NO)` và `DSBridgeStartKeepalive()` khi app vào nền hoặc active trở lại.
+   - Trong [DSBridgeExploit.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeExploit.inc.mm#L272-L285): Sửa `expirationHandler` của `beginBackgroundTaskWithName` để kết thúc tác vụ kịp thời, ngăn chặn iOS Watchdog cưỡng chế đóng ứng dụng sau 30 giây.
+2. **Ổn định hóa Vischeck (Kiểm tra che khuất)**:
+   - Trong [DSBridgePUBG.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgePUBG.inc.mm#L3428-L3495): Chuyển sang so sánh trực tiếp với `LastRenderTimeOnScreen` (`0x48C`) thay vì `LastRenderTime` (`0x488`), loại bỏ hiện tượng nhận nhầm do bóng đổ xuyên tường.
+   - Bổ sung bộ đệm trễ thời gian (`DSPUBGVisHistory s_visHistories[64]`): chuyển ngay sang Xanh khi nhìn thấy, và chỉ chuyển sang Đỏ khi bị che khuất liên tục 3 frame (~60-90ms) để triệt tiêu hoàn toàn hiện tượng chớp nháy do độ trễ luồng Render Thread của Unreal Engine.
+3. **Đồng bộ hóa cảnh báo lựu đạn chuẩn 7.0 giây**:
+   - Trong [DSBridgePUBG.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgePUBG.inc.mm#L3881-L3890): Cập nhật thời gian nổ tối đa `maxFuse = 7.0f` cho Lựu đạn nổ (Frag Grenade), đồng bộ `InitialLifeSpan`.
+   - Trong [DSBridgeESP.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeESP.inc.mm#L1883-L1948): Tỉ lệ chuyển đổi màu từ Vàng sang Đỏ chuyển động mượt mà trong đúng 7.0 giây. Bổ sung đồng hồ đếm ngược số giây thực tế vào nhãn tên (ví dụ: `Frag [15m] 5.2s`).
+
+### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `ac916a7` (`fix(hud,vischeck,grenade): keepalive on HUD active, stabilize vischeck with screen render hysteresis, and set grenade fuse to 7s`).
+- **GitHub Actions Run**: [Workflow Run 43599129649](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43599129649) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
