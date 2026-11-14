@@ -929,7 +929,7 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 - (BOOL)dsShouldAcceptHitView:(UIView *)hitView {
     if (!hitView || hitView == self.view || hitView == _contentView || hitView == _madnessMenu) return NO;
     for (UIView *view = hitView; view; view = view.superview) {
-        if (view == _madnessMenu.panel) return YES;
+        if (view == _madnessMenu.panel || view == _madnessMenu.dragMap) return YES;
     }
     return NO;
 }
@@ -1715,18 +1715,29 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat distY = (showHp ? barY : badgeY) - distH - 2.0f;
         if (wLabel) {
             int tId = (p.teamId > 0 && p.teamId <= 99) ? p.teamId : (int)(p.playerKey % 89 + 10);
-            NSString *dtStr = [NSString stringWithFormat:@"[%.0fM]        [%d]", p.distanceMeters, tId];
-            wLabel.frame = CGRectMake(headerX - 8.0f, distY, headerW + 16.0f, distH);
-            wLabel.alignmentMode = kCAAlignmentCenter;
-            wLabel.fontSize = 9.0;
-            wLabel.font = (__bridge CFTypeRef)[UIFont boldSystemFontOfSize:9.0];
-            wLabel.foregroundColor = [UIColor whiteColor].CGColor;
-            wLabel.shadowColor = [UIColor blackColor].CGColor;
-            wLabel.shadowOpacity = 1.0f;
-            wLabel.shadowRadius = 1.0f;
-            wLabel.shadowOffset = CGSizeZero;
-            wLabel.string = dtStr;
-            wLabel.hidden = NO;
+            NSString *dtStr = @"";
+            if (g_pubgEspDist && g_pubgEspTeam) {
+                dtStr = [NSString stringWithFormat:@"[%.0fM]        [%d]", p.distanceMeters, tId];
+            } else if (g_pubgEspDist) {
+                dtStr = [NSString stringWithFormat:@"[%.0fM]", p.distanceMeters];
+            } else if (g_pubgEspTeam) {
+                dtStr = [NSString stringWithFormat:@"[%d]", tId];
+            }
+            if (dtStr.length > 0) {
+                wLabel.frame = CGRectMake(headerX - 8.0f, distY, headerW + 16.0f, distH);
+                wLabel.alignmentMode = kCAAlignmentCenter;
+                wLabel.fontSize = 9.0;
+                wLabel.font = (__bridge CFTypeRef)[UIFont boldSystemFontOfSize:9.0];
+                wLabel.foregroundColor = [UIColor whiteColor].CGColor;
+                wLabel.shadowColor = [UIColor blackColor].CGColor;
+                wLabel.shadowOpacity = 1.0f;
+                wLabel.shadowRadius = 1.0f;
+                wLabel.shadowOffset = CGSizeZero;
+                wLabel.string = dtStr;
+                wLabel.hidden = NO;
+            } else {
+                wLabel.hidden = YES;
+            }
         }
 
         // 2. Snapline: Kẻ từ mũi tên compass xuống đỉnh cụm thông tin địch (Xanh khi thấy, Đỏ khi khuất)
@@ -1843,7 +1854,7 @@ static void ds_hosted_apply_pubg(void) {
             s_topCountFont = f;
         });
 
-        if (ds_pubg_has_render_source() && (totalEnemies + totalBots >= 0)) {
+        if (g_pubgEspEnemyNumber && ds_pubg_has_render_source() && (totalEnemies + totalBots >= 0)) {
             CGFloat lblW = 340.0f;
             CGFloat lblH = 20.0f;
             CGFloat lblX = (width - lblW) * 0.5f;

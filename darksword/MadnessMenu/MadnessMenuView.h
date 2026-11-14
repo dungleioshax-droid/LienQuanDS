@@ -60,6 +60,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, strong, readonly) UIButton *panel;
 @property (nonatomic, strong, readonly) UIButton *handle;
+@property (nonatomic, strong, readonly) UIButton *dragMap;
 
 /// DemoHost / simctl preview helpers (menu chrome only)
 - (void)previewResetUIState;
