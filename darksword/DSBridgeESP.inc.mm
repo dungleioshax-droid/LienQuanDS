@@ -691,7 +691,8 @@ static NSString * const kDSHostedMenuPanelXKey = @"pubg_menu_panel_x";
 static NSString * const kDSHostedMenuPanelYKey = @"pubg_menu_panel_y";
 static NSString * const kDSHostedEspEnabledKey = @"pubg_esp_enabled";
 static const double kDSHostedMenuLevel = 10000020.0;
-static const CGFloat kDSHostedMenuButtonSize = 42.0;
+static const CGFloat kDSHostedMenuButtonWidth = 94.0;
+static const CGFloat kDSHostedMenuButtonHeight = 24.0;
 static const CGFloat kDSHostedMenuSymbolSize = 16.0;
 
 // ESP defaults to on (the overlay always rendered before the switch existed).
@@ -967,10 +968,10 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
 
 static UIView *ds_create_pill_row(CGFloat y, CGFloat width, CGFloat height) {
     UIView *row = [[UIView alloc] initWithFrame:CGRectMake(0, y, width, height)];
-    row.backgroundColor = [UIColor colorWithRed:248/255.0 green:249/255.0 blue:252/255.0 alpha:1.0];
-    row.layer.cornerRadius = 10.0;
-    row.layer.borderWidth = 0.6;
-    row.layer.borderColor = [UIColor colorWithRed:235/255.0 green:238/255.0 blue:246/255.0 alpha:1.0].CGColor;
+    row.backgroundColor = [UIColor colorWithRed:0.04 green:0.04 blue:0.04 alpha:0.65];
+    row.layer.cornerRadius = 6.0;
+    row.layer.borderWidth = 0.8;
+    row.layer.borderColor = [UIColor colorWithWhite:0.22 alpha:0.6].CGColor;
     row.clipsToBounds = YES;
     row.userInteractionEnabled = YES;
     return row;
@@ -979,8 +980,8 @@ static UIView *ds_create_pill_row(CGFloat y, CGFloat width, CGFloat height) {
 static UILabel *ds_create_row_label(UIView *parent, NSString *text, CGFloat width, CGFloat height) {
     UILabel *lbl = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 0, width - 64.0, height)];
     lbl.text = text;
-    lbl.textColor = [UIColor colorWithRed:31/255.0 green:41/255.0 blue:55/255.0 alpha:1.0];
-    lbl.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightMedium];
+    lbl.textColor = [UIColor whiteColor];
+    lbl.font = [UIFont boldSystemFontOfSize:13.0];
     lbl.userInteractionEnabled = NO;
     [parent addSubview:lbl];
     return lbl;
@@ -988,7 +989,7 @@ static UILabel *ds_create_row_label(UIView *parent, NSString *text, CGFloat widt
 
 static UISwitch *ds_create_row_switch(UIView *parent, id target, SEL action, BOOL isOn, CGFloat width, CGFloat height) {
     UISwitch *sw = [[UISwitch alloc] initWithFrame:CGRectZero];
-    sw.onTintColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0];
+    sw.onTintColor = [UIColor colorWithRed:0.89 green:0.23 blue:0.21 alpha:1.00];
     sw.thumbTintColor = [UIColor whiteColor];
     sw.transform = CGAffineTransformMakeScale(0.72, 0.72);
     sw.center = CGPointMake(width - 28.0, height * 0.5);
@@ -1003,13 +1004,13 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
                                 id target, SEL action, CGFloat width) {
     tLbl.frame = CGRectMake(12.0, 6.0, width - 85.0, 18.0);
     tLbl.text = title;
-    tLbl.textColor = [UIColor colorWithRed:31/255.0 green:41/255.0 blue:55/255.0 alpha:1.0];
-    tLbl.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
+    tLbl.textColor = [UIColor whiteColor];
+    tLbl.font = [UIFont boldSystemFontOfSize:12.5];
     tLbl.userInteractionEnabled = NO;
     [parent addSubview:tLbl];
 
     vLbl.frame = CGRectMake(width - 75.0, 6.0, 65.0, 18.0);
-    vLbl.textColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0];
+    vLbl.textColor = [UIColor orangeColor];
     vLbl.font = [UIFont monospacedDigitSystemFontOfSize:12.5 weight:UIFontWeightBold];
     vLbl.textAlignment = NSTextAlignmentRight;
     vLbl.userInteractionEnabled = NO;
@@ -1020,15 +1021,15 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     sl.maximumValue = maxVal;
     sl.value = curVal;
     sl.continuous = YES;
-    sl.minimumTrackTintColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0];
-    sl.maximumTrackTintColor = [UIColor colorWithRed:226/255.0 green:232/255.0 blue:240/255.0 alpha:1.0];
+    sl.minimumTrackTintColor = [UIColor colorWithRed:0.89 green:0.23 blue:0.21 alpha:1.00];
+    sl.maximumTrackTintColor = [UIColor colorWithWhite:0.22 alpha:0.8];
     [sl addTarget:target action:action forControlEvents:UIControlEventValueChanged];
     [parent addSubview:sl];
 }
 
 - (void)loadView {
     if (@available(iOS 13.0, *)) {
-        self.overrideUserInterfaceStyle = UIUserInterfaceStyleLight;
+        self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     }
     self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.view.opaque = NO;
@@ -1039,45 +1040,44 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     _contentView.backgroundColor = UIColor.clearColor;
     [self.view addSubview:_contentView];
 
-    // 1. Floating Action Button (Circle with royal blue bg, neon green ring, bold white DS)
+    // 1. Floating Action Button (MADNESS style orange pill)
     _toggleButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _toggleButton.backgroundColor = [UIColor colorWithRed:36/255.0 green:48/255.0 blue:185/255.0 alpha:0.95];
-    _toggleButton.tintColor = [UIColor whiteColor];
-    _toggleButton.layer.cornerRadius = kDSHostedMenuButtonSize * 0.5;
-    _toggleButton.layer.borderWidth = 2.2;
-    _toggleButton.layer.borderColor = [UIColor colorWithRed:0/255.0 green:230/255.0 blue:118/255.0 alpha:1.0].CGColor;
-    _toggleButton.layer.shadowColor = [UIColor colorWithRed:0/255.0 green:230/255.0 blue:118/255.0 alpha:0.6].CGColor;
-    _toggleButton.layer.shadowRadius = 8.0;
-    _toggleButton.layer.shadowOpacity = 0.85;
+    _toggleButton.backgroundColor = [UIColor orangeColor];
+    _toggleButton.layer.cornerRadius = 5.0;
+    _toggleButton.layer.borderWidth = 0.5;
+    _toggleButton.layer.borderColor = [UIColor orangeColor].CGColor;
+    _toggleButton.layer.shadowColor = [UIColor orangeColor].CGColor;
+    _toggleButton.layer.shadowRadius = 6.0;
+    _toggleButton.layer.shadowOpacity = 0.65;
     _toggleButton.layer.shadowOffset = CGSizeZero;
     _toggleButton.layer.masksToBounds = NO;
-    [_toggleButton setTitle:@"DS" forState:UIControlStateNormal];
-    [_toggleButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    _toggleButton.titleLabel.font = [UIFont systemFontOfSize:14.5 weight:UIFontWeightHeavy];
+    [_toggleButton setTitle:@"MADNESS" forState:UIControlStateNormal];
+    [_toggleButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+    _toggleButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
     [_toggleButton addTarget:self action:@selector(dsToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
     UIPanGestureRecognizer *menuPan = [[UIPanGestureRecognizer alloc]
         initWithTarget:self action:@selector(dsMenuButtonPanned:)];
     [_toggleButton addGestureRecognizer:menuPan];
     [_contentView addSubview:_toggleButton];
 
-    // 2. Menu Window Card (Crisp white rounded card with soft drop shadow)
+    // 2. Menu Window Card (MADNESS dark semi-transparent card with orange border)
     _panelView = [[UIView alloc] initWithFrame:CGRectZero];
-    _panelView.backgroundColor = [UIColor whiteColor];
-    _panelView.layer.cornerRadius = 16.0;
-    _panelView.layer.borderWidth = 0.8;
-    _panelView.layer.borderColor = [UIColor colorWithRed:226/255.0 green:232/255.0 blue:240/255.0 alpha:1.0].CGColor;
-    _panelView.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.18].CGColor;
-    _panelView.layer.shadowRadius = 18.0;
+    _panelView.backgroundColor = [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:0.82];
+    _panelView.layer.cornerRadius = 12.0;
+    _panelView.layer.borderWidth = 1.0;
+    _panelView.layer.borderColor = [UIColor orangeColor].CGColor;
+    _panelView.layer.shadowColor = [UIColor blackColor].CGColor;
+    _panelView.layer.shadowRadius = 16.0;
     _panelView.layer.shadowOffset = CGSizeMake(0, 6);
-    _panelView.layer.shadowOpacity = 1.0;
+    _panelView.layer.shadowOpacity = 0.75;
     _panelView.layer.masksToBounds = NO;
     [_contentView addSubview:_panelView];
 
-    // 3. Watermark Label (Subtle translucent "sudo" centered behind rows)
+    // 3. Watermark Label (Subtle translucent "MADNESS" centered behind rows)
     _watermarkLabel = [[UILabel alloc] initWithFrame:CGRectMake(10.0, 100.0, 290.0, 110.0)];
-    _watermarkLabel.text = @"sudo";
-    _watermarkLabel.font = [UIFont systemFontOfSize:54.0 weight:UIFontWeightHeavy];
-    _watermarkLabel.textColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:0.06];
+    _watermarkLabel.text = @"MADNESS";
+    _watermarkLabel.font = [UIFont systemFontOfSize:46.0 weight:UIFontWeightHeavy];
+    _watermarkLabel.textColor = [UIColor colorWithRed:1.0 green:0.55 blue:0.0 alpha:0.04];
     _watermarkLabel.textAlignment = NSTextAlignmentCenter;
     _watermarkLabel.userInteractionEnabled = NO;
     [_panelView addSubview:_watermarkLabel];
@@ -1086,7 +1086,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     _resizeHandleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _resizeHandleLabel.text = @"↘";
     _resizeHandleLabel.font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightBold];
-    _resizeHandleLabel.textColor = [UIColor colorWithRed:160/255.0 green:170/255.0 blue:185/255.0 alpha:0.7];
+    _resizeHandleLabel.textColor = [UIColor orangeColor];
     _resizeHandleLabel.textAlignment = NSTextAlignmentCenter;
     _resizeHandleLabel.userInteractionEnabled = NO;
     [_panelView addSubview:_resizeHandleLabel];
@@ -1101,29 +1101,31 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     [_panelView addSubview:_headerView];
 
     _titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    _titleLabel.text = @"DS · DARKPUBG";
-    _titleLabel.textColor = [UIColor colorWithRed:17/255.0 green:24/255.0 blue:39/255.0 alpha:1.0];
-    _titleLabel.font = [UIFont systemFontOfSize:15.5 weight:UIFontWeightBold];
+    _titleLabel.text = @"⟇ MADNESS";
+    _titleLabel.textColor = [UIColor whiteColor];
+    _titleLabel.font = [UIFont boldSystemFontOfSize:14.5];
     [_headerView addSubview:_titleLabel];
 
     _collapseButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_collapseButton setTitle:@"⌃" forState:UIControlStateNormal];
-    [_collapseButton setTitleColor:[UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0] forState:UIControlStateNormal];
+    [_collapseButton setTitleColor:[UIColor orangeColor] forState:UIControlStateNormal];
     _collapseButton.titleLabel.font = [UIFont systemFontOfSize:18.0 weight:UIFontWeightBold];
     [_collapseButton addTarget:self action:@selector(dsToggleTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_headerView addSubview:_collapseButton];
 
     _closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
     [_closeButton setTitle:@"✕" forState:UIControlStateNormal];
-    [_closeButton setTitleColor:[UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0] forState:UIControlStateNormal];
+    [_closeButton setTitleColor:[UIColor orangeColor] forState:UIControlStateNormal];
     _closeButton.titleLabel.font = [UIFont systemFontOfSize:16.0 weight:UIFontWeightBold];
     [_closeButton addTarget:self action:@selector(dsCloseTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_headerView addSubview:_closeButton];
 
     // 6. Tab Bar (Capsule container with 4 tabs separated by dividers)
     _pubgTabBar = [[UIView alloc] initWithFrame:CGRectZero];
-    _pubgTabBar.backgroundColor = [UIColor colorWithRed:241/255.0 green:242/255.0 blue:246/255.0 alpha:1.0];
-    _pubgTabBar.layer.cornerRadius = 8.0;
+    _pubgTabBar.backgroundColor = [UIColor colorWithRed:0.08 green:0.08 blue:0.08 alpha:0.85];
+    _pubgTabBar.layer.cornerRadius = 6.0;
+    _pubgTabBar.layer.borderWidth = 0.8;
+    _pubgTabBar.layer.borderColor = [UIColor colorWithWhite:0.25 alpha:0.6].CGColor;
     _pubgTabBar.clipsToBounds = YES;
     [_panelView addSubview:_pubgTabBar];
 
@@ -1131,6 +1133,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
         [b setTitle:title forState:UIControlStateNormal];
         b.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
+        [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         [b addTarget:self action:@selector(dsPubgTabTapped:) forControlEvents:UIControlEventTouchUpInside];
         [self->_pubgTabBar addSubview:b];
         return b;
@@ -1142,7 +1145,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
     for (int di = 0; di < 3; di++) {
         UIView *div = [[UIView alloc] initWithFrame:CGRectZero];
-        div.backgroundColor = [UIColor colorWithRed:226/255.0 green:232/255.0 blue:240/255.0 alpha:1.0];
+        div.backgroundColor = [UIColor colorWithWhite:0.25 alpha:0.5];
         [_pubgTabBar addSubview:div];
         _tabDividers[di] = div;
     }
@@ -1150,6 +1153,9 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     // 7. Scroll View & Containers for each tab
     _scrollView = [[UIScrollView alloc] initWithFrame:CGRectZero];
     _scrollView.backgroundColor = [UIColor clearColor];
+    _scrollView.layer.borderColor = [UIColor orangeColor].CGColor;
+    _scrollView.layer.borderWidth = 0.8;
+    _scrollView.layer.cornerRadius = 10.0;
     _scrollView.showsVerticalScrollIndicator = YES;
     _scrollView.alwaysBounceVertical = YES;
     [_panelView addSubview:_scrollView];
@@ -1327,24 +1333,25 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     _rowLang = ds_create_pill_row(y3, rowW, 62.0);
     _pubgSettingLangLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 6.0, rowW - 24.0, 18.0)];
     _pubgSettingLangLabel.text = @"Ngôn ngữ giao diện";
-    _pubgSettingLangLabel.textColor = [UIColor colorWithRed:31/255.0 green:41/255.0 blue:55/255.0 alpha:1.0];
-    _pubgSettingLangLabel.font = [UIFont systemFontOfSize:13.0 weight:UIFontWeightMedium];
+    _pubgSettingLangLabel.textColor = [UIColor whiteColor];
+    _pubgSettingLangLabel.font = [UIFont boldSystemFontOfSize:12.5];
     _pubgSettingLangLabel.userInteractionEnabled = NO;
     [_rowLang addSubview:_pubgSettingLangLabel];
 
     _pubgLangSegment = [[UISegmentedControl alloc] initWithItems:@[@"Tiếng Việt", @"English"]];
     _pubgLangSegment.frame = CGRectMake(10.0, 28.0, rowW - 20.0, 26.0);
     _pubgLangSegment.selectedSegmentIndex = g_pubgLanguage;
+    _pubgLangSegment.backgroundColor = [UIColor colorWithRed:0.20 green:0.20 blue:0.20 alpha:1.00];
     [_pubgLangSegment addTarget:self action:@selector(dsPubgLangChanged:) forControlEvents:UIControlEventValueChanged];
     if (@available(iOS 13.0, *)) {
-        _pubgLangSegment.selectedSegmentTintColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:0.18];
+        _pubgLangSegment.selectedSegmentTintColor = [UIColor orangeColor];
     }
     [_pubgLangSegment setTitleTextAttributes:@{
-        NSForegroundColorAttributeName: [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0],
-        NSFontAttributeName: [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold]
+        NSForegroundColorAttributeName: [UIColor blackColor],
+        NSFontAttributeName: [UIFont boldSystemFontOfSize:11.5]
     } forState:UIControlStateSelected];
     [_pubgLangSegment setTitleTextAttributes:@{
-        NSForegroundColorAttributeName: [UIColor colorWithRed:100/255.0 green:116/255.0 blue:139/255.0 alpha:1.0],
+        NSForegroundColorAttributeName: [UIColor whiteColor],
         NSFontAttributeName: [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium]
     } forState:UIControlStateNormal];
     [_rowLang addSubview:_pubgLangSegment];
@@ -1364,13 +1371,13 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     _rowInfo = ds_create_pill_row(y3, rowW, 56.0);
     _pubgSettingInfoLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 6.0, rowW - 24.0, 16.0)];
     _pubgSettingInfoLabel.text = @"Hệ thống & Tối ưu";
-    _pubgSettingInfoLabel.textColor = [UIColor colorWithRed:79/255.0 green:70/255.0 blue:229/255.0 alpha:1.0];
-    _pubgSettingInfoLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
+    _pubgSettingInfoLabel.textColor = [UIColor orangeColor];
+    _pubgSettingInfoLabel.font = [UIFont boldSystemFontOfSize:12.0];
     _pubgSettingInfoLabel.userInteractionEnabled = NO;
     [_rowInfo addSubview:_pubgSettingInfoLabel];
 
     _pubgSettingInfoDescLabel = [[UILabel alloc] initWithFrame:CGRectMake(12.0, 24.0, rowW - 24.0, 26.0)];
-    _pubgSettingInfoDescLabel.textColor = [UIColor colorWithRed:100/255.0 green:116/255.0 blue:139/255.0 alpha:1.0];
+    _pubgSettingInfoDescLabel.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
     _pubgSettingInfoDescLabel.font = [UIFont systemFontOfSize:10.5 weight:UIFontWeightRegular];
     _pubgSettingInfoDescLabel.numberOfLines = 2;
     _pubgSettingInfoDescLabel.text = @"• Tần số quét: 60/120 FPS Zero-Lag\n• Trạng thái: Direct Memory QoS Active";
@@ -1382,12 +1389,12 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     _resetButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _resetButton.frame = CGRectMake(0, y3, rowW, 40.0);
     [_resetButton setTitle:@"Khôi phục cài đặt gốc" forState:UIControlStateNormal];
-    [_resetButton setTitleColor:[UIColor colorWithRed:220/255.0 green:38/255.0 blue:38/255.0 alpha:1.0] forState:UIControlStateNormal];
-    _resetButton.titleLabel.font = [UIFont systemFontOfSize:13.5 weight:UIFontWeightBold];
-    _resetButton.backgroundColor = [UIColor colorWithRed:254/255.0 green:226/255.0 blue:226/255.0 alpha:0.8];
-    _resetButton.layer.cornerRadius = 10.0;
+    [_resetButton setTitleColor:[UIColor colorWithRed:1.0 green:0.4 blue:0.4 alpha:1.0] forState:UIControlStateNormal];
+    _resetButton.titleLabel.font = [UIFont boldSystemFontOfSize:13.0];
+    _resetButton.backgroundColor = [UIColor colorWithRed:0.18 green:0.04 blue:0.04 alpha:0.8];
+    _resetButton.layer.cornerRadius = 8.0;
     _resetButton.layer.borderWidth = 0.8;
-    _resetButton.layer.borderColor = [UIColor colorWithRed:252/255.0 green:165/255.0 blue:165/255.0 alpha:0.5].CGColor;
+    _resetButton.layer.borderColor = [UIColor colorWithRed:0.89 green:0.23 blue:0.21 alpha:0.8].CGColor;
     [_resetButton addTarget:self action:@selector(dsResetTapped:) forControlEvents:UIControlEventTouchUpInside];
     [_tabContentViewSettings addSubview:_resetButton];
 
@@ -1443,19 +1450,19 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     for (int i = 0; i < 4; i++) {
         UIButton *b = buttons[i];
         if (i == _pubgCurrentTab) {
-            b.backgroundColor = [UIColor whiteColor];
-            b.layer.cornerRadius = 6.0;
-            b.layer.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.10].CGColor;
-            b.layer.shadowRadius = 2.5;
-            b.layer.shadowOffset = CGSizeMake(0, 1);
-            b.layer.shadowOpacity = 1.0;
-            [b setTitleColor:[UIColor colorWithRed:17/255.0 green:24/255.0 blue:39/255.0 alpha:1.0] forState:UIControlStateNormal];
-            b.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightBold];
+            b.backgroundColor = [UIColor orangeColor];
+            b.layer.cornerRadius = 5.0;
+            b.layer.shadowColor = [UIColor orangeColor].CGColor;
+            b.layer.shadowRadius = 4.0;
+            b.layer.shadowOffset = CGSizeZero;
+            b.layer.shadowOpacity = 0.5;
+            [b setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+            b.titleLabel.font = [UIFont boldSystemFontOfSize:12.0];
             views[i].hidden = NO;
         } else {
             b.backgroundColor = [UIColor clearColor];
             b.layer.shadowOpacity = 0.0;
-            [b setTitleColor:[UIColor colorWithRed:100/255.0 green:116/255.0 blue:139/255.0 alpha:1.0] forState:UIControlStateNormal];
+            [b setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
             b.titleLabel.font = [UIFont systemFontOfSize:12.0 weight:UIFontWeightMedium];
             views[i].hidden = YES;
         }
@@ -1481,12 +1488,13 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     CGFloat defaultPanelY = MIN((CGFloat)82.0, MAX((CGFloat)10.0, boundsH - panelH - 10.0));
     CGPoint buttonAnchor = _hasButtonAnchor
         ? CGPointMake(_buttonAnchorUnit.x * boundsW, _buttonAnchorUnit.y * boundsH)
-        : CGPointMake(14.0 + kDSHostedMenuButtonSize * 0.5, defaultPanelY + 46.0 + kDSHostedMenuButtonSize * 0.5);
-    CGFloat buttonHalf = kDSHostedMenuButtonSize * 0.5;
-    buttonAnchor.x = MIN(MAX(buttonAnchor.x, buttonHalf + 4.0), boundsW - buttonHalf - 4.0);
-    buttonAnchor.y = MIN(MAX(buttonAnchor.y, buttonHalf + 4.0), boundsH - buttonHalf - 4.0);
+        : CGPointMake(14.0 + kDSHostedMenuButtonWidth * 0.5, defaultPanelY + 46.0 + kDSHostedMenuButtonHeight * 0.5);
+    CGFloat buttonHalfW = kDSHostedMenuButtonWidth * 0.5;
+    CGFloat buttonHalfH = kDSHostedMenuButtonHeight * 0.5;
+    buttonAnchor.x = MIN(MAX(buttonAnchor.x, buttonHalfW + 4.0), boundsW - buttonHalfW - 4.0);
+    buttonAnchor.y = MIN(MAX(buttonAnchor.y, buttonHalfH + 4.0), boundsH - buttonHalfH - 4.0);
     _buttonAnchorUnit = CGPointMake(buttonAnchor.x / MAX(boundsW, 1.0), buttonAnchor.y / MAX(boundsH, 1.0));
-    _toggleButton.bounds = CGRectMake(0, 0, kDSHostedMenuButtonSize, kDSHostedMenuButtonSize);
+    _toggleButton.bounds = CGRectMake(0, 0, kDSHostedMenuButtonWidth, kDSHostedMenuButtonHeight);
     _toggleButton.center = buttonAnchor;
     if (!g_hostedMenuExpanded) {
         _panelView.frame = CGRectZero;
@@ -1547,9 +1555,10 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
     CGPoint translation = [gesture translationInView:_contentView];
     CGFloat distance = hypot(translation.x, translation.y);
     CGPoint anchor = CGPointMake(_dragStartAnchor.x + translation.x, _dragStartAnchor.y + translation.y);
-    CGFloat half = kDSHostedMenuButtonSize * 0.5;
-    anchor.x = MIN(MAX(anchor.x, half + 4.0), boundsW - half - 4.0);
-    anchor.y = MIN(MAX(anchor.y, half + 4.0), boundsH - half - 4.0);
+    CGFloat halfW = kDSHostedMenuButtonWidth * 0.5;
+    CGFloat halfH = kDSHostedMenuButtonHeight * 0.5;
+    anchor.x = MIN(MAX(anchor.x, halfW + 4.0), boundsW - halfW - 4.0);
+    anchor.y = MIN(MAX(anchor.y, halfH + 4.0), boundsH - halfH - 4.0);
     _buttonAnchorUnit = CGPointMake(anchor.x / boundsW, anchor.y / boundsH);
     _hasButtonAnchor = YES;
     [self dsLayoutMenu];
@@ -1839,7 +1848,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
 
 - (void)dsUpdatePubgLanguage {
     if (g_pubgLanguage == 1) {
-        _titleLabel.text = @"DS · DARKPUBG";
+        _titleLabel.text = @"⟇ MADNESS";
         [_pubgTabButtonPlayer setTitle:@"ESP" forState:UIControlStateNormal];
         [_pubgTabButtonItems setTitle:@"Items" forState:UIControlStateNormal];
         [_pubgTabButtonVehicles setTitle:@"Vehicles" forState:UIControlStateNormal];
@@ -1874,7 +1883,7 @@ static void ds_setup_slider_row(UIView *parent, UILabel *tLbl, UILabel *vLbl, UI
         _pubgSettingInfoDescLabel.text = @"• Refresh Rate: 60/120 FPS Zero-Lag\n• Status: Direct Memory QoS Active";
         [_resetButton setTitle:@"Reset to Defaults" forState:UIControlStateNormal];
     } else {
-        _titleLabel.text = @"DS · DARKPUBG";
+        _titleLabel.text = @"⟇ MADNESS";
         [_pubgTabButtonPlayer setTitle:@"ESP" forState:UIControlStateNormal];
         [_pubgTabButtonItems setTitle:@"Vật Phẩm" forState:UIControlStateNormal];
         [_pubgTabButtonVehicles setTitle:@"Xe" forState:UIControlStateNormal];
