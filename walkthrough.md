@@ -320,3 +320,32 @@ Từ 2 ảnh thực tế của người dùng:
 - **Commit**: `daf93ec` (`fix(vischeck): isolate actor vis history slots, dual-render timestamp check, and eliminate bounding box leakage`).
 - **GitHub Actions Run**: [Workflow Run 43601677187](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43601677187) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 17. Khắc Phục Lỗi Hiện Địch Không Hoạt Động (Vischeck Đứng Im / Luôn Màu Đỏ Do Offset Metal RHI)
+
+### A. Phân tích nguyên nhân gốc rễ (Root Cause Analysis):
+1. **UE4 Metal RHI trên iOS không cập nhật `LastRenderTime` (offset `0x488`)**:
+   - PUBG Mobile trên iOS sử dụng Metal Graphics API với forward rendering pipeline (`FMetalDynamicRHI`).
+   - Trên Metal, Unreal Engine chỉ cập nhật `LastRenderTimeOnScreen` (`0x48CULL`) khi đối tượng thực tế được vẽ lên viewport chính.
+   - Trường `LastRenderTime` (`0x488ULL`) luôn giữ giá trị `0.0f` (chỉ dùng cho deferred scene pass trên D3D11/OpenGL của PC).
+2. **Hậu quả của commit `daf93ec`**:
+   - Ở bản build trước, điều kiện kiểm tra timestamp đã thêm `lastRender > 1.0f && lastRender < 1.0e6f`.
+   - Vì `lastRender` luôn là `0.0f`, điều kiện `timestampsLookValid` luôn trả về `false` đối với 100% người chơi trên bản đồ.
+   - Khi `timestampsLookValid == false`, logic vischeck bị bỏ qua hoàn toàn, dẫn đến `isOccluded` giữ nguyên giá trị mặc định là `true` (Màu Đỏ vĩnh viễn), khiến tính năng phát hiện địch nhìn thấy (vischeck xanh) bị tê liệt hoàn toàn ("không hoạt động luôn").
+   - Thêm vào đó, ngưỡng thời gian `0.040f` (40ms) trước đây quá hẹp đối với độ trễ hàng đợi Render Thread và ProMotion display trên iOS, cộng thêm yêu cầu `visibleStreak >= 2` khiến mục tiêu không thể chuyển xanh kịp thời.
+
+### B. Giải pháp đã thực hiện:
+1. **Loại bỏ hoàn toàn kiểm tra `lastRender` (0x488)**:
+   - Trong [DSBridgePUBG.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgePUBG.inc.mm#L3430-L3450): Quay trở lại công thức chuẩn xác và tương thích tuyệt đối với Metal RHI: chỉ đọc và xác thực `lastSubmit` (0x484) và `lastOnScreen` (0x48C).
+   - Điều kiện kiểm tra: `timestampsLookValid = isfinite(lastSubmit) && isfinite(lastOnScreen) && lastSubmit > 1.0f && lastSubmit < 1.0e6f && lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;`.
+2. **Khôi phục ngưỡng cửa sổ thời gian nhạy bén chuẩn 0.075s**:
+   - `float dt = lastSubmit - lastOnScreen;`
+   - `bool rawVisible = (dt >= -0.02f && dt <= 0.075f) && (lastOnScreen > 0.0f);`
+   - Cửa sổ này dung nạp hoàn hảo độ trễ 1-2 frame của Metal Render Thread mà vẫn đảm bảo độ tin cậy tuyệt đối khi mục tiêu bị vật cản che khuất (`lastOnScreen` ngừng cập nhật dẫn đến `dt` tăng vọt).
+3. **Giữ nguyên cơ chế cô lập khe lịch sử 128 slot theo từng con trỏ Actor (`actor == pawn`)**:
+   - Đảm bảo triệt để mục tiêu Bot [35] không bao giờ bị nhiễm chéo trạng thái với Bot [62] qua cửa sổ (nguyên nhân gây lỗi ở bản trước đã được giải quyết tận gốc).
+4. **Phản hồi tức thì khi nhìn thấy (1-frame response)**:
+   - Khi `rawVisible == true`: chuyển ngay sang màu Xanh (`vh.isOccluded = false; visibleStreak++; occludedStreak = 0;`).
+   - Khi bị che khuất (`rawVisible == false`): đệm 3 frame liên tiếp (`occludedStreak >= 3`) mới chuyển về Đỏ, chống giật nháy hình ảnh khi mục tiêu di chuyển.

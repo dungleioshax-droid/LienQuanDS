@@ -3327,7 +3327,7 @@ static void ds_pubg_tick(void) {
         p.isDead = false;
         p.isKnocked = isKnocked;
         p.isVisible = false;
-        p.isOccluded = true;
+        p.isOccluded = false;
         p.isVehicle = false;
         p.actorPtr = pawn;
         p.playerKey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
@@ -3430,25 +3430,20 @@ static void ds_pubg_tick(void) {
                         // Stabilized Occlusion check from UE4 UPrimitiveComponent render timestamps.
                         // kDSPUGPrimitiveLastRenderTimeOnScreen (0x48C) specifically records the main viewport
                         // render time, avoiding false visible triggers from shadows/reflections.
+                        // NOTE: Metal RHI on iOS does not update LastRenderTime (0x488) in forward shading,
+                        // so timestampsLookValid strictly checks LastSubmitTime (0x484) and LastRenderTimeOnScreen (0x48C).
                         // Temporal hysteresis filter prevents render thread stutter from causing rapid Green/Red flicker.
-                        bool isOccluded = true; // Default to occluded (RED) for safety
+                        bool isOccluded = false; // Default to visible if timestamps are unavailable
                         if (meshComp && ds_pubg_valid(meshComp)) {
                             float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
-                            float lastRender = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTime);
                             float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
                             bool timestampsLookValid =
-                                isfinite(lastSubmit) && isfinite(lastRender) && isfinite(lastOnScreen) &&
+                                isfinite(lastSubmit) && isfinite(lastOnScreen) &&
                                 lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
-                                lastRender > 1.0f && lastRender < 1.0e6f &&
                                 lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
                             if (timestampsLookValid) {
-                                float dtScreen = lastSubmit - lastOnScreen;
-                                float dtRender = fabsf(lastSubmit - lastRender);
-                                // Target must be recently submitted AND actually drawn on the viewport
-                                // within ~2 frames (35ms at 60 FPS), and rendered in the main pass.
-                                bool rawVisible = (dtScreen >= -0.015f && dtScreen <= 0.040f) &&
-                                                  (dtRender <= 0.040f) &&
-                                                  (lastOnScreen > 0.0f);
+                                float dt = lastSubmit - lastOnScreen;
+                                bool rawVisible = (dt >= -0.02f && dt <= 0.075f) && (lastOnScreen > 0.0f);
 
                                 int visSlot = -1;
                                 for (int v = 0; v < 128; v++) {
@@ -3463,7 +3458,7 @@ static void ds_pubg_tick(void) {
                                             visSlot = v;
                                             memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
                                             s_visHistories[v].actor = pawn;
-                                            s_visHistories[v].isOccluded = true; // Initial state is always occluded (RED)
+                                            s_visHistories[v].isOccluded = !rawVisible;
                                             break;
                                         }
                                     }
@@ -3477,16 +3472,13 @@ static void ds_pubg_tick(void) {
                                     if (rawVisible) {
                                         vh.visibleStreak++;
                                         vh.occludedStreak = 0;
-                                        // Require 2 consecutive positive frames (~33-50ms) to turn green,
-                                        // eliminating single-frame bounds bleeds and camera rotation blips.
-                                        if (vh.visibleStreak >= 2) {
-                                            vh.isOccluded = false;
-                                        }
+                                        vh.isOccluded = false; // Fast response when target becomes visible
                                     } else {
                                         vh.occludedStreak++;
                                         vh.visibleStreak = 0;
-                                        // Require 2 consecutive occluded frames to turn red
-                                        if (vh.occludedStreak >= 2) {
+                                        // Require 3 consecutive occluded frames (~60-90ms) before turning red
+                                        // to filter out single-frame render thread latency
+                                        if (vh.occludedStreak >= 3) {
                                             vh.isOccluded = true;
                                         }
                                     }
