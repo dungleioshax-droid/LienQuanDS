@@ -3350,6 +3350,31 @@ static void ds_pubg_tick(void) {
                         p.distanceMeters = dist;
                         p.isVisible = true;
 
+                        // 3D Bounding Box Calculation matching authentic MADNESS GetBox3D
+                        float extZ = isKnocked ? 25.0f : halfH;
+                        float extXY = isKnocked ? 35.0f : 40.0f;
+                        DSPUBGVector c3d[8] = {
+                            { rootLoc.X - extXY, rootLoc.Y - extXY, rootLoc.Z - extZ },
+                            { rootLoc.X + extXY, rootLoc.Y - extXY, rootLoc.Z - extZ },
+                            { rootLoc.X + extXY, rootLoc.Y + extXY, rootLoc.Z - extZ },
+                            { rootLoc.X - extXY, rootLoc.Y + extXY, rootLoc.Z - extZ },
+                            { rootLoc.X - extXY, rootLoc.Y - extXY, rootLoc.Z + extZ },
+                            { rootLoc.X + extXY, rootLoc.Y - extXY, rootLoc.Z + extZ },
+                            { rootLoc.X + extXY, rootLoc.Y + extXY, rootLoc.Z + extZ },
+                            { rootLoc.X - extXY, rootLoc.Y + extXY, rootLoc.Z + extZ },
+                        };
+                        bool c3dOk = true;
+                        for (int c = 0; c < 8; c++) {
+                            float csx = 0, csy = 0, cdist = 0;
+                            if (ds_pubg_cam_basis_project(basis, c3d[c], csx, csy, cdist)) {
+                                p.boxCorners[c] = CGPointMake(csx, csy);
+                            } else {
+                                c3dOk = false;
+                                break;
+                            }
+                        }
+                        p.has3DBox = c3dOk;
+
                         // Check UE4 PrimitiveComponent LastRenderTime vs LastSubmitTime for true occlusion
                         if (meshComp && ds_pubg_valid(meshComp)) {
                             float lastRender = ds_pubg_read_f32(meshComp + 0x334ULL);

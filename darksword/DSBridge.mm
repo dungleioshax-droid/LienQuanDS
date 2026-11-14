@@ -923,6 +923,8 @@ typedef struct {
     float camRelX;
     float camRelY;
     float camRelZ;
+    bool has3DBox;
+    CGPoint boxCorners[8];
 } DSPUBGProjectedPlayer;
 
 typedef enum {
