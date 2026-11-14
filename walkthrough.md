@@ -223,3 +223,32 @@ ImGui::GetForegroundDrawList()->AddText(NULL ,25,{glWidth / 2,66}, 红色, extra
 - **Commit**: `fcdbbd9` (`feat(esp): implement authentic crosshair-centered 360-degree radar arrow matching reference screenshot`).
 - **GitHub Actions Run**: [Workflow Run 43596889238](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43596889238) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 14. Tinh Chỉnh Mũi Tên 360: Thu Nhỏ Kích Thước & Giới Hạn Chỉ Hiện Khi Địch Ở Sau Lưng
+
+### A. Yêu cầu phản hồi từ người dùng:
+1. **Chỉ hiện khi ở sau lưng, phía trước không hiện**:
+   - Khi địch ở trước mặt (trong góc nhìn camera hoặc trên màn hình), người chơi đã nhìn thấy toàn bộ ESP (hộp 3D, khung xương, thanh máu, tên, khoảng cách), không cần mũi tên che chắn quanh tâm ngắm.
+   - Mũi tên chỉ được phép xuất hiện để cảnh báo khi có địch ở **sau lưng** (`p.camRelZ <= 0.0f`).
+2. **Thu nhỏ kích thước mũi tên giống ảnh 100%**:
+   - Kích thước trước đó ($22.0\,\text{pt}$) hơi lớn trên màn hình điện thoại. Cần thu nhỏ lại thanh thoát, mảnh dẻ, sắc sảo.
+
+### B. Giải pháp triển khai:
+1. **Điều kiện lọc hướng hiển thị trong [DSBridgeESP.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeESP.inc.mm#L1235-L1275)**:
+   - Trong khối `if (isOffScreen)`:
+     - Nếu `p.camRelZ > 0.0f` (địch ở phía trước): ẩn hoàn toàn `arrow.hidden = YES; arrowText.hidden = YES; continue;`.
+     - Nếu `p.camRelZ <= 0.0f` (địch ở phía sau lưng): tính toán góc hướng về sau lưng và vẽ mũi tên cảnh báo radar.
+   - Trong khối `!isOffScreen` (địch trên màn hình): luôn ẩn `arrow.hidden = YES; arrowText.hidden = YES;`.
+2. **Thu nhỏ tỉ lệ hình học của mũi tên trong [DSBridgeESP.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeESP.inc.mm#L1094-L1145)**:
+   - **Bán kính radar**: giảm từ $125.0\,\text{pt} \to 85.0\,\text{pt}$ (gọn gàng, vừa vặn quanh tâm ngắm).
+   - **Chiều dài mũi tên**: giảm từ $22.0\,\text{pt} \to 13.0\,\text{pt}$ (nhỏ gọn hơn ~40%).
+   - **Đáy tam giác**: giảm từ $14.0\,\text{pt} \to 9.0\,\text{pt}$ (đáy $2 \times 4.5\,\text{pt}$).
+   - **Độ dày viền**: giảm từ $1.8\,\text{pt} \to 1.2\,\text{pt}$ (nét vẽ thanh mảnh, sắc nét).
+   - **Vị trí nhãn khoảng cách**: cách tâm $85 + 13 + 8 = 106\,\text{pt}$, kích thước $40 \times 12\,\text{pt}$.
+
+### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `8158ba4` (`fix(esp): scale down radar arrow 360 and restrict display strictly to rear enemies`).
+- **GitHub Actions Run**: [Workflow Run 43597788856](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43597788856) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
