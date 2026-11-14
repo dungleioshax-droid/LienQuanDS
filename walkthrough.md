@@ -168,8 +168,38 @@ ImGui::GetForegroundDrawList()->AddText(NULL ,25,{glWidth / 2,66}, 红色, extra
 
 ---
 
-## 10. Kết quả Build & File IPA Hoàn Thiện Mới Nhất
+## 10. Kết quả Build & File IPA Hoàn Thiện (Bản trước)
 
 - **Commit**: `6f487d3` (`fix(esp): restore on-screen player rendering, fix bot visibility filter, and loosen screen projection bounds`).
 - **GitHub Actions Run**: [Workflow Run 43592886930](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43592886930) — Kết quả: **Success**.
-- **File IPA hoàn thiện mới nhất**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa) (Dung lượng: ~1.09 MB, SHA-256: `22d6b67be0fd02008b63cdb8a9095aeec90e3a0376e528322d82b59f226c4bb4`).
+
+---
+
+## 11. Khắc phục sự hiểu nhầm về "Mũi tên 360 xoay vòng vòng"
+
+### A. Vấn đề người dùng phản hồi:
+- *"Sao mũi tên 360 nó xoay vòng vòng kiểu gì vậy bạn sao nó không thay thế cái cũ mà vẫn hiện cái cũ thế kia"*
+
+### B. Nguyên nhân và sự nhầm lẫn trong code:
+1. **Nguồn gốc nhầm lẫn trong commit `63056dc`**:
+   - Ở bản trước, commit `63056dc` đã hiểu sai từ khóa "Mũi tên 360" và tự ý tạo hàm `ds_pubg_apply_arrow360`: vẽ một chùm 5 mũi tên tam giác màu đỏ xoay tít 360 độ liên tục như chong chóng dưới chân địch ở cự ly gần trên màn hình.
+   - Trong khi đó, tính năng mũi tên mà người dùng cần (từ yêu cầu ban đầu) là **mũi tên cảnh báo ở viền màn hình** (chỉ hướng 360 độ cho địch ở sau lưng/ngoài tầm nhìn 180° kèm số mét, ví dụ `◀ 87m`).
+2. **Hệ quả nhìn thấy trong game**:
+   - Dưới chân địch trên màn hình thì xuất hiện một vòng mũi tên xoay tròn quái dị ("xoay vòng vòng kiểu gì vậy").
+   - Ở mép viền màn hình thì mũi tên chỉ hướng cũ màu vàng (`◀ 87m`) vẫn xuất hiện song song mà không được thay thế ("sao nó không thay thế cái cũ mà vẫn hiện cái cũ thế kia").
+
+### C. Giải pháp xử lý triệt để:
+1. **Xóa bỏ hoàn toàn hiệu ứng xoay tròn quanh chân địch**:
+   - Xóa bỏ toàn bộ cụm hàm và thông số `ds_pubg_apply_arrow360`, `ds_pubg_arrow360_path`, `ds_pubg_arrow360_phase` trong [DSBridgeESP.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeESP.inc.mm).
+   - Với người chơi đã nằm trong khung hình (On-Screen): Ẩn hoàn toàn các layer mũi tên (`arrow.hidden = YES; arrowText.hidden = YES;`), chỉ hiển thị các layer chuẩn gồm Hộp 3D/2D, Khung xương, Thanh máu 3 vạch, Snapline, Badge tên/BOT, Quốc kỳ.
+2. **Khôi phục nút menu và vai trò chuẩn xác của Mũi Tên viền màn hình**:
+   - Trong [MadnessMenuView.m](file:///home/dungle/DarkPubg/darksword/MadnessMenu/MadnessMenuView.m#L495-L517): Đổi lại tên nút chuẩn: Tiếng Việt là `MŨI TÊN`, Tiếng Anh là `DRAW ARROW`.
+   - Nút này điều khiển chuyên biệt cho việc hiển thị mũi tên chỉ hướng ở mép viền màn hình (kèm số mét) khi có địch ở sau lưng hoặc ngoài góc nhìn camera.
+
+---
+
+## 12. Kết quả Build & File IPA Mới Nhất
+
+- **Commit**: `fdc60fe` (`fix(esp): remove unwanted target swirl animation and restore off-screen arrow toggle`).
+- **GitHub Actions Run**: [Workflow Run 43595105586](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43595105586).
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
