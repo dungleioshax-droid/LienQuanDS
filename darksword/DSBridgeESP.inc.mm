@@ -20,16 +20,10 @@ enum class DSDebugShmemOwner : uint8_t {
     PUBG = 1,
 };
 
-static inline int ds_active_game(void) {
-    return 1; // Pure PUBG Mobile
-}
-
-// Mapper ownership is confined to ds_bridge_queue. Only the epoch is read by
-// the display thread, so publications can reject spans from an old target.
+// Mapper ownership is confined to ds_bridge_queue.
 static DSDebugShmemOwner g_debugShmemOwner = DSDebugShmemOwner::None;
 static pid_t g_debugShmemPid = 0;
 static uint64_t g_debugShmemOwnerVmMap = 0;
-static std::atomic<uint64_t> g_debugShmemEpoch(1);
 
 static bool ds_debug_shmem_target_matches(DSDebugShmemOwner owner, pid_t pid,
                                           uint64_t vmMap) {
@@ -38,9 +32,6 @@ static bool ds_debug_shmem_target_matches(DSDebugShmemOwner owner, pid_t pid,
            g_debugShmemOwnerVmMap == vmMap && vmMap != 0;
 }
 
-static uint64_t ds_debug_shmem_epoch(void) {
-    return g_debugShmemEpoch.load(std::memory_order_acquire);
-}
 static std::vector<DSDebugVMRegion> g_debugVMRegions;
 static uint64_t g_debugVMRegionsMap = 0;
 static pid_t g_debugVMRegionsPid = 0;
@@ -281,14 +272,6 @@ static BOOL ds_debug_target_alive(void) {
     return ds_isvalid(proc) ? YES : NO;
 }
 
-// Called before any live-release unmap so the reader can drop pins pointing
-// into the cache (clears the camera source under its own lock, which is also
-// the lock held while memcpy'ing it -> race-free).
-static void (*g_debugPreUnmapHook)(void) = NULL;
-static void ds_debug_set_pre_unmap_hook(void (*hook)(void)) {
-    g_debugPreUnmapHook = hook;
-}
-
 // Fl0rkFF-style shared-page cache. vmmapremotepage() performs kernel WRITES
 // (vm_object refcount++, crafted zone element) on every call; hundreds of
 // those per second while the target mutates its vm_map corrupt kernel zone
@@ -302,7 +285,6 @@ static struct {
     uint64_t pageAddress;
     struct vmshmem shmem;
     uint64_t tick;
-    uint32_t pinCount;
 } g_debugShmemCache[DS_DEBUG_SHMEM_SLOTS];
 static uint64_t g_debugShmemTick = 0;
 static int g_debugShmemCount = 0;
@@ -311,7 +293,6 @@ static std::unordered_map<uint64_t, int> g_debugShmemIndex;
 static void ds_debug_shmem_flush_ex(BOOL targetAlive) {
     // Clear every published span even when the dead target's mappings must be
     // leaked. A leaked local address is still the wrong process generation.
-    if (g_debugPreUnmapHook) g_debugPreUnmapHook();
     for (int index = 0; index < DS_DEBUG_SHMEM_SLOTS; index++) {
         if (g_debugShmemCache[index].shmem.used) {
             if (targetAlive) {
@@ -324,7 +305,6 @@ static void ds_debug_shmem_flush_ex(BOOL targetAlive) {
         g_debugShmemCache[index].pageAddress = 0;
         g_debugShmemCache[index].shmem = (struct vmshmem){0};
         g_debugShmemCache[index].tick = 0;
-        g_debugShmemCache[index].pinCount = 0;
     }
     g_debugShmemTick = 0;
     g_debugShmemOwner = DSDebugShmemOwner::None;
@@ -334,7 +314,6 @@ static void ds_debug_shmem_flush_ex(BOOL targetAlive) {
     g_debugShmemCount = 0;
     g_debugShmemIndex.clear();
     ds_debug_vm_regions_reset();
-    g_debugShmemEpoch.fetch_add(1, std::memory_order_acq_rel);
 }
 
 // Claiming a different backend/process invalidates every mapping and live span
@@ -357,31 +336,6 @@ static bool ds_debug_shmem_claim_target(DSDebugShmemOwner owner, pid_t pid,
     g_debugShmemOwnerVmMap = vmMap;
     g_debugShmemProc = proc;
     return true;
-}
-
-static void ds_debug_shmem_release_owner(DSDebugShmemOwner owner,
-                                         BOOL targetAlive) {
-    if (owner == DSDebugShmemOwner::None || g_debugShmemOwner != owner) return;
-    ds_debug_shmem_flush_ex(targetAlive);
-}
-
-// UE replaces large parts of its heap while moving between lobby/map worlds.
-// The process and vm_map survive, but a user virtual page can now refer to a
-// different vm_object. Cached shared mappings are tied to the old object, so
-// forget them at a known topology boundary while keeping the current target.
-// The target is alive here (same pid, verified this tick), so flush WITH
-// release — this is what bounds the pin/leak footprint across matches.
-static void ds_debug_shmem_invalidate_target_pages(void) {
-    DSDebugShmemOwner targetOwner = g_debugShmemOwner;
-    pid_t targetPid = g_debugShmemPid;
-    uint64_t targetVmMap = g_debugShmemOwnerVmMap;
-    uint64_t targetProc = g_debugShmemProc;
-    BOOL alive = ds_debug_target_alive();
-    ds_debug_shmem_flush_ex(alive);
-    g_debugShmemOwner = targetOwner;
-    g_debugShmemPid = targetPid;
-    g_debugShmemOwnerVmMap = targetVmMap;
-    g_debugShmemProc = targetProc;
 }
 
 static uint64_t ds_debug_map_page(uint64_t vmMap, uint64_t pageAddress) {
@@ -427,8 +381,6 @@ static uint64_t ds_debug_map_page(uint64_t vmMap, uint64_t pageAddress) {
                 slot = index;
                 break;
             }
-            // Never evict a page with a live display-thread lease.
-            if (g_debugShmemCache[index].pinCount != 0) continue;
             if (g_debugShmemCache[index].tick <= oldestTick) {
                 oldestTick = g_debugShmemCache[index].tick;
                 slot = index;
@@ -467,52 +419,8 @@ static uint64_t ds_debug_map_page(uint64_t vmMap, uint64_t pageAddress) {
     g_debugShmemCache[slot].pageAddress = pageAddress;
     g_debugShmemCache[slot].shmem = shmem;
     g_debugShmemCache[slot].tick = g_debugShmemTick;
-    g_debugShmemCache[slot].pinCount = 0;
     g_debugShmemIndex[pageAddress] = slot;
     return shmem.localAddress;
-}
-
-// Acquire/release a long-lived page lease for a source published to another
-// thread. All calls are bridge-queue confined; a stale-epoch release is a no-op
-// because its slot was already cleared by the owner transition.
-static uint64_t ds_debug_map_page_pinned(DSDebugShmemOwner owner,
-                                         uint64_t vmMap,
-                                         uint64_t pageAddress,
-                                         uint64_t *epochOut) {
-    if (owner == DSDebugShmemOwner::None || g_debugShmemOwner != owner ||
-        g_debugShmemOwnerVmMap != vmMap) return 0;
-    uint64_t localAddress = ds_debug_map_page(vmMap, pageAddress);
-    if (!localAddress) return 0;
-    auto cached = g_debugShmemIndex.find(pageAddress);
-    if (cached == g_debugShmemIndex.end()) return 0;
-    int index = cached->second;
-    if (index < 0 || index >= g_debugShmemCount ||
-        !g_debugShmemCache[index].shmem.used ||
-        g_debugShmemCache[index].vmMap != vmMap ||
-        g_debugShmemCache[index].pageAddress != pageAddress ||
-        g_debugShmemCache[index].shmem.localAddress != localAddress ||
-        g_debugShmemCache[index].pinCount == UINT32_MAX) {
-        return 0;
-    }
-    g_debugShmemCache[index].pinCount++;
-    if (epochOut) *epochOut = ds_debug_shmem_epoch();
-    return localAddress;
-}
-
-static void ds_debug_unpin_page(DSDebugShmemOwner owner, uint64_t vmMap,
-                                uint64_t epoch, uint64_t pageAddress) {
-    if (owner == DSDebugShmemOwner::None || g_debugShmemOwner != owner ||
-        g_debugShmemOwnerVmMap != vmMap ||
-        epoch != ds_debug_shmem_epoch()) return;
-    auto cached = g_debugShmemIndex.find(pageAddress);
-    if (cached == g_debugShmemIndex.end()) return;
-    int index = cached->second;
-    if (index < 0 || index >= g_debugShmemCount ||
-        !g_debugShmemCache[index].shmem.used ||
-        g_debugShmemCache[index].vmMap != vmMap ||
-        g_debugShmemCache[index].pageAddress != pageAddress ||
-        g_debugShmemCache[index].pinCount == 0) return;
-    g_debugShmemCache[index].pinCount--;
 }
 
 static BOOL ds_debug_read_bytes(uint64_t vmMap, uint64_t address, void *buffer, size_t length) {
@@ -549,151 +457,13 @@ static BOOL ds_debug_read_bytes(uint64_t vmMap, uint64_t address, void *buffer, 
     }
 }
 
-// Write counterpart of ds_debug_read_bytes. The shared-page mapping is created
-// with VM_PROT_ALL, so RW heap pages of the target are writable straight
-// through the local alias. Bridge-queue callers only; a read-only or unmapped
-// page just fails the copy (or, for a genuinely RO object, must be caught by
-// the caller's read-back verify).
-static BOOL ds_debug_write_bytes(uint64_t vmMap, uint64_t address, const void *buffer, size_t length) {
-    if (!vmMap || !address || !buffer || length == 0) return NO;
-
-    @try {
-    const uint8_t *src = (const uint8_t *)buffer;
-    uint64_t current = address;
-    size_t remaining = length;
-    const uint64_t pageSize = (uint64_t)PAGE_SIZE;
-    const uint64_t pageMask = pageSize - 1ULL;
-
-    while (remaining > 0) {
-        if (!ds_debug_user_address(current)) return NO;
-
-        uint64_t pageAddress = current & ~pageMask;
-        uint64_t pageOffset = current & pageMask;
-        size_t copySize = (size_t)MIN((uint64_t)remaining, pageSize - pageOffset);
-
-        uint64_t localPage = ds_debug_map_page(vmMap, pageAddress);
-        if (!localPage) return NO;
-
-        memcpy((void *)(uintptr_t)(localPage + pageOffset), src, copySize);
-
-        src += copySize;
-        current += copySize;
-        remaining -= copySize;
-    }
-
-    return YES;
-    } @catch (__unused NSException *exception) {
-        return NO;
-    }
-}
-
-typedef struct {
-    uint64_t address;
-    void *buffer;
-    size_t length;
-    BOOL success;
-} DSDebugReadRange;
-
-// DarkSword scatter equivalent for the hot mesh/bone path. Resolve every
-// target page first, then copy all ranges from the pinned local mappings. This
-// keeps page-creation work out of the middle of a logical frame snapshot. The
-// Reader ranges are <= one page and therefore span at most two target pages.
-static BOOL ds_debug_read_list(uint64_t vmMap, DSDebugReadRange *ranges, size_t count) {
-    if (!vmMap || !ranges || count == 0 || count > 128) return NO;
-    struct PinnedRange {
-        uint64_t first;
-        uint64_t second;
-        uint64_t firstPage;
-        uint64_t secondPage;
-        uint64_t epoch;
-        size_t firstLength;
-        size_t length;
-    };
-    // The reader batches are capped at 128 ranges. Keep this scratch storage
-    // on the stack so the display-rate path never touches the heap allocator.
-    PinnedRange pinned[128] = {};
-    const uint64_t pageSize = (uint64_t)PAGE_SIZE;
-    const uint64_t pageMask = pageSize - 1ULL;
-    DSDebugShmemOwner owner = g_debugShmemOwner;
-    BOOL allOK = YES;
-
-    for (size_t i = 0; i < count; i++) {
-        ranges[i].success = NO;
-        uint64_t address = ranges[i].address;
-        size_t length = ranges[i].length;
-        if (!address || !ranges[i].buffer || length == 0 || length > PAGE_SIZE) {
-            allOK = NO;
-            continue;
-        }
-        uint64_t end = address + (uint64_t)length - 1ULL;
-        if (end < address || !ds_debug_user_address(address) || !ds_debug_user_address(end)) {
-            allOK = NO;
-            continue;
-        }
-        uint64_t firstPage = address & ~pageMask;
-        uint64_t lastPage = end & ~pageMask;
-        uint64_t mapperEpoch = 0;
-        uint64_t firstLocal = ds_debug_map_page_pinned(
-            owner, vmMap, firstPage, &mapperEpoch);
-        if (!firstLocal) {
-            allOK = NO;
-            continue;
-        }
-        size_t firstLength = MIN(length, (size_t)(pageSize - (address & pageMask)));
-        uint64_t secondLocal = 0;
-        if (lastPage != firstPage) {
-            uint64_t secondEpoch = 0;
-            secondLocal = ds_debug_map_page_pinned(
-                owner, vmMap, lastPage, &secondEpoch);
-            if (!secondLocal) {
-                ds_debug_unpin_page(owner, vmMap, mapperEpoch, firstPage);
-                allOK = NO;
-                continue;
-            }
-            if (secondEpoch != mapperEpoch) {
-                ds_debug_unpin_page(owner, vmMap, secondEpoch, lastPage);
-                ds_debug_unpin_page(owner, vmMap, mapperEpoch, firstPage);
-                allOK = NO;
-                continue;
-            }
-        }
-        pinned[i] = {firstLocal + (address & pageMask), secondLocal,
-                     firstPage, lastPage != firstPage ? lastPage : 0,
-                     mapperEpoch, firstLength, length};
-    }
-
-    std::atomic_thread_fence(std::memory_order_acquire);
-    for (size_t i = 0; i < count; i++) {
-        const PinnedRange &pin = pinned[i];
-        if (!pin.first || pin.length == 0) continue;
-        memcpy(ranges[i].buffer, (const void *)(uintptr_t)pin.first, pin.firstLength);
-        size_t remaining = pin.length - pin.firstLength;
-        if (remaining) {
-            memcpy((uint8_t *)ranges[i].buffer + pin.firstLength,
-                   (const void *)(uintptr_t)pin.second, remaining);
-        }
-        ranges[i].success = YES;
-        ds_debug_unpin_page(owner, vmMap, pin.epoch, pin.firstPage);
-        if (pin.secondPage) {
-            ds_debug_unpin_page(owner, vmMap, pin.epoch, pin.secondPage);
-        }
-    }
-    return allOK;
-}
 
 #pragma mark - Floating camera menu (hosted in SpringBoard, DarkSpeed pattern)
 
 static void ds_hosted_pubg_hide_all(void);
 
-static NSString * const kDSHostedMenuAnchorXKey = @"pubg_menu_anchor_x";
-static NSString * const kDSHostedMenuAnchorYKey = @"pubg_menu_anchor_y";
-static NSString * const kDSHostedMenuPanelXKey = @"pubg_menu_panel_x";
-static NSString * const kDSHostedMenuPanelYKey = @"pubg_menu_panel_y";
 static NSString * const kDSHostedEspEnabledKey = @"pubg_esp_enabled";
 static const double kDSHostedMenuLevel = 10000020.0;
-static const CGFloat kDSHostedMenuButtonWidth = 94.0;
-static const CGFloat kDSHostedMenuButtonHeight = 24.0;
-static const CGFloat kDSHostedMenuSymbolSize = 16.0;
 
 // ESP defaults to on (the overlay always rendered before the switch existed).
 static std::atomic<bool> g_hostedEspEnabled(true);
@@ -728,42 +498,6 @@ static void ds_hosted_esp_set_enabled(bool enabled) {
     } else {
         dispatch_async(dispatch_get_main_queue(), hideEsp);
     }
-}
-
-static UIImage *ds_hosted_menu_toggle_image(void) {
-    static UIImage *image = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        UIImage *symbol = [UIImage systemImageNamed:@"slider.horizontal.3"];
-        if (symbol) {
-            image = [symbol imageByApplyingSymbolConfiguration:
-                [UIImageSymbolConfiguration
-                    configurationWithPointSize:kDSHostedMenuSymbolSize
-                                         weight:UIImageSymbolWeightSemibold]];
-        }
-    });
-    return image;
-}
-
-static UIButton *ds_hosted_minimap_step_button(NSString *symbolName,
-                                                NSInteger tag,
-                                                NSString *accessibilityLabel) {
-    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
-    button.tag = tag;
-    button.tintColor = UIColor.whiteColor;
-    button.accessibilityLabel = accessibilityLabel;
-    UIImage *image = [UIImage systemImageNamed:symbolName];
-    if (image) {
-        image = [image imageByApplyingSymbolConfiguration:
-            [UIImageSymbolConfiguration configurationWithPointSize:12.0
-                                                             weight:UIImageSymbolWeightSemibold]];
-        [button setImage:image forState:UIControlStateNormal];
-    } else {
-        [button setTitle:[symbolName isEqualToString:@"plus"] ? @"+" : @"-"
-                forState:UIControlStateNormal];
-        [button setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    }
-    return button;
 }
 
 // Interactive sibling of DSESPHostedWindow: touchable, still system/secure so

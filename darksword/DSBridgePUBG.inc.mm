@@ -20,8 +20,6 @@
 
 // UEPointers from DUMP/Offsets.hpp & DUMP/Logs.txt (ShadowTrackerExtra UE4)
 // Base address is Mach-O 64-bit main image (__TEXT)
-// Primary default GEngine RVA (Updated from DUMP/Offsets.hpp: Engine = 0x10acc4680)
-static const uint64_t kDSPUBGEngineRvaDefault = 0x0ACC4680ULL;
 
 // Class Member Offsets from DUMP/SDK/Engine.hpp & DUMP/SDK.txt
 static const uint64_t kDSPUBGEngineGameViewportOffset        = 0x810ULL;  // UEngine.GameViewport (UGameViewportClient*)
@@ -59,8 +57,6 @@ static const uint64_t kDSPUBGActorRootComponentOffset        = 0x208ULL;  // AAc
 static const uint64_t kDSPUBGSceneCompRelativeLocOffset      = 0x1E4ULL;  // USceneComponent.RelativeLocation (FVector)
 static const uint64_t kDSPUBGSceneCompAttachedParentOffset   = 0x188ULL;  // USceneComponent.AttachedParent (USceneComponent*)
 static const uint64_t kDSPUBGCharacterMeshOffset             = 0x510ULL;  // ASTExtraBaseCharacter.Mesh (USkeletalMeshComponent*)
-static const uint64_t kDSPUBGCharacterMovementOffset         = 0x518ULL;  // ACharacter.CharacterMovement (UCharacterMovementComponent*)
-static const uint64_t kDSPUBGCharacterCapsuleOffset          = 0x520ULL;  // ACharacter.CapsuleComponent (UCapsuleComponent*)
 static const uint64_t kDSPUBGMeshBoxExtentZOffset            = 0xBA0ULL;  // Mesh.Bounds.BoxExtent.Z
 static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL;  // UAECharacter.PlayerName (FString)
 static const uint64_t kDSPUBGCharacterNationOffset           = 0x970ULL;  // UAECharacter.Nation (FString)
@@ -71,7 +67,6 @@ static const uint64_t kDSPUBGCharacterIsAIOffset             = 0xA50ULL;  // UAE
 static const uint64_t kDSPUBGCharacterHealthOffset           = 0xE70ULL;  // STExtraCharacter.Health (float) [DUMP updated]
 static const uint64_t kDSPUBGCharacterHealthMaxOffset        = 0xE74ULL;  // STExtraCharacter.HealthMax (float) [DUMP updated]
 static const uint64_t kDSPUBGCharacterDeadOffset             = 0xE8CULL;  // STExtraCharacter.bDead (uint8_t) [DUMP updated]
-static const uint64_t kDSPUBGCharacterVehicleOffset          = 0xEC0ULL;  // ASTExtraCharacter.CurrentVehicle (ASTExtraVehicleBase*) [DUMP updated]
 
 // Runtime target state
 static uint64_t g_dspubgProc = 0;
@@ -106,7 +101,6 @@ static uint64_t g_dspubgItemEpoch = 1;
 static DSPUBGProjectedGrenade g_dspubgGrenades[kDSPUBGMaxGrenades] = {};
 static int g_dspubgGrenadeCount = 0;
 static uint64_t g_dspubgGrenadeEpoch = 1;
-static uint64_t g_dspubgLocalPawn = 0;
 
 static uint64_t g_dspubgGNames = 0;
 static uint32_t g_dspubgFNameEntryOffset = 0x0C;
@@ -1997,33 +1991,6 @@ static bool ds_pubg_scan_for_engine_and_world(uint64_t vmMap, uint64_t base) {
     return false;
 }
 
-static void ds_pubg_reset_state(void) {
-    g_dspubgProc = 0;
-    g_dspubgPid = 0;
-    g_dspubgVmMap = 0;
-    g_dspubgBase = 0;
-    g_dspubgEngineRva = 0;
-    g_dspubgWorldRva = 0;
-    g_dspubgCachedWorld = 0;
-    g_dspubgGNames = 0;
-    g_dspubgLastActorsCount = 0;
-    g_dspubgLastEnemyCount = 0;
-    g_dspubgLastBotCount = 0;
-    g_dspubgLastBoneOff = 0;
-    g_dspubgNextScan = 0;
-    g_dspubgLocalPawn = 0;
-    g_dspubgTargetActive.store(false, std::memory_order_release);
-    os_unfair_lock_lock(&g_dspubgSnapshotLock);
-    g_dspubgPlayerCount = 0;
-    g_dspubgItemCount = 0;
-    memset(g_dspubgPlayers, 0, sizeof(g_dspubgPlayers));
-    memset(g_dspubgItems, 0, sizeof(g_dspubgItems));
-    memset(g_dspubgActorCache, 0, sizeof(g_dspubgActorCache));
-    ++g_dspubgEpoch;
-    ++g_dspubgItemEpoch;
-    os_unfair_lock_unlock(&g_dspubgSnapshotLock);
-}
-
 // Find PUBG Mobile process. In iOS XNU, p_comm is 16 bytes max (15 chars + \0),
 // so "ShadowTrackerExtra" (18 chars) truncates to "ShadowTrackerEx".
 static uint64_t ds_pubg_find_proc(pid_t *outPid) {
@@ -2228,25 +2195,6 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     outDist = distM;
     return true;
 }
-
-// Standard UE4 humanoid rigs (head 6, neck 5, pelvis 1):
-// Map D: Training Dummy rig (< 58 bones)
-// Map G: Player & Bot rig (67 bones - ShadowTrackerExtra)
-static const int kESPBoneMapD[15] = {
-    6, 5, 1,          // Head, Neck, Pelvis
-    12, 13, 14,       // UprR, LwrR, HandR
-    8, 9, 10,         // UprL, LwrL, HandL
-    19, 20, 21,       // ThighR, CalfR, FootR
-    15, 16, 17        // ThighL, CalfL, FootL
-};
-
-static const int kESPBoneMapG[15] = {
-    6, 5, 1,          // Head, Neck, Pelvis
-    13, 15, 16,       // UprR, LwrR, HandR
-    34, 36, 37,       // UprL, LwrL, HandL
-    57, 58, 59,       // ThighR, CalfR, FootR (verified: 57=thigh_r, 58=calf_r, 59=foot_r)
-    53, 54, 55        // ThighL, CalfL, FootL (verified: 53=thigh_l, 54=calf_l, 55=foot_l)
-};
 
 static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
     if (!meshComp || !ds_pubg_valid(meshComp) || !outC2W) return false;
@@ -2994,7 +2942,6 @@ static void ds_pubg_tick(void) {
     }
 
     uint64_t localPawn = playerController ? ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerPawnOffset) : 0;
-    g_dspubgLocalPawn = localPawn;
 
     // Check if player is actually in an active match (filters out Lobby, MainCity, Frontend)
     if (!ds_pubg_is_in_match(world, playerController, localPawn)) {

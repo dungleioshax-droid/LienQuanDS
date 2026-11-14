@@ -634,19 +634,6 @@ static BOOL ds_remote_invoke_on_main(RemoteCall *process, uint64_t target,
                                            arguments, argumentCount, NULL, 0, YES);
 }
 
-// Async variant: the invocation is built fresh on the call thread and queued
-// to SpringBoard's main runloop without waiting for it. Nothing shared is
-// touched afterwards (unlike the broken cached-invocation attempt), so there
-// is no cross-thread race — and the bridge queue never stalls behind a busy
-// SpringBoard main thread.
-static BOOL ds_remote_invoke_on_main_async(RemoteCall *process, uint64_t target,
-                                           uint64_t selector,
-                                           const DSRemoteArgument *arguments,
-                                           NSUInteger argumentCount) {
-    return ds_remote_invoke_on_main_result(process, target, selector,
-                                           arguments, argumentCount, NULL, 0, NO);
-}
-
 static BOOL ds_remote_invoke_noarg_on_main(RemoteCall *process, uint64_t target,
                                            const char *selectorName) {
     return ds_remote_invoke_on_main(process, target, ds_remote_sel(process, selectorName),
@@ -720,24 +707,6 @@ static BOOL ds_remote_set_transform_on_main(RemoteCall *process, uint64_t target
     DSRemoteArgument argument = { &value, sizeof(value) };
     return ds_remote_invoke_on_main(process, target, ds_remote_sel(process, "setTransform:"),
                                     &argument, 1);
-}
-
-// Async setters for the per-frame aim-line path: never block on SpringBoard's
-// main runloop, which is what lets the tick reach frame rate.
-static BOOL ds_remote_set_rect_async(RemoteCall *process, uint64_t target,
-                                     const char *selectorName, CGRect value) {
-    DSRemoteArgument argument = { &value, sizeof(value) };
-    return ds_remote_invoke_on_main_async(process, target,
-                                          ds_remote_sel(process, selectorName),
-                                          &argument, 1);
-}
-
-static BOOL ds_remote_set_transform_async(RemoteCall *process, uint64_t target,
-                                          CGAffineTransform value) {
-    DSRemoteArgument argument = { &value, sizeof(value) };
-    return ds_remote_invoke_on_main_async(process, target,
-                                          ds_remote_sel(process, "setTransform:"),
-                                          &argument, 1);
 }
 
 static uint64_t ds_remote_font(RemoteCall *process, CGFloat size, BOOL medium) {
@@ -888,8 +857,6 @@ static CGRect ds_hud_content_frame(const DSHUDPresentation *presentation,
                       CGRectGetWidth(presentation->windowFrame),
                       CGRectGetHeight(presentation->windowFrame));
 }
-
-static void ds_lq_overlay_reset(void) {}
 
 typedef struct {
     float x;
