@@ -392,3 +392,8 @@ Từ 2 ảnh thực tế của người dùng:
 ### C. Cam kết An Toàn Anti-Cheat:
 - **100% Read-Only**: Không chèn hook, không sửa code binary, không gọi hàm engine trong game.
 - Hoàn toàn vô hình trước hệ thống quét mã của Tencent ACE.
+
+### D. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `e3fb22c` (`feat(vischeck): implement client-side Ray-OBB static mesh obstacle intersection vischeck`).
+- **GitHub Actions Run**: [Workflow Run 43608179045](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43608179045) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
