@@ -1657,13 +1657,10 @@ static void ds_hosted_apply_pubg(void) {
         info.string = nameStr;
         info.hidden = NO;
 
-        // Tầng 2: Thanh máu 4 vạch chuẩn PUBG (Line 2: 4-Segment Health Bar)
+        // Tầng 2: Thanh máu 3 vạch liền kề dính nhau (Line 2: 3 Connected Segments with Black Dividers)
         BOOL showHp = (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0);
-        CGFloat barH = 3.5f;
+        CGFloat barH = 3.6f;
         CGFloat barY = badgeY - barH - 1.5f;
-        const int kNumSegs = 4;
-        CGFloat gap = 1.5f;
-        CGFloat segW = (headerW - (kNumSegs - 1) * gap) / (CGFloat)kNumSegs;
 
         if (showHp && hpBg && hpBar) {
             float hpVal = p.health;
@@ -1672,37 +1669,34 @@ static void ds_hosted_apply_pubg(void) {
             if (hpRatio < 0.0f) hpRatio = 0.0f;
             if (hpRatio > 1.0f) hpRatio = 1.0f;
 
-            // Nền 4 vạch tối màu có viền đen
-            UIBezierPath *bgPath = [UIBezierPath bezierPath];
-            for (int s = 0; s < kNumSegs; s++) {
-                CGFloat sx = headerX + s * (segW + gap);
-                UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, segW, barH) cornerRadius:1.0f];
-                [bgPath appendPath:pill];
-            }
+            CGFloat segW = headerW / 3.0f;
+
+            // 1. Toàn bộ khung nền 3 vạch liền khối (1 thanh capsule bo tròn viền đen chứa 2 vạch kẻ phân cách)
+            UIBezierPath *bgPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(headerX, barY, headerW, barH) cornerRadius:barH * 0.5f];
+            [bgPath moveToPoint:CGPointMake(headerX + segW, barY)];
+            [bgPath addLineToPoint:CGPointMake(headerX + segW, barY + barH)];
+            [bgPath moveToPoint:CGPointMake(headerX + segW * 2.0f, barY)];
+            [bgPath addLineToPoint:CGPointMake(headerX + segW * 2.0f, barY + barH)];
+
             hpBg.path = bgPath.CGPath;
             hpBg.fillColor = [UIColor colorWithWhite:0.1 alpha:0.75].CGColor;
             hpBg.strokeColor = [UIColor blackColor].CGColor;
             hpBg.lineWidth = 0.8f;
             hpBg.hidden = NO;
 
-            // 4 vạch máu đầy hoặc theo tỷ lệ máu
-            if (hpVal > 0.0f) {
-                UIBezierPath *fillPath = [UIBezierPath bezierPath];
-                for (int s = 0; s < kNumSegs; s++) {
-                    CGFloat segStart = s * (1.0f / (CGFloat)kNumSegs);
-                    CGFloat segEnd = (s + 1) * (1.0f / (CGFloat)kNumSegs);
-                    if (hpRatio >= segEnd) {
-                        CGFloat sx = headerX + s * (segW + gap);
-                        UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, segW, barH) cornerRadius:1.0f];
-                        [fillPath appendPath:pill];
-                    } else if (hpRatio > segStart) {
-                        CGFloat frac = (hpRatio - segStart) / (1.0f / (CGFloat)kNumSegs);
-                        CGFloat sx = headerX + s * (segW + gap);
-                        CGFloat curSegW = fmaxf(2.0f, segW * frac);
-                        UIBezierPath *pill = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(sx, barY, curSegW, barH) cornerRadius:1.0f];
-                        [fillPath appendPath:pill];
-                    }
+            // 2. Phần máu hiển thị liền kề 3 vạch (Xanh khi thấy, đỏ khi khuất)
+            if (hpRatio > 0.01f) {
+                CGFloat fillW = fmaxf(barH, headerW * hpRatio);
+                UIBezierPath *fillPath = [UIBezierPath bezierPathWithRoundedRect:CGRectMake(headerX, barY, fillW, barH) cornerRadius:barH * 0.5f];
+                if (fillW > segW) {
+                    [fillPath moveToPoint:CGPointMake(headerX + segW, barY)];
+                    [fillPath addLineToPoint:CGPointMake(headerX + segW, barY + barH)];
                 }
+                if (fillW > segW * 2.0f) {
+                    [fillPath moveToPoint:CGPointMake(headerX + segW * 2.0f, barY)];
+                    [fillPath addLineToPoint:CGPointMake(headerX + segW * 2.0f, barY + barH)];
+                }
+
                 hpBar.path = fillPath.CGPath;
                 hpBar.fillColor = playerColor.CGColor;
                 hpBar.strokeColor = [UIColor blackColor].CGColor;
