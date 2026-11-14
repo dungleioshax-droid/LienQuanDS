@@ -349,3 +349,8 @@ Từ 2 ảnh thực tế của người dùng:
 4. **Phản hồi tức thì khi nhìn thấy (1-frame response)**:
    - Khi `rawVisible == true`: chuyển ngay sang màu Xanh (`vh.isOccluded = false; visibleStreak++; occludedStreak = 0;`).
    - Khi bị che khuất (`rawVisible == false`): đệm 3 frame liên tiếp (`occludedStreak >= 3`) mới chuyển về Đỏ, chống giật nháy hình ảnh khi mục tiêu di chuyển.
+
+### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `4ef7be4` (`fix(vischeck): restore Metal RHI compatible submit-to-onscreen timestamps and fast visible response`).
+- **GitHub Actions Run**: [Workflow Run 43604701013](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43604701013) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
