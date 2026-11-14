@@ -266,6 +266,17 @@ struct DSPUBGGrenadeHistory {
 static DSPUBGGrenadeHistory s_grenadeHistories[16] = {};
 static uint64_t s_grenadeTickCounter = 0;
 
+struct DSPUBGVisHistory {
+    uint64_t actor;
+    uint32_t playerKey;
+    uint64_t lastSeenTick;
+    int visibleStreak;
+    int occludedStreak;
+    bool isOccluded;
+};
+static DSPUBGVisHistory s_visHistories[64] = {};
+static uint64_t s_visTickCounter = 0;
+
 static inline bool ds_pubg_valid(uint64_t address) {
     uint64_t clean = address & 0x0000FFFFFFFFFFFFULL;
     return clean >= 0x100000000ULL && clean < 0x300000000000ULL;
@@ -3417,28 +3428,69 @@ static void ds_pubg_tick(void) {
                         }
                         p.has3DBox = c3dOk;
 
-                        // Occlusion check from the UE4 render timestamps of the character
-                        // mesh (UPrimitiveComponent): a primitive that is submitted AND
-                        // rendered in the same frame was actually drawn, i.e. it is not
-                        // hidden behind geometry.
-                        // The offsets are build specific: when the values do not look like
-                        // world times the layout does not match this build, so keep the
-                        // target visible instead of hiding every enemy.
+                        // Stabilized Occlusion check from UE4 UPrimitiveComponent render timestamps.
+                        // kDSPUGPrimitiveLastRenderTimeOnScreen (0x48C) specifically records the main viewport
+                        // render time, avoiding false visible triggers from shadows/reflections.
+                        // Temporal hysteresis filter prevents render thread stutter from causing rapid Green/Red flicker.
+                        bool isOccluded = false; // Default to visible if timestamps are unavailable
                         if (meshComp && ds_pubg_valid(meshComp)) {
                             float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
-                            float lastRender = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTime);
                             float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
                             bool timestampsLookValid =
-                                isfinite(lastSubmit) && isfinite(lastRender) && isfinite(lastOnScreen) &&
+                                isfinite(lastSubmit) && isfinite(lastOnScreen) &&
                                 lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
-                                lastRender > 1.0f && lastRender < 1.0e6f &&
                                 lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
                             if (timestampsLookValid) {
-                                bool renderedThisFrame = fabsf(lastSubmit - lastRender) <= 0.1f;
-                                bool drawnOnScreen = lastOnScreen > 0.0f;
-                                p.isOccluded = !(renderedThisFrame && drawnOnScreen);
+                                float dt = lastSubmit - lastOnScreen;
+                                bool rawVisible = (dt >= -0.02f && dt <= 0.075f);
+
+                                int visSlot = -1;
+                                for (int v = 0; v < 64; v++) {
+                                    if (s_visHistories[v].actor == pawn ||
+                                        (p.playerKey != 0 && s_visHistories[v].playerKey == p.playerKey)) {
+                                        visSlot = v;
+                                        break;
+                                    }
+                                }
+                                if (visSlot < 0) {
+                                    for (int v = 0; v < 64; v++) {
+                                        if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 10) {
+                                            visSlot = v;
+                                            memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
+                                            s_visHistories[v].actor = pawn;
+                                            s_visHistories[v].playerKey = p.playerKey;
+                                            s_visHistories[v].isOccluded = !rawVisible;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (visSlot >= 0) {
+                                    DSPUBGVisHistory &vh = s_visHistories[visSlot];
+                                    vh.lastSeenTick = s_visTickCounter;
+                                    vh.actor = pawn;
+                                    if (p.playerKey != 0) vh.playerKey = p.playerKey;
+
+                                    if (rawVisible) {
+                                        vh.visibleStreak++;
+                                        vh.occludedStreak = 0;
+                                        vh.isOccluded = false; // Fast response when target becomes visible
+                                    } else {
+                                        vh.occludedStreak++;
+                                        vh.visibleStreak = 0;
+                                        // Require 3 consecutive occluded frames (~60-90ms) before turning red
+                                        // to filter out single-frame render thread latency
+                                        if (vh.occludedStreak >= 3) {
+                                            vh.isOccluded = true;
+                                        }
+                                    }
+                                    isOccluded = vh.isOccluded;
+                                } else {
+                                    isOccluded = !rawVisible;
+                                }
                             }
                         }
+                        p.isOccluded = isOccluded;
                     }
                 }
             }
@@ -3829,9 +3881,9 @@ static void ds_pubg_tick(void) {
         pg.type = gType;
         strncpy(pg.name, gDisplayName, sizeof(pg.name) - 1);
         pg.name[sizeof(pg.name) - 1] = '\0';
-        float maxFuse = 5.0f;
+        float maxFuse = 7.0f; // PUBG Mobile Frag Grenade fuse is 7.0 seconds
         if (gType == DSPUBGGrenadeTypeStun) {
-            maxFuse = 3.0f;
+            maxFuse = 3.5f;
         } else if (gType == DSPUBGGrenadeTypeBurn) {
             maxFuse = 5.0f;
         } else if (gType == DSPUBGGrenadeTypeSmoke) {
@@ -4305,6 +4357,14 @@ static void ds_pubg_tick(void) {
     for (int h = 0; h < 16; h++) {
         if (s_grenadeHistories[h].actor != 0 && (s_grenadeTickCounter - s_grenadeHistories[h].lastSeenTick) > 3) {
             memset(&s_grenadeHistories[h], 0, sizeof(DSPUBGGrenadeHistory));
+        }
+    }
+
+    // Advance vischeck tick & clean up stale records (> 10 ticks unseen)
+    ++s_visTickCounter;
+    for (int v = 0; v < 64; v++) {
+        if (s_visHistories[v].actor != 0 && (s_visTickCounter - s_visHistories[v].lastSeenTick) > 10) {
+            memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
         }
     }
 }

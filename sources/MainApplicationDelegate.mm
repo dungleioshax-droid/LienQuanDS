@@ -102,12 +102,17 @@
 }
 
 - (void)applicationDidEnterBackground:(UIApplication *)application {
-    if (DSBridgeIsRunning()) {
+    BypassJetsamByProcess(getpid(), NO);
+    if (DSBridgeHUDEnabled() || DSBridgeIsRunning()) {
         DSBridgeStartKeepalive();
     }
 }
 
 - (void)applicationDidBecomeActive:(UIApplication *)application {
+    BypassJetsamByProcess(getpid(), NO);
+    if (DSBridgeHUDEnabled()) {
+        DSBridgeStartKeepalive();
+    }
     __weak typeof(self) weakSelf = self;
     dispatch_async(dispatch_get_main_queue(), ^(void) {
         __strong typeof(weakSelf) strongSelf = weakSelf;

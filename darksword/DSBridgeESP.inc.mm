@@ -1883,7 +1883,7 @@ static void ds_hosted_apply_pubg(void) {
                     if (burnL) burnL.hidden = YES;
                     if (stunL) stunL.hidden = YES;
 
-                    float total = (g.totalFuseSeconds > 0.1f) ? g.totalFuseSeconds : 5.0f;
+                    float total = (g.totalFuseSeconds > 0.1f) ? g.totalFuseSeconds : 7.0f;
                     float progress = 1.0f - (g.cookSeconds / total);
                     if (progress < 0.0f) progress = 0.0f;
                     if (progress > 1.0f) progress = 1.0f;
@@ -1936,10 +1936,15 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // 7. Distance tag
+        // 7. Distance & Countdown tag
         if (badgeLbl && g.isVisible) {
             NSString *titleStr = ds_safe_utf8_string(g.name, @"Bomb");
-            NSString *fullBadge = [NSString stringWithFormat:@"%@ [%.0fm]", titleStr, g.distanceMeters];
+            NSString *fullBadge;
+            if (g.totalFuseSeconds <= 8.0f && g.cookSeconds > 0.0f) {
+                fullBadge = [NSString stringWithFormat:@"%@ [%.0fm] %.1fs", titleStr, g.distanceMeters, g.cookSeconds];
+            } else {
+                fullBadge = [NSString stringWithFormat:@"%@ [%.0fm]", titleStr, g.distanceMeters];
+            }
 
             NSAttributedString *badgeAttr = [[NSAttributedString alloc] initWithString:fullBadge attributes:@{
                 NSFontAttributeName: [UIFont systemFontOfSize:11.0 weight:UIFontWeightHeavy],
