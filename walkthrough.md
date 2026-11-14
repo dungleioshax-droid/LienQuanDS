@@ -198,8 +198,28 @@ ImGui::GetForegroundDrawList()->AddText(NULL ,25,{glWidth / 2,66}, 红色, extra
 
 ---
 
-## 12. Kết quả Build & File IPA Mới Nhất
+## 13. Triển khai Mũi Tên 360 Độ Chuẩn Tâm Ngắm (Arrow 360 Theo Đúng Ảnh Mẫu)
 
-- **Commit**: `fdc60fe` (`fix(esp): remove unwanted target swirl animation and restore off-screen arrow toggle`).
-- **GitHub Actions Run**: [Workflow Run 43595105586](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43595105586).
+### A. Phân tích ảnh thực tế người dùng cung cấp (`https://ibb.co/Swkh82XN`):
+1. **Vị trí và quỹ đạo radar**:
+   - Mũi tên 360 là các hình tam giác rỗng viền đỏ (`▷`) nằm trên đường tròn chu vi radar bán kính $R = 125.0\,\text{pt}$ đồng tâm với tâm ngắm / tâm màn hình (`cx, cy`).
+   - Đáy tam giác nằm trên đường tròn bán kính $R$, đỉnh nhọn tam giác hướng ra ngoài ($R + 22.0\,\text{pt}$) chỉ thẳng về phía mục tiêu (kể cả địch trong tầm nhìn lẫn sau vật cản hoặc sau lưng).
+2. **Kiểu dáng đồ họa**:
+   - Hình tam giác viền đỏ tươi rỗng ruột: `fillColor = clearColor`, `strokeColor = red (1.0, 0.18, 0.18, 0.95)`, `lineWidth = 1.8 pt`.
+3. **Hiển thị số mét khoảng cách**:
+   - Khi địch ngoài màn hình (`isOffScreen`): nhãn khoảng cách hiển thị phía trước đỉnh mũi tên (`10 pt`).
+   - Khi địch trong màn hình (`on-screen`): ẩn số mét ở mũi tên (`arrowText.hidden = YES`) vì trên đầu mục tiêu đã có sẵn nhãn khoảng cách (`[35M] [2] BOT`).
+4. **Thay thế triệt để mũi tên viền mép cũ**:
+   - Mũi tên cũ bám viền mép màn hình (`padX = 38, padY = 32`) được gỡ bỏ hoàn toàn, thay thế 100% bằng hệ thống mũi tên radar 360 quanh tâm ngắm.
+
+### B. Các file đã cập nhật:
+1. [DSBridgeESP.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeESP.inc.mm#L1076-L1148):
+   - Bổ sung hàm `ds_pubg_draw_radar_arrow()` vẽ mũi tên tam giác rỗng đỏ 360 độ quanh tâm ngắm.
+   - Xử lý mượt mà cả góc 360 độ (trước mặt, sau lưng $camRelZ \le 10$, góc xiên).
+2. [MadnessMenuView.m](file:///home/dungle/DarkPubg/darksword/MadnessMenu/MadnessMenuView.m#L495-L620):
+   - Đặt lại tên nút menu: Tiếng Việt **`MŨI TÊN 360`**, Tiếng Anh **`ARROW 360`**.
+
+### C. Kết quả Build & File IPA Hoàn Thiện:
+- **Commit**: `fcdbbd9` (`feat(esp): implement authentic crosshair-centered 360-degree radar arrow matching reference screenshot`).
+- **GitHub Actions Run**: [Workflow Run 43596889238](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43596889238) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
