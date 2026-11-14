@@ -3349,6 +3349,19 @@ static void ds_pubg_tick(void) {
                         p.boxHeight = boxH;
                         p.distanceMeters = dist;
                         p.isVisible = true;
+
+                        // Check UE4 PrimitiveComponent LastRenderTime vs LastSubmitTime for true occlusion
+                        if (meshComp && ds_pubg_valid(meshComp)) {
+                            float lastRender = ds_pubg_read_f32(meshComp + 0x334ULL);
+                            float lastSubmit = ds_pubg_read_f32(meshComp + 0x330ULL);
+                            if (isnan(lastRender) || lastRender <= 0.0f) {
+                                lastRender = ds_pubg_read_f32(meshComp + 0x338ULL);
+                                lastSubmit = ds_pubg_read_f32(meshComp + 0x334ULL);
+                            }
+                            if (!isnan(lastRender) && !isnan(lastSubmit) && lastRender > 1.0f && lastSubmit > 1.0f) {
+                                p.isVisible = (fabsf(lastSubmit - lastRender) <= 0.06f);
+                            }
+                        }
                     }
                 }
             }

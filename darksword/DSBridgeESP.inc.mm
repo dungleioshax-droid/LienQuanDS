@@ -1544,49 +1544,23 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat topY = p.screenY;
         CGFloat bottomY = p.screenY + p.boxHeight;
 
-        // 1. Bounding Box: Hộp 4 line 4 góc (Corner Box ESP)
+        // Player Visibility & Colors (MADNESS 100% authentic: Green visible, Red occluded / knocked)
+        BOOL isGreen = p.isVisible && !p.isKnocked;
+        UIColor *playerColor = isGreen
+            ? [UIColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:0.95]
+            : [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:0.95];
+
+        // 1. Full Bounding Box: Hộp chữ nhật bao quanh toàn thân địch kiểu MADNESS (thay vì 4 góc)
         if (g_pubgEspBox) {
             CGFloat bx = p.screenX;
             CGFloat by = p.screenY;
             CGFloat bw = p.boxWidth;
             CGFloat bh = p.boxHeight;
 
-            // Chiều dài mỗi đoạn line ở 4 góc (1/4 chiều rộng, 1/5 chiều cao)
-            CGFloat lineW = bw * 0.25f;
-            CGFloat lineH = bh * 0.20f;
-            if (lineW < 4.0f) lineW = 4.0f;
-            if (lineH < 4.0f) lineH = 4.0f;
-            if (lineW > bw * 0.45f) lineW = bw * 0.45f;
-            if (lineH > bh * 0.45f) lineH = bh * 0.45f;
-
-            UIBezierPath *boxPath = [UIBezierPath bezierPath];
-
-            // Góc trên - trái (Top-Left)
-            [boxPath moveToPoint:CGPointMake(bx, by + lineH)];
-            [boxPath addLineToPoint:CGPointMake(bx, by)];
-            [boxPath addLineToPoint:CGPointMake(bx + lineW, by)];
-
-            // Góc trên - phải (Top-Right)
-            [boxPath moveToPoint:CGPointMake(bx + bw - lineW, by)];
-            [boxPath addLineToPoint:CGPointMake(bx + bw, by)];
-            [boxPath addLineToPoint:CGPointMake(bx + bw, by + lineH)];
-
-            // Góc dưới - trái (Bottom-Left)
-            [boxPath moveToPoint:CGPointMake(bx, by + bh - lineH)];
-            [boxPath addLineToPoint:CGPointMake(bx, by + bh)];
-            [boxPath addLineToPoint:CGPointMake(bx + lineW, by + bh)];
-
-            // Góc dưới - phải (Bottom-Right)
-            [boxPath moveToPoint:CGPointMake(bx + bw - lineW, by + bh)];
-            [boxPath addLineToPoint:CGPointMake(bx + bw, by + bh)];
-            [boxPath addLineToPoint:CGPointMake(bx + bw, by + bh - lineH)];
-
+            UIBezierPath *boxPath = [UIBezierPath bezierPathWithRect:CGRectMake(bx, by, bw, bh)];
             box.path = boxPath.CGPath;
-            if (p.isKnocked) {
-                box.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95].CGColor;
-            } else {
-                box.strokeColor = [UIColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:0.95].CGColor;
-            }
+            box.strokeColor = playerColor.CGColor;
+            box.fillColor = [UIColor clearColor].CGColor;
             box.lineWidth = g_pubgEspThickness;
             box.lineCap = kCALineCapSquare;
             box.lineJoin = kCALineJoinMiter;
@@ -1595,24 +1569,20 @@ static void ds_hosted_apply_pubg(void) {
             box.hidden = YES;
         }
 
-        // 2. Snapline: Màu trắng
+        // 2. Snapline: Kẻ từ giữa mép trên màn hình xuống đầu địch
         if (g_pubgEspLine) {
             UIBezierPath *linePath = [UIBezierPath bezierPath];
             [linePath moveToPoint:CGPointMake(width * 0.5f, 25.0f)];
             [linePath addLineToPoint:CGPointMake(centerX, topY)];
             line.path = linePath.CGPath;
-            if (p.isKnocked) {
-                line.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.85].CGColor;
-            } else {
-                line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
-            }
+            line.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.85].CGColor;
             line.lineWidth = g_pubgEspThickness;
             line.hidden = NO;
         } else {
             line.hidden = YES;
         }
 
-        // 4. AI Mark: inverted blue triangle on top of box for AI only
+        // 3. AI Mark: inverted blue triangle on top of box for AI only
         if (ai && aiMark) {
             CGFloat tx = centerX;
             CGFloat ty = topY - 5.0f;
@@ -1630,75 +1600,104 @@ static void ds_hosted_apply_pubg(void) {
             aiMark.hidden = YES;
         }
 
-        // 5. Horizontal Health Bar (Máu ngang kiểu thanh nằm trên đầu)
+        // 4. MADNESS Player Info Tag (Thanh máu XueBar + Tên + Khoảng cách + Súng nằm TRÊN ĐẦU ĐỊCH)
+        CGFloat anchorY = topY;
+        if (p.hasSkeleton && p.skeleton[0].valid && p.skeleton[0].y > 0.0f) {
+            anchorY = fminf(topY, p.skeleton[0].y - 4.0f);
+        }
+
+        // 4a. XueBar (Health Bar): Thanh máu mỏng 2.5px nằm sát ngay trên đầu/hộp
         BOOL showHp = (g_pubgEspHealth && p.healthMax > 0 && p.health >= 0);
-        // Fixed dimensions: Doesn't zoom with scope, doesn't shrink with distance
-        CGFloat barW = 50.0f;
-        CGFloat barH = 3.5f;
+        CGFloat barW = 60.0f;
+        CGFloat barH = 2.5f;
         CGFloat barX = centerX - barW * 0.5f;
-        // Lowered slightly so it sits right above the head/box instead of floating too high
-        CGFloat barY = topY - barH - 1.0f;
+        CGFloat barY = anchorY - barH - 2.0f;
+
         if (showHp) {
-            float hpRatio = p.health / p.healthMax;
+            float hpVal = p.health;
+            float hpMax = (p.healthMax > 0.0f) ? p.healthMax : 100.0f;
+            float hpRatio = hpVal / hpMax;
             if (hpRatio < 0.0f) hpRatio = 0.0f;
             if (hpRatio > 1.0f) hpRatio = 1.0f;
             CGFloat fillW = barW * hpRatio;
-            if (fillW < 1.0f && p.health > 0.0f) fillW = 1.0f;
+            if (fillW < 1.0f && hpVal > 0.0f) fillW = 1.0f;
 
             if (hpBg) {
                 hpBg.frame = CGRectMake(barX - 0.5f, barY - 0.5f, barW + 1.0f, barH + 1.0f);
+                hpBg.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.5].CGColor;
                 hpBg.hidden = NO;
             }
 
             hpBar.frame = CGRectMake(barX, barY, fillW, barH);
-            if (p.isKnocked) {
-                // Bright safety orange for knocked down (gục ngã / bò)
-                hpBar.backgroundColor = [UIColor colorWithRed:255.0/255.0 green:149.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor;
-            } else {
-                hpBar.backgroundColor = (hpRatio >= 0.60f)
-                    ? [UIColor colorWithRed:52.0/255.0 green:199.0/255.0 blue:89.0/255.0 alpha:1.0].CGColor
-                    : ((hpRatio >= 0.30f)
-                        ? [UIColor colorWithRed:255.0/255.0 green:204.0/255.0 blue:0.0/255.0 alpha:1.0].CGColor
-                        : [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor);
-            }
+            hpBar.backgroundColor = playerColor.CGColor;
             hpBar.hidden = NO;
         } else {
             if (hpBg) hpBg.hidden = YES;
             hpBar.hidden = YES;
         }
 
-        // Weapon ESP: Above health bar (or above head if health bar hidden)
+        CGFloat topStackY = showHp ? barY : anchorY;
+
+        // 4b. Name & Distance Label (MADNESS TheDrawText: DisLb & NameLb)
+        if (g_pubgEspName || g_pubgEspDist) {
+            BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
+            const char *displayName = haveNick ? p.name : (ai ? "Bot" : (g_pubgLanguage == 1 ? "Enemy" : "Địch"));
+            NSString *nameStr = ds_safe_utf8_string(displayName, ai ? @"Bot" : (g_pubgLanguage == 1 ? @"Enemy" : @"Địch"));
+
+            NSString *tagString = nil;
+            if (g_pubgEspName && g_pubgEspDist) {
+                if (p.teamId > 0 && p.teamId <= 200000000) {
+                    tagString = [NSString stringWithFormat:@"%@ [%d] [%.0fM]", nameStr, p.teamId, p.distanceMeters];
+                } else {
+                    tagString = [NSString stringWithFormat:@"%@ [%.0fM]", nameStr, p.distanceMeters];
+                }
+            } else if (g_pubgEspName) {
+                tagString = nameStr;
+            } else {
+                tagString = [NSString stringWithFormat:@"[%.0fM]", p.distanceMeters];
+            }
+
+            CGFloat lblW = 150.0f;
+            CGFloat lblH = 13.0f;
+            CGFloat lblY = topStackY - lblH - 1.0f;
+            info.frame = CGRectMake(centerX - lblW * 0.5f, lblY, lblW, lblH);
+
+            NSAttributedString *attr = [[NSAttributedString alloc] initWithString:tagString attributes:@{
+                NSFontAttributeName: s_infoFont,
+                NSForegroundColorAttributeName: playerColor,
+                NSStrokeColorAttributeName: [UIColor blackColor],
+                NSStrokeWidthAttributeName: @(-1.4),
+                NSParagraphStyleAttributeName: s_centerStyle
+            }];
+            info.string = attr;
+            info.shadowOpacity = 0.0f;
+            info.hidden = NO;
+            topStackY = lblY;
+        } else {
+            info.hidden = YES;
+        }
+
+        // 4c. Weapon ESP / Knocked status: Nằm ngay trên dòng tên
         if (wLabel) {
             NSString *weaponText = nil;
-            CGColorRef weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
-
+            UIColor *wColor = [UIColor colorWithRed:1.0 green:0.85 blue:0.1 alpha:1.0]; // Gold/yellow
             BOOL isEn = (g_pubgLanguage == 1);
+
             if (p.isKnocked) {
-                if (p.weaponName[0] != '\0') {
-                    NSString *wName = ds_safe_utf8_string(p.weaponName, @"Gun");
-                    weaponText = [NSString stringWithFormat:isEn ? @"⚠️ KNOCKED | %@" : @"⚠️ GỤC | %@", wName];
-                    weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
-                } else {
-                    weaponText = isEn ? @"⚠️ KNOCKED | Fist" : @"⚠️ GỤC | Tay";
-                    weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
-                }
+                weaponText = isEn ? @"⚠️ KNOCKED" : @"⚠️ GỤC";
+                wColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:1.0];
             } else if (p.weaponName[0] != '\0') {
-                weaponText = ds_safe_utf8_string(p.weaponName, @"Gun");
-                weaponColor = [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0].CGColor;
-            } else {
-                weaponText = isEn ? @"Fist" : @"Tay";
-                weaponColor = [UIColor colorWithRed:46.0/255.0 green:204.0/255.0 blue:113.0/255.0 alpha:1.0].CGColor;
+                weaponText = [NSString stringWithFormat:@"[%@]", ds_safe_utf8_string(p.weaponName, @"Gun")];
             }
 
             if (weaponText && weaponText.length > 0) {
-                CGFloat wLblW = 100.0f;
+                CGFloat wLblW = 120.0f;
                 CGFloat wLblH = 11.0f;
-                CGFloat baseTop = showHp ? barY : topY;
-                CGFloat wLblY = baseTop - wLblH - 1.0f;
+                CGFloat wLblY = topStackY - wLblH - 1.0f;
                 wLabel.frame = CGRectMake(centerX - wLblW * 0.5f, wLblY, wLblW, wLblH);
                 NSAttributedString *attrW = [[NSAttributedString alloc] initWithString:weaponText attributes:@{
                     NSFontAttributeName: s_wFont,
-                    NSForegroundColorAttributeName: [UIColor colorWithCGColor:weaponColor],
+                    NSForegroundColorAttributeName: wColor,
                     NSStrokeColorAttributeName: [UIColor blackColor],
                     NSStrokeWidthAttributeName: @(-1.4),
                     NSParagraphStyleAttributeName: s_centerStyle
@@ -1711,115 +1710,7 @@ static void ds_hosted_apply_pubg(void) {
             }
         }
 
-        // 6. Text label: below box at bottom center (tightly anchored right below enemy)
-        // Tên: Bot = Xanh nước biển, Người = Vàng
-        // Khoảng cách (và team): Trắng
-        if (g_pubgEspName || g_pubgEspDist) {
-            char teamStr[48] = {0};
-            if (p.teamId >= 0 && p.teamId <= 200000000) {
-                if (ai) {
-                    snprintf(teamStr, sizeof(teamStr), "[Team %d - AI]", p.teamId);
-                } else {
-                    snprintf(teamStr, sizeof(teamStr), "[Team %d]", p.teamId);
-                }
-            } else if (ai) {
-                snprintf(teamStr, sizeof(teamStr), "[AI]");
-            }
-
-            BOOL haveNick = (p.name[0] != '\0' && strncmp(p.name, "Unknown", 7) != 0);
-            const char *displayName = haveNick ? p.name : (ai ? "Bot" : (g_pubgLanguage == 1 ? "Enemy" : "Địch"));
-
-            // Màu Tên: Bot = Xanh nước biển, Người = Vàng
-            UIColor *nameColor = ai
-                ? [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:1.0]
-                : [UIColor colorWithRed:255.0/255.0 green:214.0/255.0 blue:10.0/255.0 alpha:1.0];
-
-            // Màu Khoảng cách và team = Trắng
-            UIColor *whiteColor = [UIColor colorWithWhite:1.0 alpha:1.0];
-
-            NSMutableAttributedString *attrText = [[NSMutableAttributedString alloc] init];
-
-            if (g_pubgEspName) {
-                NSString *nameStr = ds_safe_utf8_string(displayName, ai ? @"Bot" : (g_pubgLanguage == 1 ? @"Enemy" : @"Địch"));
-                if (nameStr && nameStr.length > 0) {
-                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:nameStr attributes:@{
-                        NSFontAttributeName: s_infoFont,
-                        NSForegroundColorAttributeName: nameColor,
-                        NSStrokeColorAttributeName: [UIColor blackColor],
-                        NSStrokeWidthAttributeName: @(-1.4),
-                        NSParagraphStyleAttributeName: s_centerStyle
-                    }]];
-                }
-            }
-
-            if (teamStr[0] != '\0') {
-                if (attrText.length > 0) {
-                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:@{
-                        NSFontAttributeName: s_infoFont,
-                        NSParagraphStyleAttributeName: s_centerStyle
-                    }]];
-                }
-                NSString *tStr = ds_safe_utf8_string(teamStr, @"");
-                if (tStr && tStr.length > 0) {
-                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:tStr attributes:@{
-                        NSFontAttributeName: s_infoFont,
-                        NSForegroundColorAttributeName: whiteColor,
-                        NSStrokeColorAttributeName: [UIColor blackColor],
-                        NSStrokeWidthAttributeName: @(-1.4),
-                        NSParagraphStyleAttributeName: s_centerStyle
-                    }]];
-                }
-            }
-
-            if (g_pubgEspDist) {
-                if (attrText.length > 0) {
-                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:@{
-                        NSFontAttributeName: s_infoFont,
-                        NSParagraphStyleAttributeName: s_centerStyle
-                    }]];
-                }
-                NSString *distStr = [NSString stringWithFormat:@"%.0fm", p.distanceMeters];
-                if (distStr && distStr.length > 0) {
-                    [attrText appendAttributedString:[[NSAttributedString alloc] initWithString:distStr attributes:@{
-                        NSFontAttributeName: s_infoFont,
-                        NSForegroundColorAttributeName: whiteColor,
-                        NSStrokeColorAttributeName: [UIColor blackColor],
-                        NSStrokeWidthAttributeName: @(-1.4),
-                        NSParagraphStyleAttributeName: s_centerStyle
-                    }]];
-                }
-            }
-
-            CGFloat enemyBottom = bottomY;
-            if (p.hasSkeleton) {
-                CGFloat maxBoneY = -1.0f;
-                for (int k = 0; k < 15; k++) {
-                    if (p.skeleton[k].valid && p.skeleton[k].y > maxBoneY) {
-                        maxBoneY = p.skeleton[k].y;
-                    }
-                }
-                if (maxBoneY > 0.0f) {
-                    enemyBottom = fminf(bottomY, maxBoneY + 1.5f);
-                }
-            }
-
-            CGFloat labelH = 12.0f;
-            if (g_pubgEspName && g_pubgEspDist) {
-                labelH = (teamStr[0] != '\0') ? 32.0f : 22.0f;
-            } else if (g_pubgEspName || g_pubgEspDist) {
-                labelH = (teamStr[0] != '\0') ? 22.0f : 12.0f;
-            }
-
-            CGFloat labelW = 130.0f;
-            info.frame = CGRectMake(centerX - labelW * 0.5f, enemyBottom + 1.0f, labelW, labelH);
-            info.string = attrText;
-            info.shadowOpacity = 0.0f;
-            info.hidden = NO;
-        } else {
-            info.hidden = YES;
-        }
-
-        // 7. Skeleton ESP (Hiện xương kết nối các khớp)
+        // 5. Skeleton ESP (Hiện xương khớp MADNESS: Xanh lá khi nhìn thấy, Đỏ khi khuất/gục)
         if (g_pubgEspSkeleton && p.hasSkeleton && skel) {
             @try {
                 UIBezierPath *skelPath = [UIBezierPath bezierPath];
@@ -1880,11 +1771,7 @@ static void ds_hosted_apply_pubg(void) {
 
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
-                    if (p.isKnocked) {
-                        skel.strokeColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:0.95].CGColor;
-                    } else {
-                        skel.strokeColor = [UIColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:0.95].CGColor;
-                    }
+                    skel.strokeColor = playerColor.CGColor;
                     skel.lineWidth = g_pubgEspThickness;
                     skel.hidden = NO;
                 } else {
@@ -2016,11 +1903,11 @@ static void ds_hosted_apply_pubg(void) {
                 float fuelPct = (it.fuelMax > 0.0f) ? (it.fuel / it.fuelMax) * 100.0f : 0.0f;
                 if (fuelPct < 0.0f) fuelPct = 0.0f;
                 if (fuelPct > 100.0f) fuelPct = 100.0f;
-                titleStr = [NSString stringWithFormat:@"%@ (%.0fm)\nHP: %.0f | Fuel: %.0f%%", nameStr, it.distanceMeters, hpVal, fuelPct];
+                titleStr = [NSString stringWithFormat:@"[%@ %.0fM]\nHP: %.0f | Fuel: %.0f%%", nameStr, it.distanceMeters, hpVal, fuelPct];
                 lbl.wrapped = YES;
                 lbl.fontSize = 8.5;
             } else {
-                titleStr = [NSString stringWithFormat:@"%@ (%.0fm)", nameStr, it.distanceMeters];
+                titleStr = [NSString stringWithFormat:@"[%@ %.0fM]", nameStr, it.distanceMeters];
                 lbl.wrapped = NO;
                 lbl.fontSize = 9.0;
             }
@@ -2028,7 +1915,7 @@ static void ds_hosted_apply_pubg(void) {
             CGFloat strW = 150.0f;
             CGFloat strH = lbl.wrapped ? 26.0f : 14.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
-            lbl.foregroundColor = ds_pubg_cgcolor_from_rgba(it.colorRGBA);
+            lbl.foregroundColor = [UIColor whiteColor].CGColor;
             lbl.shadowColor = [UIColor blackColor].CGColor;
             lbl.shadowOpacity = 1.0f;
             lbl.shadowRadius = 1.0f;
@@ -2036,12 +1923,27 @@ static void ds_hosted_apply_pubg(void) {
             lbl.string = titleStr;
             if (lbl.hidden) lbl.hidden = NO;
         } else {
-            NSString *itemText = [NSString stringWithFormat:@"%@ (%.0fm)", nameStr, it.distanceMeters];
+            NSString *itemText = [NSString stringWithFormat:@"[%@ %.0fM]", nameStr, it.distanceMeters];
             CGFloat strW = it.isPriority ? 120.0f : 110.0f;
             CGFloat strH = it.isPriority ? 16.0f : 13.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
-            lbl.fontSize = it.isPriority ? 10.5 : 8.5;
-            lbl.foregroundColor = ds_pubg_cgcolor_from_rgba(it.colorRGBA);
+            lbl.fontSize = it.isPriority ? 10.0 : 8.5;
+
+            // MADNESS color mapping
+            CGColorRef itemColor;
+            if (it.category == DSPUBGItemCategoryWeapon) {
+                itemColor = [UIColor colorWithRed:1.0 green:0.25 blue:0.25 alpha:1.0].CGColor; // Red
+            } else if (it.category == DSPUBGItemCategoryArmor || it.category == DSPUBGItemCategoryBag) {
+                itemColor = [UIColor colorWithRed:0.0 green:1.0 blue:0.4 alpha:1.0].CGColor;  // Green
+            } else if (it.category == DSPUBGItemCategoryScope) {
+                itemColor = [UIColor colorWithRed:1.0 green:1.0 blue:0.0 alpha:1.0].CGColor;  // Yellow
+            } else if (it.category == DSPUBGItemCategoryCrate) {
+                itemColor = [UIColor colorWithRed:1.0 green:0.55 blue:0.0 alpha:1.0].CGColor; // Orange
+            } else {
+                itemColor = ds_pubg_cgcolor_from_rgba(it.colorRGBA);
+            }
+
+            lbl.foregroundColor = itemColor;
             lbl.shadowColor = [UIColor blackColor].CGColor;
             lbl.shadowOpacity = 1.0f;
             lbl.shadowRadius = 1.0f;
