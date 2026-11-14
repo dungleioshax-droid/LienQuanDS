@@ -268,13 +268,12 @@ static uint64_t s_grenadeTickCounter = 0;
 
 struct DSPUBGVisHistory {
     uint64_t actor;
-    uint32_t playerKey;
     uint64_t lastSeenTick;
     int visibleStreak;
     int occludedStreak;
     bool isOccluded;
 };
-static DSPUBGVisHistory s_visHistories[64] = {};
+static DSPUBGVisHistory s_visHistories[128] = {};
 static uint64_t s_visTickCounter = 0;
 
 static inline bool ds_pubg_valid(uint64_t address) {
@@ -3328,7 +3327,7 @@ static void ds_pubg_tick(void) {
         p.isDead = false;
         p.isKnocked = isKnocked;
         p.isVisible = false;
-        p.isOccluded = false;
+        p.isOccluded = true;
         p.isVehicle = false;
         p.actorPtr = pawn;
         p.playerKey = ds_pubg_read_u32(pawn + kDSPUBGCharacterPlayerKeyOffset);
@@ -3432,34 +3431,39 @@ static void ds_pubg_tick(void) {
                         // kDSPUGPrimitiveLastRenderTimeOnScreen (0x48C) specifically records the main viewport
                         // render time, avoiding false visible triggers from shadows/reflections.
                         // Temporal hysteresis filter prevents render thread stutter from causing rapid Green/Red flicker.
-                        bool isOccluded = false; // Default to visible if timestamps are unavailable
+                        bool isOccluded = true; // Default to occluded (RED) for safety
                         if (meshComp && ds_pubg_valid(meshComp)) {
                             float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
+                            float lastRender = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTime);
                             float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
                             bool timestampsLookValid =
-                                isfinite(lastSubmit) && isfinite(lastOnScreen) &&
+                                isfinite(lastSubmit) && isfinite(lastRender) && isfinite(lastOnScreen) &&
                                 lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
+                                lastRender > 1.0f && lastRender < 1.0e6f &&
                                 lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
                             if (timestampsLookValid) {
-                                float dt = lastSubmit - lastOnScreen;
-                                bool rawVisible = (dt >= -0.02f && dt <= 0.075f);
+                                float dtScreen = lastSubmit - lastOnScreen;
+                                float dtRender = fabsf(lastSubmit - lastRender);
+                                // Target must be recently submitted AND actually drawn on the viewport
+                                // within ~2 frames (35ms at 60 FPS), and rendered in the main pass.
+                                bool rawVisible = (dtScreen >= -0.015f && dtScreen <= 0.040f) &&
+                                                  (dtRender <= 0.040f) &&
+                                                  (lastOnScreen > 0.0f);
 
                                 int visSlot = -1;
-                                for (int v = 0; v < 64; v++) {
-                                    if (s_visHistories[v].actor == pawn ||
-                                        (p.playerKey != 0 && s_visHistories[v].playerKey == p.playerKey)) {
+                                for (int v = 0; v < 128; v++) {
+                                    if (s_visHistories[v].actor == pawn) {
                                         visSlot = v;
                                         break;
                                     }
                                 }
                                 if (visSlot < 0) {
-                                    for (int v = 0; v < 64; v++) {
-                                        if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 10) {
+                                    for (int v = 0; v < 128; v++) {
+                                        if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
                                             visSlot = v;
                                             memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
                                             s_visHistories[v].actor = pawn;
-                                            s_visHistories[v].playerKey = p.playerKey;
-                                            s_visHistories[v].isOccluded = !rawVisible;
+                                            s_visHistories[v].isOccluded = true; // Initial state is always occluded (RED)
                                             break;
                                         }
                                     }
@@ -3469,18 +3473,20 @@ static void ds_pubg_tick(void) {
                                     DSPUBGVisHistory &vh = s_visHistories[visSlot];
                                     vh.lastSeenTick = s_visTickCounter;
                                     vh.actor = pawn;
-                                    if (p.playerKey != 0) vh.playerKey = p.playerKey;
 
                                     if (rawVisible) {
                                         vh.visibleStreak++;
                                         vh.occludedStreak = 0;
-                                        vh.isOccluded = false; // Fast response when target becomes visible
+                                        // Require 2 consecutive positive frames (~33-50ms) to turn green,
+                                        // eliminating single-frame bounds bleeds and camera rotation blips.
+                                        if (vh.visibleStreak >= 2) {
+                                            vh.isOccluded = false;
+                                        }
                                     } else {
                                         vh.occludedStreak++;
                                         vh.visibleStreak = 0;
-                                        // Require 3 consecutive occluded frames (~60-90ms) before turning red
-                                        // to filter out single-frame render thread latency
-                                        if (vh.occludedStreak >= 3) {
+                                        // Require 2 consecutive occluded frames to turn red
+                                        if (vh.occludedStreak >= 2) {
                                             vh.isOccluded = true;
                                         }
                                     }
@@ -4360,10 +4366,10 @@ static void ds_pubg_tick(void) {
         }
     }
 
-    // Advance vischeck tick & clean up stale records (> 10 ticks unseen)
+    // Advance vischeck tick & clean up stale records (> 15 ticks unseen)
     ++s_visTickCounter;
-    for (int v = 0; v < 64; v++) {
-        if (s_visHistories[v].actor != 0 && (s_visTickCounter - s_visHistories[v].lastSeenTick) > 10) {
+    for (int v = 0; v < 128; v++) {
+        if (s_visHistories[v].actor != 0 && (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
             memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
         }
     }

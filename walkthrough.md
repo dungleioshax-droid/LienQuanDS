@@ -277,7 +277,44 @@ ImGui::GetForegroundDrawList()->AddText(NULL ,25,{glWidth / 2,66}, 红色, extra
    - Trong [DSBridgePUBG.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgePUBG.inc.mm#L3881-L3890): Cập nhật thời gian nổ tối đa `maxFuse = 7.0f` cho Lựu đạn nổ (Frag Grenade), đồng bộ `InitialLifeSpan`.
    - Trong [DSBridgeESP.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgeESP.inc.mm#L1883-L1948): Tỉ lệ chuyển đổi màu từ Vàng sang Đỏ chuyển động mượt mà trong đúng 7.0 giây. Bổ sung đồng hồ đếm ngược số giây thực tế vào nhãn tên (ví dụ: `Frag [15m] 5.2s`).
 
-### C. Kết quả Build & File IPA Mới Nhất:
+### C. Kết quả Build & File IPA (Bản trước):
 - **Commit**: `ac916a7` (`fix(hud,vischeck,grenade): keepalive on HUD active, stabilize vischeck with screen render hysteresis, and set grenade fuse to 7s`).
 - **GitHub Actions Run**: [Workflow Run 43599129649](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43599129649) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 16. Khắc Phục Triệt Để Lỗi Vischeck Hiện Sai Khi Xoay Camera / Mục Tiêu Đứng Cạnh Cửa
+
+### A. Phân tích nguyên nhân gốc rễ (Root Cause Analysis):
+Từ 2 ảnh thực tế của người dùng:
+1. **Ảnh 1 (`IMG-5986`)**: Người chơi đứng góc quay hướng 310° (NW), 4 bot đứng sau tường bê tông kín gồm Bot `[95]`, `[12]`, `[35]`, `[62]`. Cả 4 bot đều hiện màu **Đỏ** (Occluded) chính xác.
+2. **Ảnh 2 (`IMG-5987`)**: Người chơi giữ nguyên vị trí, chỉ quay góc camera sang hướng 275° (WNW).
+   - Bot `[62]` lọt vào khung cửa mở bên phải -> hiện màu **Xanh** (Visible) là đúng.
+   - Nhưng Bot `[35]` vẫn nằm hoàn toàn sau bức tường bê tông kín -> lại bị đổi sang màu **Xanh** (Sai lệch).
+   - Trong khi đó Bot `[12]` và Bot `[95]` vẫn giữ màu **Đỏ** chuẩn xác.
+
+**Các nguyên nhân kỹ thuật được tìm thấy**:
+1. **Lỗi nhiễm chéo khe lịch sử (Slot Aliasing qua `playerKey`)**:
+   - Trong cấu trúc `DSPUBGVisHistory`, việc đối chiếu trước đây sử dụng `s_visHistories[v].actor == pawn || (p.playerKey != 0 && s_visHistories[v].playerKey == p.playerKey)`.
+   - Trong Unreal Engine 4 của PUBG Mobile (bản đồ tập luyện / bot AI), các bot AI được spawn hàng loạt và cùng chia sẻ chung một giá trị `PlayerKey`. Khi Bot `[62]` nhìn thấy qua cửa sổ và được đánh dấu là nhìn thấy (`isOccluded = false`), Bot `[35]` (và các bot có chung key) bị map nhầm vào cùng slot này, dẫn đến trạng thái nhìn thấy của Bot `[62]` bị ghi đè sang Bot `[35]`.
+   - Mỗi frame, khi Bot `[62]` cập nhật `visibleStreak`, nó liên tục reset `occludedStreak = 0` của slot dùng chung, khiến Bot `[35]` không bao giờ đạt ngưỡng để chuyển lại về màu Đỏ.
+2. **Mặc định sai trạng thái che khuất**:
+   - Biến `isOccluded` ban đầu bị gán mặc định là `false` (Visible) khi timestamp chưa kịp đọc hoặc không hợp lệ, khiến các đối tượng chưa xác minh bị chuyển sang màu xanh.
+3. **Hiện tượng rò rỉ Bounding Box qua ô cửa (Bounds Leakage)**:
+   - Khi mục tiêu đứng sát mép tường gần cửa sổ (~0.8m), hộp bao `BoxExtent` của `USkeletalMeshComponent` có thể chớm vào vùng frustum của khung cửa. Ngưỡng thời gian `dt <= 0.075f` (tương đương 4-5 frame ở 60 FPS) trước đây quá rộng.
+
+### B. Giải pháp đã thực hiện:
+1. **Tách biệt và cô lập tuyệt đối lịch sử Vischeck theo từng con trỏ Actor**:
+   - Trong [DSBridgePUBG.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgePUBG.inc.mm#L268-L278): Xóa bỏ hoàn toàn trường `playerKey` trong `DSPUBGVisHistory`, mở rộng kích thước mảng lưu trữ từ 64 lên 128 slot (`s_visHistories[128]`).
+   - Việc tìm kiếm slot chỉ dựa duy nhất vào địa chỉ con trỏ heap bất biến `s_visHistories[v].actor == pawn`. Mỗi mục tiêu trên bản đồ sở hữu riêng 1 slot độc lập, triệt tiêu 100% hiện tượng nhiễm chéo trạng thái giữa các bot.
+2. **An toàn hóa giá trị mặc định**:
+   - Gán mặc định `p.isOccluded = true;` (Đỏ) ở tất cả các vị trí: khởi tạo struct, khởi tạo slot mới, và trường hợp không đọc được timestamp.
+3. **Xác thực kép đồng thời Viewport Render và Scene Render**:
+   - Kiểm tra đồng thời cả `dtScreen = lastSubmit - lastOnScreen` (trong khoảng $[-0.015\text{s}, 0.040\text{s}]$, tức tối đa 2 frame) và `dtRender = fabsf(lastSubmit - lastRender) <= 0.040\text{s}`.
+4. **Hysteresis 2-frame đối xứng và mượt mà**:
+   - Bắt buộc phải có **2 frame liên tiếp** (`visibleStreak >= 2`) render thực tế trên màn hình mới chuyển sang màu Xanh (loại bỏ hoàn toàn các cú chớp 1-frame do rò rỉ góc hộp bao khi lia camera).
+   - Bắt buộc có **2 frame liên tiếp** (`occludedStreak >= 2`) không được render mới chuyển về màu Đỏ.
+
+### C. Kết quả Build & File IPA Mới Nhất:
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
