@@ -1854,7 +1854,7 @@ static void ds_hosted_apply_pubg(void) {
             s_topCountFont = f;
         });
 
-        if (g_pubgEspEnemyNumber && ds_pubg_has_render_source() && (totalEnemies + totalBots >= 0)) {
+        if (g_pubgEspEnemyNumber && ds_pubg_has_render_source() && (totalEnemies + totalBots > 0)) {
             CGFloat lblW = 320.0f;
             CGFloat lblH = 18.0f;
             CGFloat lblX = (width - lblW) * 0.5f;

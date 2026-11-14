@@ -16,10 +16,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
 @property (nonatomic, strong) UIPanGestureRecognizer *titlePan;
 
 // Header top bar items
-@property (nonatomic, strong) UILabel *lblEn;
-@property (nonatomic, strong) UILabel *lblAr;
-@property (nonatomic, strong) UILabel *lblRu;
-@property (nonatomic, strong) UILabel *lblCh;
+@property (nonatomic, strong) UIButton *btnEng;
+@property (nonatomic, strong) UIButton *btnVie;
+@property (nonatomic, copy) NSString *currentLang;
 @property (nonatomic, strong) UIButton *contactBtn;
 @property (nonatomic, strong) UILabel *handleMajed;
 @property (nonatomic, strong) UILabel *handleChan;
@@ -172,9 +171,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
         }
     }
 
-    // Panel container: start collapsed (205 x 30)
+    // Panel container: start collapsed (134 x 30)
     self.panel = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.panel.frame = CGRectMake(startX, startY, 205, 30);
+    self.panel.frame = CGRectMake(startX, startY, 134, 30);
     self.panel.backgroundColor = UIColor.clearColor;
     self.panel.layer.cornerRadius = 8.0;
     self.panel.clipsToBounds = YES;
@@ -212,8 +211,8 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleGlyph.backgroundColor = UIColor.clearColor;
     [self.handle addSubview:self.handleGlyph];
 
-    // Top Dark Header Capsule Bar: [ MADNESS (cat) EN عربي RU CH  CONTACT->  @Majed_aj  MADNESS~CHANNEL ]
-    self.titleBox = [[UIView alloc] initWithFrame:CGRectMake(34, 3, 165, 24)];
+    // Top Dark Header Capsule Bar: collapsed (32, 3, 94, 24)
+    self.titleBox = [[UIView alloc] initWithFrame:CGRectMake(32, 3, 94, 24)];
     self.titleBox.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.90];
     self.titleBox.layer.cornerRadius = 12.0;
     self.titleBox.layer.borderColor = [UIColor colorWithWhite:0.25 alpha:0.8].CGColor;
@@ -244,64 +243,64 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.mascotView.userInteractionEnabled = NO;
     [self.titleBox addSubview:self.mascotView];
 
-    // 3. Language Selector: [ EN ]  عربي  RU  CH
-    self.lblEn = [[UILabel alloc] initWithFrame:CGRectMake(92, 3, 22, 18)];
-    self.lblEn.text = @"EN";
-    self.lblEn.backgroundColor = UIColor.yellowColor;
-    self.lblEn.textColor = UIColor.blackColor;
-    self.lblEn.font = [UIFont boldSystemFontOfSize:9.5];
-    self.lblEn.textAlignment = NSTextAlignmentCenter;
-    self.lblEn.layer.cornerRadius = 3.5;
-    self.lblEn.clipsToBounds = YES;
-    [self.titleBox addSubview:self.lblEn];
+    // 3. Language Selector: [ ENG ]  [ VIE ]
+    self.btnEng = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.btnEng.frame = CGRectMake(94, 3, 30, 18);
+    self.btnEng.layer.cornerRadius = 3.5;
+    self.btnEng.clipsToBounds = YES;
+    [self.btnEng setTitle:@"ENG" forState:UIControlStateNormal];
+    self.btnEng.titleLabel.font = [UIFont boldSystemFontOfSize:9.5];
+    [self.btnEng addTarget:self action:@selector(selectEng) forControlEvents:UIControlEventTouchUpInside];
+    self.btnEng.hidden = YES;
+    [self.titleBox addSubview:self.btnEng];
 
-    self.lblAr = [[UILabel alloc] initWithFrame:CGRectMake(117, 3, 26, 18)];
-    self.lblAr.text = @"عربي";
-    self.lblAr.textColor = UIColor.whiteColor;
-    self.lblAr.font = [UIFont boldSystemFontOfSize:9.5];
-    self.lblAr.textAlignment = NSTextAlignmentCenter;
-    [self.titleBox addSubview:self.lblAr];
+    self.btnVie = [UIButton buttonWithType:UIButtonTypeCustom];
+    self.btnVie.frame = CGRectMake(128, 3, 28, 18);
+    self.btnVie.layer.cornerRadius = 3.5;
+    self.btnVie.clipsToBounds = YES;
+    [self.btnVie setTitle:@"VIE" forState:UIControlStateNormal];
+    self.btnVie.titleLabel.font = [UIFont boldSystemFontOfSize:9.5];
+    [self.btnVie addTarget:self action:@selector(selectVie) forControlEvents:UIControlEventTouchUpInside];
+    self.btnVie.hidden = YES;
+    [self.titleBox addSubview:self.btnVie];
 
-    self.lblRu = [[UILabel alloc] initWithFrame:CGRectMake(146, 3, 20, 18)];
-    self.lblRu.text = @"RU";
-    self.lblRu.textColor = UIColor.whiteColor;
-    self.lblRu.font = [UIFont boldSystemFontOfSize:9.5];
-    self.lblRu.textAlignment = NSTextAlignmentCenter;
-    [self.titleBox addSubview:self.lblRu];
-
-    self.lblCh = [[UILabel alloc] initWithFrame:CGRectMake(168, 3, 20, 18)];
-    self.lblCh.text = @"CH";
-    self.lblCh.textColor = UIColor.whiteColor;
-    self.lblCh.font = [UIFont boldSystemFontOfSize:9.5];
-    self.lblCh.textAlignment = NSTextAlignmentCenter;
-    [self.titleBox addSubview:self.lblCh];
-
-    // 4. Contact button: [ CONTACT-> ]
+    // 4. Contact button: [ DLX07 ]
     self.contactBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.contactBtn.frame = CGRectMake(192, 3, 76, 18);
+    self.contactBtn.frame = CGRectMake(162, 3, 56, 18);
     self.contactBtn.backgroundColor = UIColor.yellowColor;
     self.contactBtn.layer.cornerRadius = 9.0;
     self.contactBtn.clipsToBounds = YES;
-    [self.contactBtn setTitle:@"CONTACT->" forState:UIControlStateNormal];
+    [self.contactBtn setTitle:@"DLX07" forState:UIControlStateNormal];
     [self.contactBtn setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
     self.contactBtn.titleLabel.font = [UIFont boldSystemFontOfSize:9.5];
     [self.contactBtn addTarget:self action:@selector(contactTapped) forControlEvents:UIControlEventTouchUpInside];
+    self.contactBtn.hidden = YES;
     [self.titleBox addSubview:self.contactBtn];
 
-    // 5. Handles: @Majed_aj  MADNESS~CHANNEL
-    self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(272, 3, 68, 18)];
-    self.handleMajed.text = @"@Majed_aj";
+    // 5. Handles: @DLX07  MADNESS~CHANNEL
+    self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(224, 3, 72, 18)];
+    self.handleMajed.text = @"@DLX07";
     self.handleMajed.textColor = UIColor.whiteColor;
     self.handleMajed.font = [UIFont boldSystemFontOfSize:10.0];
     self.handleMajed.textAlignment = NSTextAlignmentLeft;
+    self.handleMajed.hidden = YES;
     [self.titleBox addSubview:self.handleMajed];
 
-    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(342, 3, 110, 18)];
+    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(302, 3, 140, 18)];
     self.handleChan.text = @"MADNESS~CHANNEL";
     self.handleChan.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
     self.handleChan.font = [UIFont boldSystemFontOfSize:9.5];
     self.handleChan.textAlignment = NSTextAlignmentLeft;
+    self.handleChan.hidden = YES;
     [self.titleBox addSubview:self.handleChan];
+
+    // Load persisted language
+    NSString *savedLang = [NSUserDefaults.standardUserDefaults stringForKey:@"madness_lang"];
+    if (!savedLang || (![savedLang isEqualToString:@"ENG"] && ![savedLang isEqualToString:@"VIE"])) {
+        savedLang = @"ENG";
+    }
+    self.currentLang = savedLang;
+    [self updateLanguageDisplayOnly];
 
     // Subheader Line (Below top capsule bar, y = 31):
     // Left: Date & Time + Battery Level
@@ -445,9 +444,87 @@ static const CGFloat kMadnessPanelH = 325.0f;
 
 - (void)contactTapped {
     [self.haptic impactOccurred];
-    NSURL *u = [NSURL URLWithString:@"https://t.me/Majed_aj"];
+    NSURL *u = [NSURL URLWithString:@"https://t.me/DLX07"];
     if ([[UIApplication sharedApplication] canOpenURL:u]) {
         [[UIApplication sharedApplication] openURL:u options:@{} completionHandler:nil];
+    }
+}
+
+- (void)selectEng {
+    [self.haptic impactOccurred];
+    [self updateLanguage:@"ENG"];
+}
+
+- (void)selectVie {
+    [self.haptic impactOccurred];
+    [self updateLanguage:@"VIE"];
+}
+
+- (void)updateLanguageDisplayOnly {
+    BOOL isVie = [self.currentLang isEqualToString:@"VIE"];
+    if (isVie) {
+        self.btnVie.backgroundColor = UIColor.yellowColor;
+        [self.btnVie setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
+        self.btnEng.backgroundColor = UIColor.clearColor;
+        [self.btnEng setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    } else {
+        self.btnEng.backgroundColor = UIColor.yellowColor;
+        [self.btnEng setTitleColor:UIColor.blackColor forState:UIControlStateNormal];
+        self.btnVie.backgroundColor = UIColor.clearColor;
+        [self.btnVie setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    }
+}
+
+- (void)updateLanguage:(NSString *)lang {
+    self.currentLang = lang;
+    [NSUserDefaults.standardUserDefaults setObject:lang forKey:@"madness_lang"];
+    [self updateLanguageDisplayOnly];
+
+    BOOL isVie = [lang isEqualToString:@"VIE"];
+    if (isVie) {
+        [self.btnEspEnable setTitle:@"BẬT" forState:UIControlStateNormal];
+        [self.btnLine setTitle:@"ĐƯỜNG KẺ" forState:UIControlStateNormal];
+        [self.btnEnemyNum setTitle:@"TỔNG ĐỊCH" forState:UIControlStateNormal];
+        [self.btnHealth setTitle:@"MÁU ĐỊCH" forState:UIControlStateNormal];
+        [self.btnBone setTitle:@"KHUNG XƯƠNG" forState:UIControlStateNormal];
+        [self.btnRadar setTitle:@"RADAR" forState:UIControlStateNormal];
+        [self.btnName setTitle:@"TÊN ĐỊCH" forState:UIControlStateNormal];
+        [self.btnDist setTitle:@"KHOẢNG CÁCH" forState:UIControlStateNormal];
+        [self.btn3D setTitle:@"HỘP 3D" forState:UIControlStateNormal];
+        [self.btnArrow setTitle:@"MŨI TÊN" forState:UIControlStateNormal];
+        [self.btnTeam setTitle:@"ĐỒNG ĐỘI" forState:UIControlStateNormal];
+        [self.btnFlag setTitle:@"QUỐC KỲ" forState:UIControlStateNormal];
+
+        [self.btnMatEnable setTitle:@"BẬT" forState:UIControlStateNormal];
+        [self.btnVeh setTitle:@"XE CỘ" forState:UIControlStateNormal];
+        [self.btnGrenade setTitle:@"BÁO LỰU" forState:UIControlStateNormal];
+        [self.btnLootBox setTitle:@"HÒM ĐỒ" forState:UIControlStateNormal];
+        [self.btnFlareGun setTitle:@"THÍNH ĐỎ" forState:UIControlStateNormal];
+        [self.btnAirdrop setTitle:@"THÍNH" forState:UIControlStateNormal];
+        [self.btnAccessory setTitle:@"PHỤ KIỆN" forState:UIControlStateNormal];
+        [self.btnDrug setTitle:@"HỒI MÁU" forState:UIControlStateNormal];
+    } else {
+        [self.btnEspEnable setTitle:@"ENABLE" forState:UIControlStateNormal];
+        [self.btnLine setTitle:@"DRAW LINE" forState:UIControlStateNormal];
+        [self.btnEnemyNum setTitle:@"ENEMY NUMBER" forState:UIControlStateNormal];
+        [self.btnHealth setTitle:@"PLAYER HEALTH" forState:UIControlStateNormal];
+        [self.btnBone setTitle:@"DRAW BONE" forState:UIControlStateNormal];
+        [self.btnRadar setTitle:@"DRAW SRADAR" forState:UIControlStateNormal];
+        [self.btnName setTitle:@"PLAYER NAME" forState:UIControlStateNormal];
+        [self.btnDist setTitle:@"PLAYER DIS" forState:UIControlStateNormal];
+        [self.btn3D setTitle:@"3D BOX" forState:UIControlStateNormal];
+        [self.btnArrow setTitle:@"DRAW ARROW" forState:UIControlStateNormal];
+        [self.btnTeam setTitle:@"PLAYER TEAM" forState:UIControlStateNormal];
+        [self.btnFlag setTitle:@"PLAYER FLAG" forState:UIControlStateNormal];
+
+        [self.btnMatEnable setTitle:@"ENABLE" forState:UIControlStateNormal];
+        [self.btnVeh setTitle:@"VEHICLE" forState:UIControlStateNormal];
+        [self.btnGrenade setTitle:@"GRENADE WARN" forState:UIControlStateNormal];
+        [self.btnLootBox setTitle:@"LOOT BOX" forState:UIControlStateNormal];
+        [self.btnFlareGun setTitle:@"FLARE GUN" forState:UIControlStateNormal];
+        [self.btnAirdrop setTitle:@"AIRDROP" forState:UIControlStateNormal];
+        [self.btnAccessory setTitle:@"ACCESSORY" forState:UIControlStateNormal];
+        [self.btnDrug setTitle:@"DRUG" forState:UIControlStateNormal];
     }
 }
 
@@ -717,6 +794,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [self.scroll addSubview:self.sliderItemDist];
 
     self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 250);
+    if ([self.currentLang isEqualToString:@"VIE"]) {
+        [self updateLanguage:@"VIE"];
+    }
 }
 
 #pragma mark - Reset to Defaults
@@ -846,6 +926,12 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleGlyph.font = [UIFont boldSystemFontOfSize:13.0];
 
     self.titleBox.frame = CGRectMake(34, 4, targetW - 42, 24);
+    self.btnEng.hidden = NO;
+    self.btnVie.hidden = NO;
+    self.contactBtn.hidden = NO;
+    self.handleMajed.hidden = NO;
+    self.handleChan.hidden = NO;
+
     self.clockLabel.hidden = NO;
     self.batteryLabel.hidden = NO;
     self.sloganLabel.hidden = NO;
@@ -862,13 +948,20 @@ static const CGFloat kMadnessPanelH = 325.0f;
     g_hostedMenuExpanded = NO;
 
     CGRect pf = self.panel.frame;
-    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 205, 30);
+    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 134, 30);
     self.panel.backgroundColor = UIColor.clearColor;
     self.panel.layer.borderWidth = 0.0;
     self.scroll.hidden = YES;
     self.clockLabel.hidden = YES;
     self.batteryLabel.hidden = YES;
     self.sloganLabel.hidden = YES;
+
+    // Show ONLY icon MADNESS: hide language buttons, contact, and handles
+    self.btnEng.hidden = YES;
+    self.btnVie.hidden = YES;
+    self.contactBtn.hidden = YES;
+    self.handleMajed.hidden = YES;
+    self.handleChan.hidden = YES;
 
     [self.handle removeGestureRecognizer:self.handleTap];
     self.handleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(controllview)];
@@ -877,7 +970,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleGlyph.frame = CGRectMake(0, 0, 24, 24);
     self.handleGlyph.text = @"⋗";
     self.handleGlyph.font = [UIFont boldSystemFontOfSize:20.0];
-    self.titleBox.frame = CGRectMake(34, 3, 165, 24);
+    self.titleBox.frame = CGRectMake(32, 3, 94, 24);
 }
 
 - (void)handleTapped:(UIButton *)sender {
@@ -899,6 +992,10 @@ static const CGFloat kMadnessPanelH = 325.0f;
         }
         // Do not intercept taps on the contact button
         if ([touch.view isDescendantOfView:self.contactBtn]) {
+            return NO;
+        }
+        // Do not intercept taps on language buttons
+        if ([touch.view isDescendantOfView:self.btnEng] || [touch.view isDescendantOfView:self.btnVie]) {
             return NO;
         }
         // In collapsed mode: allow panning anywhere on the bar
