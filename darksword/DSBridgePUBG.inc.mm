@@ -3903,14 +3903,71 @@ static void ds_pubg_tick(void) {
                                 }
                             }
 
-                            // Dynamic Y-axis leg determination between chain {55, 56, 57} and {59, 60, 61}
-                            bThighR = 55; bCalfR = 56; bFootR = 57;
-                            bThighL = 59; bCalfL = 60; bFootL = 61;
-                            DSPUBGVector legA = {}, legB = {};
-                            if (getBoneLocal(55, legA) && getBoneLocal(59, legB)) {
-                                if (legA.Y < legB.Y) {
-                                    bThighR = 59; bCalfR = 60; bFootR = 61;
-                                    bThighL = 55; bCalfL = 56; bFootL = 57;
+                            // Dynamic Leg Selection with anatomical validation:
+                            // Candidate 0: Right={57, 58, 59}, Left={53, 54, 55} (Standard standing / armed pose)
+                            // Candidate 1: Right={55, 56, 57}, Left={59, 60, 61} (Standard crawling / unarmed)
+                            // Candidate 2: Right={58, 59, 60}, Left={55, 56, 57} (Prone rig variant)
+                            // Candidate 3: Right={59, 60, 61}, Left={55, 56, 57} (Flipped variant)
+                            struct LegPairCandidate {
+                                int r[3];
+                                int l[3];
+                            };
+                            const LegPairCandidate legCandidates[] = {
+                                { {57, 58, 59}, {53, 54, 55} },
+                                { {55, 56, 57}, {59, 60, 61} },
+                                { {58, 59, 60}, {55, 56, 57} },
+                                { {59, 60, 61}, {55, 56, 57} }
+                            };
+                            const int numCandidates = (int)(sizeof(legCandidates) / sizeof(legCandidates[0]));
+
+                            auto scoreLegChain = [&](int thigh, int calf, int foot) -> float {
+                                DSPUBGVector t = {}, c = {}, f = {};
+                                if (!getBoneLocal(thigh, t) || !getBoneLocal(calf, c) || !getBoneLocal(foot, f)) return -999.0f;
+                                float dtc = dist3D(t, c);
+                                float dcf = dist3D(c, f);
+                                if (dtc < 15.0f || dtc > 80.0f) return -999.0f;
+                                if (dcf < 15.0f || dcf > 80.0f) return -999.0f;
+
+                                DSPUBGVector pel = {};
+                                if (getBoneLocal(bPelvis, pel)) {
+                                    float dPelThigh = dist3D(pel, t);
+                                    if (dPelThigh > 70.0f) return -999.0f;
+                                    // In all natural postures, calf and foot must never float high above pelvis
+                                    // (this strictly eliminates IK bones shooting up into the sky when prone)
+                                    if (c.Z > pel.Z + 35.0f || f.Z > pel.Z + 35.0f) return -999.0f;
+                                }
+
+                                return 100.0f - fabsf(dtc - 45.0f) - fabsf(dcf - 42.0f);
+                            };
+
+                            float bestScore = -999.0f;
+                            int bestIdx = 0;
+                            for (int ci = 0; ci < numCandidates; ci++) {
+                                float sR = scoreLegChain(legCandidates[ci].r[0], legCandidates[ci].r[1], legCandidates[ci].r[2]);
+                                float sL = scoreLegChain(legCandidates[ci].l[0], legCandidates[ci].l[1], legCandidates[ci].l[2]);
+                                if (sR > 0.0f && sL > 0.0f) {
+                                    float total = sR + sL;
+                                    if (total > bestScore) {
+                                        bestScore = total;
+                                        bestIdx = ci;
+                                    }
+                                }
+                            }
+
+                            bThighR = legCandidates[bestIdx].r[0];
+                            bCalfR  = legCandidates[bestIdx].r[1];
+                            bFootR  = legCandidates[bestIdx].r[2];
+
+                            bThighL = legCandidates[bestIdx].l[0];
+                            bCalfL  = legCandidates[bestIdx].l[1];
+                            bFootL  = legCandidates[bestIdx].l[2];
+
+                            DSPUBGVector rLocal = {}, lLocal = {};
+                            if (getBoneLocal(bThighR, rLocal) && getBoneLocal(bThighL, lLocal)) {
+                                if (rLocal.Y < lLocal.Y) {
+                                    std::swap(bThighR, bThighL);
+                                    std::swap(bCalfR, bCalfL);
+                                    std::swap(bFootR, bFootL);
                                 }
                             }
                         }
@@ -3924,56 +3981,35 @@ static void ds_pubg_tick(void) {
                         };
 
                         DSPUBGVector locals[15] = {};
-                        bool hasLocal[15] = {false};
+                        bool localsValid[15] = {};
                         for (int i = 0; i < 15; i++) {
-                            hasLocal[i] = getBoneLocal(jointIndices[i], locals[i]);
+                            localsValid[i] = getBoneLocal(jointIndices[i], locals[i]);
                         }
 
-                        // Anatomical 3D distance validation in local coordinate space (UE4 centimeters)
-                        // If any child joint exceeds realistic anatomical distance from parent joint, reject it.
-                        auto checkLimb = [&](int parentIdx, int childIdx, float maxDist) {
-                            if (!hasLocal[parentIdx]) {
-                                hasLocal[childIdx] = false;
-                                return;
-                            }
-                            if (hasLocal[childIdx]) {
-                                float d = dist3D(locals[parentIdx], locals[childIdx]);
-                                if (d > maxDist || d < 0.5f) {
-                                    hasLocal[childIdx] = false;
-                                }
-                            }
-                        };
+                        // Anatomical sanity checks before projecting:
+                        // Invalidate individual joints if bone lengths exceed human anatomical limits (non-cascading)
+                        if (localsValid[1] && localsValid[3] && dist3D(locals[1], locals[3]) > 65.0f) localsValid[3] = false;
+                        if (localsValid[3] && localsValid[4] && dist3D(locals[3], locals[4]) > 65.0f) localsValid[4] = false;
+                        if (localsValid[4] && localsValid[5] && dist3D(locals[4], locals[5]) > 60.0f) localsValid[5] = false;
 
-                        // Spine & Head
-                        checkLimb(1, 0, 45.0f);  // Neck <-> Head <= 45cm
-                        checkLimb(1, 2, 95.0f);  // Neck <-> Pelvis <= 95cm
+                        if (localsValid[1] && localsValid[6] && dist3D(locals[1], locals[6]) > 65.0f) localsValid[6] = false;
+                        if (localsValid[6] && localsValid[7] && dist3D(locals[6], locals[7]) > 65.0f) localsValid[7] = false;
+                        if (localsValid[7] && localsValid[8] && dist3D(locals[7], locals[8]) > 60.0f) localsValid[8] = false;
 
-                        // Right Arm
-                        checkLimb(1, 3, 60.0f);  // Neck <-> UprR <= 60cm
-                        checkLimb(3, 4, 60.0f);  // UprR <-> LwrR <= 60cm
-                        checkLimb(4, 5, 55.0f);  // LwrR <-> HandR <= 55cm
+                        if (localsValid[2] && localsValid[9] && dist3D(locals[2], locals[9]) > 75.0f) localsValid[9] = false;
+                        if (localsValid[9] && localsValid[10] && dist3D(locals[9], locals[10]) > 85.0f) localsValid[10] = false;
+                        if (localsValid[10] && localsValid[11] && dist3D(locals[10], locals[11]) > 85.0f) localsValid[11] = false;
 
-                        // Left Arm
-                        checkLimb(1, 6, 60.0f);  // Neck <-> UprL <= 60cm
-                        checkLimb(6, 7, 60.0f);  // UprL <-> LwrL <= 60cm
-                        checkLimb(7, 8, 55.0f);  // LwrL <-> HandL <= 55cm
-
-                        // Right Leg
-                        checkLimb(2, 9, 60.0f);   // Pelvis <-> ThighR <= 60cm
-                        checkLimb(9, 10, 75.0f);  // ThighR <-> CalfR <= 75cm
-                        checkLimb(10, 11, 75.0f); // CalfR <-> FootR <= 75cm
-
-                        // Left Leg
-                        checkLimb(2, 12, 60.0f);  // Pelvis <-> ThighL <= 60cm
-                        checkLimb(12, 13, 75.0f); // ThighL <-> CalfL <= 75cm
-                        checkLimb(13, 14, 75.0f); // CalfL <-> FootL <= 75cm
+                        if (localsValid[2] && localsValid[12] && dist3D(locals[2], locals[12]) > 75.0f) localsValid[12] = false;
+                        if (localsValid[12] && localsValid[13] && dist3D(locals[12], locals[13]) > 85.0f) localsValid[13] = false;
+                        if (localsValid[13] && localsValid[14] && dist3D(locals[13], locals[14]) > 85.0f) localsValid[14] = false;
 
                         uint8_t c2w[48] = {0};
                         ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);
 
                         int okBones = 0;
                         for (int i = 0; i < 15; i++) {
-                            if (hasLocal[i]) {
+                            if (localsValid[i]) {
                                 DSPUBGVector world = {};
                                 ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &locals[i], &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
@@ -3985,7 +4021,7 @@ static void ds_pubg_tick(void) {
                         }
 
                         // Project HeadTop for circle at vHead.Z += 7.0f (exact internal snippet logic)
-                        if (hasLocal[0]) {
+                        if (localsValid[0]) {
                             DSPUBGVector headTopLocal = locals[0];
                             headTopLocal.Z += 7.0f;
                             DSPUBGVector worldHeadTop = {};
