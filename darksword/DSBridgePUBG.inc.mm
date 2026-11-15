@@ -323,6 +323,17 @@ static uint8_t ds_pubg_read_u8(uint64_t address) {
     return value;
 }
 
+static uint16_t ds_pubg_read_u16(uint64_t address) {
+    uint16_t value = 0;
+    if (!g_dspubgVmMap || !ds_pubg_valid(address)) return 0;
+    ds_debug_read_bytes(g_dspubgVmMap, address, &value, sizeof(value));
+    return value;
+}
+
+#include "DSPhysX.hpp"
+
+static DSPUBGCamBasis s_pubgLastCamBasis = {};
+
 static int ds_pubg_ucs2_to_utf8(const uint8_t *src, int srcChars, char *out, int outCap) {
     if (!src || srcChars <= 0 || !out || outCap <= 1) return 0;
     int o = 0;
@@ -2211,6 +2222,11 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
     return true;
 }
 
+static inline bool ds_pubg_project_world_to_screen_xy(DSPUBGVector world, float &outX, float &outY) {
+    float dist = 0.0f;
+    return ds_pubg_cam_basis_project(s_pubgLastCamBasis, world, outX, outY, dist);
+}
+
 static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
     if (!meshComp || !ds_pubg_valid(meshComp) || !outC2W) return false;
     // In UE4 64-bit arm64, USceneComponent RelativeScale3D is at 0x1FC (ends at 0x208).
@@ -3251,6 +3267,11 @@ static void ds_pubg_tick(void) {
     if (!ds_pubg_cam_basis_build(camLoc, camRot, camFOV, screenW, screenH, basis)) {
         return;
     }
+    s_pubgLastCamBasis = basis;
+
+    if (g_pubgPhysXVischeck) {
+        DarkPhysX::UpdateScene(DarkPhysX::V3(camLoc.X, camLoc.Y, camLoc.Z), world, localPawn, 100.0f);
+    }
 
     DSPUBGProjectedPlayer staging[kDSPUBGMaxPlayers] = {};
     int publishedCount = 0;
@@ -3628,10 +3649,27 @@ static void ds_pubg_tick(void) {
                                 float dt = lastSubmit - lastOnScreen;
                                 bool rawVisible = (dt >= -0.02f && dt <= 0.075f) && (lastOnScreen > 0.0f);
 
-                                // Hybrid Map Obstacle Raycast Verification:
-                                // If render timestamp says visible, verify that physical static mesh obstacle boxes
-                                // do not block direct line of sight (eliminating window/wall bounding sphere leakage).
-                                if (rawVisible && s_obstacleCount > 0) {
+                                // ---------------------------------------------------------------------
+                                // Authentic NVIDIA PhysX Ray-Triangle Mesh Vischeck:
+                                // Uses real 3D building collision meshes (walls, doorways, windows, stairs)
+                                // ---------------------------------------------------------------------
+                                bool physxChecked = false;
+                                bool physxVisible = false;
+                                if (g_pubgPhysXVischeck && DarkPhysX::GetMeshCount() > 0) {
+                                    DarkPhysX::V3 rayOrig(camLoc.X, camLoc.Y, camLoc.Z);
+                                    DarkPhysX::V3 targetHead(top.X, top.Y, top.Z);
+                                    DarkPhysX::V3 targetBody(pos.X, pos.Y, pos.Z);
+
+                                    bool headLOS = DarkPhysX::LineOfSight(rayOrig, targetHead, 25.0f);
+                                    bool bodyLOS = DarkPhysX::LineOfSight(rayOrig, targetBody, 25.0f);
+
+                                    physxChecked = true;
+                                    physxVisible = (headLOS || bodyLOS);
+                                }
+
+                                if (physxChecked) {
+                                    rawVisible = physxVisible;
+                                } else if (rawVisible && s_obstacleCount > 0) {
                                     DSPUBGVector headPt = top;
                                     DSPUBGVector bodyPt = pos;
                                     if (ds_pubg_is_blocked_by_obstacle(camLoc, headPt) &&

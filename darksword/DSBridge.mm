@@ -972,6 +972,7 @@ static float g_pubgItemMaxDistance = 150.0f;
 static int g_pubgLanguage = 0; // 0 = Tiếng Việt, 1 = English
 static float g_pubgEspThickness = 1.5f; // Độ dày chung cho toàn bộ nét vẽ hiện địch
 static BOOL g_pubgEspBox = YES;
+static BOOL g_pubgPhysXVischeck = YES;
 static BOOL g_pubgEspSkeleton = YES;
 static BOOL g_pubgEspLine = YES;
 static BOOL g_pubgEspArrow = YES;

@@ -397,3 +397,21 @@ Từ 2 ảnh thực tế của người dùng:
 - **Commit**: `e3fb22c` (`feat(vischeck): implement client-side Ray-OBB static mesh obstacle intersection vischeck`).
 - **GitHub Actions Run**: [Workflow Run 43608179045](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43608179045) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 19. Triển Khai Hệ Thống Vischeck Authentic NVIDIA PhysX Ray-Triangle (Client-Side Read-Only)
+
+### A. Mục tiêu & Nguyên lý:
+1. **Trích xuất va chạm 3D thực tế của công trình (Authentic PhysX Geometry)**:
+   - Các công trình trong PUBG Mobile (tòa nhà, cửa sổ, khe tường, lan can, cầu thang) được mô phỏng chi tiết dưới dạng lưới tam giác (`PxTriangleMesh`) trong hệ thống vật lý NVIDIA PhysX 3.4.
+   - Bằng cách định vị trực tiếp `NpScene` và các diễn viên tĩnh (`NpRigidStatic`), hệ thống tự động bóc tách lưới đa giác vật lý của môi trường xung quanh người chơi mà không cần bất kỳ file map rời nào.
+
+2. **Thuật toán kiểm tra tia ngắm chi tiết (Ray-Triangle Collision Test)**:
+   - Áp dụng thuật toán giao cắt tia Ray với tam giác Möller–Trumbore kết hợp bộ lọc bao nhanh trục AABB.
+   - Bắn 2 tia đồng thời từ góc nhìn Camera tới Xương Đầu (`Head`) và Thân (`Body`) của mục tiêu:
+     - Nếu có bất kỳ mặt phẳng tam giác (tường, khung cửa, vật cản) chắn ngang $\rightarrow$ `isOccluded = true` (Màu Đỏ).
+     - Nếu tia đi lọt qua ô trống cửa sổ hoặc tầm nhìn thông suốt $\rightarrow$ `isOccluded = false` (Màu Xanh).
+
+3. **An toàn 100% Read-Only**:
+   - Toàn bộ thao tác chỉ đọc bộ nhớ ảo, hoàn toàn không can thiệp luồng game hay bộ nhớ trò chơi, tuyệt đối an toàn trước Tencent ACE.
