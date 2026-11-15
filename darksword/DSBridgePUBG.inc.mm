@@ -2849,6 +2849,9 @@ static DSPUBGObstacleBox s_obstacles[kDSPUBGMaxObstacles] = {};
 static int s_obstacleCount = 0;
 static DSPUBGVector s_lastObstacleScanLoc = { 999999.0f, 999999.0f, 999999.0f };
 static uint64_t s_obstacleLastScanTick = 0;
+// Live counters of the Actor & Shape Classification system (see section A).
+static size_t s_staticActorCount = 0;
+static size_t s_dynamicActorCount = 0;
 
 // Live informative diagnostic HUD string
 static const char* ds_pubg_get_debug_status(void) {
@@ -2866,8 +2869,9 @@ static const char* ds_pubg_get_debug_status(void) {
     }
     if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots [Vis: Dual-Layer Metal Active (%d obs)]",
-                 g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount);
+                 "PUBG: %d Enemies | %d Bots [Vis: Dual-Layer Metal Active (%d obs | %d static | %d dyn)]",
+                 g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount,
+                 (int)s_staticActorCount, (int)s_dynamicActorCount);
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -3118,9 +3122,14 @@ static bool ds_pubg_ray_intersects_box(
     return (tMin > 10.0f && tMin < len - 10.0f && tMin <= tMax);
 }
 
+// Defined in the Actor & Shape Classification section below.
+static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box);
+
 static bool ds_pubg_is_blocked_by_obstacle(const DSPUBGVector &camLoc, const DSPUBGVector &targetLoc) {
     if (s_obstacleCount <= 0) return false;
     for (int i = 0; i < s_obstacleCount; i++) {
+        // [A3] The player's own collision must never block the sight line.
+        if (ds_pubg_box_contains_local_capsule(s_obstacles[i])) continue;
         if (ds_pubg_ray_intersects_box(camLoc, targetLoc, s_obstacles[i])) {
             return true;
         }
@@ -3137,6 +3146,347 @@ static inline bool ds_pubg_ray_has_line_of_sight(const DSPUBGVector &start, cons
     }
 
     return true; // Clear line of sight
+}
+
+// ===========================================================================
+// A. ACTOR & SHAPE CLASSIFICATION SYSTEM
+// ---------------------------------------------------------------------------
+// The ESP walks thousands of level actors every frame. Instead of treating all
+// of them the same way, every actor is classified into exactly one bucket so
+// each consumer can use the cheapest strategy:
+//
+//   [A1] Static Actors   - immutable world geometry (houses, walls, terrain,
+//                          foliage). Their world transform + collision OBB is
+//                          captured ONCE and cached, so later frames cost
+//                          zero memory reads.
+//   [A2] Dynamic Actors  - everything that moves (players, bots, vehicles,
+//                          loot). Their transform matrix is refreshed every
+//                          frame so we always know where they are right now.
+//   [A3] Smart Filtering - recognises the local capsule hitbox, vehicles and
+//                          dropped weapons, and maintains a skipActors set
+//                          (self / teammates) that every scanner consults.
+// ===========================================================================
+
+enum class DSPUBGShapeKind : uint8_t {
+    None = 0,
+    Obb,      // oriented bounding box - static collision geometry
+    Capsule,  // character capsule hitbox
+    Sphere,   // pickup / loot sphere
+};
+
+enum class DSPUBGActorClass : uint8_t {
+    Unknown = 0,
+    StaticScenery,   // walls, houses, terrain, foliage
+    DynamicPawn,     // players + bots
+    DynamicVehicle,  // cars, motorcycles, boats
+    LootItem,        // dropped weapons, ammo, meds, crates
+    Ignored,         // dropped weapon / self / teammate -> skipped
+};
+
+enum : uint32_t {
+    DSPUBGActLocal    = 1u << 0,
+    DSPUBGActTeammate = 1u << 1,
+    DSPUBGActVehicle  = 1u << 2,
+    DSPUBGActDropped  = 1u << 3,
+};
+
+// --- A1. Static Actor Library -------------------------------------------------
+// Cached geometry for immutable actors. Keyed by AActor pointer, open
+// addressed, and bound to one UWorld so a map change drops the whole library.
+struct DSPUBGStaticActor {
+    uint64_t actor;
+    uint64_t component;
+    DSPUBGObstacleBox box;
+    uint64_t capturedTick;
+};
+
+static const size_t kDSPUBGStaticActorSlots = 2048;   // power of two
+static DSPUBGStaticActor s_staticActors[kDSPUBGStaticActorSlots] = {};
+static uint64_t s_staticActorWorld = 0;
+static uint64_t s_staticActorLevelSig = 0;
+
+static inline size_t ds_pubg_static_hash(uint64_t actor) {
+    return (size_t)((actor >> 4) ^ (actor >> 17)) & (kDSPUBGStaticActorSlots - 1);
+}
+
+// A new UWorld means every cached transform is stale: drop the whole library.
+static void ds_pubg_static_library_reset(uint64_t world) {
+    if (world == s_staticActorWorld) return;
+    memset(s_staticActors, 0, sizeof(s_staticActors));
+    s_staticActorCount = 0;
+    s_staticActorWorld = world;
+}
+
+// Seamless travel keeps the same UWorld but swaps the level set, so the
+// caller can force a drop when the levels change. The world binding is kept
+// so the next frame does not clear the (still empty) library again.
+static void ds_pubg_static_library_invalidate(void) {
+    memset(s_staticActors, 0, sizeof(s_staticActors));
+    s_staticActorCount = 0;
+}
+
+// Returns the slot holding the actor, or the first free slot for insertion.
+static DSPUBGStaticActor *ds_pubg_static_slot(uint64_t actor, bool &found) {
+    size_t idx = ds_pubg_static_hash(actor);
+    for (size_t probe = 0; probe < kDSPUBGStaticActorSlots; probe++) {
+        DSPUBGStaticActor &e = s_staticActors[(idx + probe) & (kDSPUBGStaticActorSlots - 1)];
+        if (e.actor == actor) { found = true; return &e; }
+        if (e.actor == 0) { found = false; return &e; }
+    }
+    found = false;
+    return nullptr;   // library full
+}
+
+// --- A2. Dynamic Actor Registry ----------------------------------------------
+// Live transform of every actor that moves. Refreshed each frame by the
+// player / vehicle / loot passes.
+struct DSPUBGDynamicActor {
+    uint64_t actor;
+    DSPUBGShapeKind shape;
+    DSPUBGActorClass actorClass;
+    uint32_t flags;
+    DSPUBGVector location;
+    DSPUBGRotator rotation;
+    DSPUBGVector scale;
+    float radius;
+    float halfHeight;
+    uint64_t lastSeenTick;
+};
+
+static const size_t kDSPUBGDynamicActorSlots = 512;   // power of two
+static DSPUBGDynamicActor s_dynamicActors[kDSPUBGDynamicActorSlots] = {};
+
+static inline size_t ds_pubg_dynamic_hash(uint64_t actor) {
+    return (size_t)((actor >> 4) ^ (actor >> 13)) & (kDSPUBGDynamicActorSlots - 1);
+}
+
+static DSPUBGDynamicActor *ds_pubg_dynamic_slot(uint64_t actor, bool &found) {
+    size_t idx = ds_pubg_dynamic_hash(actor);
+    for (size_t probe = 0; probe < kDSPUBGDynamicActorSlots; probe++) {
+        DSPUBGDynamicActor &e = s_dynamicActors[(idx + probe) & (kDSPUBGDynamicActorSlots - 1)];
+        if (e.actor == actor) { found = true; return &e; }
+        if (e.actor == 0) { found = false; return &e; }
+    }
+    found = false;
+    return nullptr;
+}
+
+// Refresh the transform matrix of a moving actor. Called every frame for each
+// player, vehicle and loot actor we can see.
+static void ds_pubg_dynamic_update(uint64_t actor,
+                                   DSPUBGShapeKind shape,
+                                   DSPUBGActorClass actorClass,
+                                   uint32_t flags,
+                                   const DSPUBGVector &location,
+                                   const DSPUBGRotator &rotation,
+                                   const DSPUBGVector &scale,
+                                   float radius,
+                                   float halfHeight) {
+    if (!actor) return;
+    bool found = false;
+    DSPUBGDynamicActor *e = ds_pubg_dynamic_slot(actor, found);
+    if (!e) return;
+    if (!found) {
+        memset(e, 0, sizeof(*e));
+        e->actor = actor;
+        s_dynamicActorCount++;
+    }
+    e->shape = shape;
+    e->actorClass = actorClass;
+    e->flags = flags;
+    e->location = location;
+    e->rotation = rotation;
+    e->scale = scale;
+    e->radius = radius;
+    e->halfHeight = halfHeight;
+    e->lastSeenTick = s_visTickCounter;
+}
+
+static DSPUBGDynamicActor *ds_pubg_dynamic_find(uint64_t actor) {
+    if (!actor) return nullptr;
+    bool found = false;
+    DSPUBGDynamicActor *e = ds_pubg_dynamic_slot(actor, found);
+    return found ? e : nullptr;
+}
+
+// Drop entries that stopped being refreshed so the registry never keeps a
+// stale transform alive.
+static void ds_pubg_dynamic_prune(void) {
+    for (size_t i = 0; i < kDSPUBGDynamicActorSlots; i++) {
+        DSPUBGDynamicActor &e = s_dynamicActors[i];
+        if (e.actor == 0) continue;
+        if ((s_visTickCounter - e.lastSeenTick) > 30) {
+            memset(&e, 0, sizeof(e));
+            if (s_dynamicActorCount) s_dynamicActorCount--;
+        }
+    }
+}
+
+// --- A3. Smart Filtering ------------------------------------------------------
+// Recognises the shapes that must never be treated as static geometry and
+// keeps the skipActors set (self / teammates) consulted by every scanner.
+struct DSPUBGLocalCapsule {
+    bool valid;
+    uint64_t component;
+    DSPUBGVector location;
+    float radius;
+    float halfHeight;
+};
+static DSPUBGLocalCapsule s_localCapsule = {};
+
+// UCapsuleComponent: CapsuleHalfHeight 0x9F8 | CapsuleRadius 0x9FC
+static const uint64_t kDSPUGCapsuleHalfHeightOffset = 0x9F8ULL;
+static const uint64_t kDSPUGCapsuleRadiusOffset = 0x9FCULL;
+static const uint64_t kDSPUBGCharacterCapsuleOffset = 0x520ULL;  // ACharacter.CapsuleComponent
+
+// skipActors set (open addressed, O(1) lookup)
+static const size_t kDSPUBGSkipActorSlots = 1024;   // power of two
+static uint64_t s_skipActors[kDSPUBGSkipActorSlots] = {};
+static size_t s_skipActorCount = 0;
+
+static inline size_t ds_pubg_skip_hash(uint64_t actor) {
+    return (size_t)((actor >> 4) ^ (actor >> 13)) & (kDSPUBGSkipActorSlots - 1);
+}
+
+static void ds_pubg_smart_skip(uint64_t actor) {
+    if (!actor) return;
+    size_t idx = ds_pubg_skip_hash(actor);
+    for (size_t probe = 0; probe < kDSPUBGSkipActorSlots; probe++) {
+        uint64_t &slot = s_skipActors[(idx + probe) & (kDSPUBGSkipActorSlots - 1)];
+        if (slot == actor) return;
+        if (slot == 0) { slot = actor; s_skipActorCount++; return; }
+    }
+}
+
+static bool ds_pubg_smart_is_skipped(uint64_t actor) {
+    if (!actor) return true;
+    size_t idx = ds_pubg_skip_hash(actor);
+    for (size_t probe = 0; probe < kDSPUBGSkipActorSlots; probe++) {
+        uint64_t slot = s_skipActors[(idx + probe) & (kDSPUBGSkipActorSlots - 1)];
+        if (slot == actor) return true;
+        if (slot == 0) return false;
+    }
+    return false;
+}
+
+// Locate the local player capsule hitbox. The capsule is the authoritative
+// collision shape of a character, so knowing it lets the vischeck ignore the
+// player's own collision and lets the renderer skip self.
+static bool ds_pubg_smart_detect_local_capsule(uint64_t localPawn) {
+    if (!localPawn || !ds_pubg_valid(localPawn)) return false;
+
+    uint64_t capsule = ds_pubg_read_ptr(localPawn + kDSPUBGCharacterCapsuleOffset);
+    if (!capsule || !ds_pubg_valid(capsule)) {
+        capsule = ds_pubg_read_ptr(localPawn + 0x180ULL);   // RootComponent fallback
+    }
+    if (!capsule || !ds_pubg_valid(capsule)) return false;
+
+    DSPUBGVector loc = {};
+    if (!ds_pubg_read(capsule + kDSPUBGSceneCompRelativeLocOffset, &loc, sizeof(loc))) return false;
+    if (isnan(loc.X) || isnan(loc.Y) || isnan(loc.Z)) return false;
+
+    float halfHeight = ds_pubg_read_f32(capsule + kDSPUGCapsuleHalfHeightOffset);
+    float radius = ds_pubg_read_f32(capsule + kDSPUGCapsuleRadiusOffset);
+    if (!isfinite(halfHeight) || halfHeight <= 0.0f || halfHeight > 2000.0f) return false;
+    if (!isfinite(radius) || radius <= 0.0f || radius > 500.0f) return false;
+
+    s_localCapsule.valid = true;
+    s_localCapsule.component = capsule;
+    s_localCapsule.location = loc;
+    s_localCapsule.radius = radius;
+    s_localCapsule.halfHeight = halfHeight;
+    return true;
+}
+
+// Vehicles move, so they must never be baked into the static geometry cache.
+static inline bool ds_pubg_smart_is_vehicle_name(const char *name) {
+    if (!name || !name[0]) return false;
+    return (strstr(name, "VH_") || strstr(name, "Vehicle") ||
+            strstr(name, "Jeep") || strstr(name, "UAZ") ||
+            strstr(name, "Sedan") || strstr(name, "Dacia") ||
+            strstr(name, "Buggy") || strstr(name, "Truck") ||
+            strstr(name, "Rony") || strstr(name, "Motorcycle") ||
+            strstr(name, "Scooter") || strstr(name, "Boat") ||
+            strstr(name, "Helicopter") || strstr(name, "Airdrop") ||
+            strstr(name, "Parachute") || strstr(name, "Bike"));
+}
+
+// Dropped weapons are loot on the floor: they are not world geometry and must
+// not block the line of sight.
+static inline bool ds_pubg_smart_is_dropped_weapon_name(const char *name) {
+    if (!name || !name[0]) return false;
+    if (strstr(name, "PickUp") || strstr(name, "Pickup") || strstr(name, "Wrapper")) {
+        return (strstr(name, "Weapon") || strstr(name, "Gun") ||
+                strstr(name, "AWM") || strstr(name, "AKM") || strstr(name, "M416") ||
+                strstr(name, "DP28") || strstr(name, "Kar98") || strstr(name, "SCAR") ||
+                strstr(name, "UMP") || strstr(name, "SKS") || strstr(name, "S686"));
+    }
+    return false;
+}
+
+// Classify one actor for the static scanner: scenery that is neither a
+// vehicle nor a dropped weapon becomes static geometry.
+static inline DSPUBGActorClass ds_pubg_smart_classify_scenery(const char *name) {
+    if (!name || !name[0]) return DSPUBGActorClass::Unknown;
+    if (ds_pubg_smart_is_vehicle_name(name)) return DSPUBGActorClass::DynamicVehicle;
+    if (ds_pubg_smart_is_dropped_weapon_name(name)) return DSPUBGActorClass::Ignored;
+    if (ds_pubg_is_scenery_name(name)) return DSPUBGActorClass::StaticScenery;
+    return DSPUBGActorClass::Unknown;
+}
+
+// Called once per tick, before any scanner runs: refreshes the skip set,
+// detects the local capsule and rebinds the static library to this world.
+static void ds_pubg_smart_begin_frame(uint64_t world, uint64_t localPawn) {
+    memset(s_skipActors, 0, sizeof(s_skipActors));
+    s_skipActorCount = 0;
+
+    s_localCapsule.valid = false;
+    s_localCapsule.component = 0;
+    s_localCapsule.location = DSPUBGVector{};
+    s_localCapsule.radius = 0.0f;
+    s_localCapsule.halfHeight = 0.0f;
+
+    ds_pubg_static_library_reset(world);
+
+    if (localPawn && ds_pubg_valid(localPawn)) {
+        ds_pubg_smart_skip(localPawn);
+        ds_pubg_smart_detect_local_capsule(localPawn);
+
+        // [A2] The local player is a dynamic actor too: register its capsule
+        // so the shape registry always knows where we stand.
+        if (s_localCapsule.valid) {
+            DSPUBGRotator localRot = {};
+            DSPUBGVector localScale = { 1.0f, 1.0f, 1.0f };
+            uint64_t capComp = s_localCapsule.component;
+            if (capComp && ds_pubg_valid(capComp)) {
+                ds_pubg_read(capComp + 0x1F0ULL, &localRot, sizeof(localRot));
+                ds_pubg_read(capComp + 0x1FCULL, &localScale, sizeof(localScale));
+            }
+            ds_pubg_dynamic_update(localPawn, DSPUBGShapeKind::Capsule,
+                                   DSPUBGActorClass::DynamicPawn, DSPUBGActLocal,
+                                   s_localCapsule.location, localRot, localScale,
+                                   s_localCapsule.radius, s_localCapsule.halfHeight);
+        }
+    }
+}
+
+// True when the box contains the local capsule: that is the player's own
+// collision and must never block the line of sight to an enemy.
+static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box) {
+    if (!s_localCapsule.valid) return false;
+    DSPUBGVector uX = {}, uY = {}, uZ = {};
+    ds_pubg_rotator_to_axes(box.rotation, uX, uY, uZ);
+    DSPUBGVector d = { s_localCapsule.location.X - box.center.X,
+                       s_localCapsule.location.Y - box.center.Y,
+                       s_localCapsule.location.Z - box.center.Z };
+    float localX = d.X * uX.X + d.Y * uX.Y + d.Z * uX.Z;
+    float localY = d.X * uY.X + d.Y * uY.Y + d.Z * uY.Z;
+    float localZ = d.X * uZ.X + d.Y * uZ.Y + d.Z * uZ.Z;
+    float r = s_localCapsule.radius + 2.0f;
+    float h = s_localCapsule.halfHeight + 2.0f;
+    return fabsf(localX) <= box.extent.X + r &&
+           fabsf(localY) <= box.extent.Y + r &&
+           fabsf(localZ) <= box.extent.Z + h;
 }
 
 static void ds_pubg_tick(void) {
@@ -3239,6 +3589,10 @@ static void ds_pubg_tick(void) {
     }
 
     uint64_t localPawn = playerController ? ds_pubg_read_ptr(playerController + kDSPUBGPlayerControllerPawnOffset) : 0;
+
+    // [A3] Refresh the smart filters for this frame: skip set, local capsule
+    // hitbox and the static geometry library binding.
+    ds_pubg_smart_begin_frame(world, localPawn);
 
     // Check if player is actually in an active match (filters out Lobby, MainCity, Frontend)
     if (!ds_pubg_is_in_match(world, playerController, localPawn)) {
@@ -3491,6 +3845,25 @@ static void ds_pubg_tick(void) {
         // 6. Team filter:
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
         if (localTeamId > 0 && teamId == localTeamId) {
+            // [A3] Teammate: add it to the skip set so no scanner treats it as
+            // geometry or as a loot actor, but keep it in the dynamic registry
+            // so we still know where our squad is.
+            ds_pubg_smart_skip(pawn);
+            uint64_t mateRoot = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
+            if (!mateRoot || !ds_pubg_valid(mateRoot)) {
+                mateRoot = ds_pubg_read_ptr(pawn + 0x180ULL);
+            }
+            DSPUBGVector mateLoc = {};
+            DSPUBGRotator mateRot = {};
+            DSPUBGVector mateScale = { 1.0f, 1.0f, 1.0f };
+            if (mateRoot && ds_pubg_valid(mateRoot)) {
+                ds_pubg_read(mateRoot + kDSPUBGSceneCompRelativeLocOffset, &mateLoc, sizeof(mateLoc));
+                ds_pubg_read(mateRoot + 0x1F0ULL, &mateRot, sizeof(mateRot));
+                ds_pubg_read(mateRoot + 0x1FCULL, &mateScale, sizeof(mateScale));
+            }
+            ds_pubg_dynamic_update(pawn, DSPUBGShapeKind::Capsule,
+                                   DSPUBGActorClass::DynamicPawn, DSPUBGActTeammate,
+                                   mateLoc, mateRot, mateScale, 0.0f, 0.0f);
             return false;
         }
         if (teamId < 0 || teamId > 200000000) {
@@ -3515,6 +3888,31 @@ static void ds_pubg_tick(void) {
                 rootLoc.Y += parentLoc.Y;
                 rootLoc.Z += parentLoc.Z;
             }
+        }
+
+        // [A2] Dynamic actor: refresh the live transform of this pawn together
+        // with its capsule hitbox so the shape registry always knows where the
+        // character is right now.
+        {
+            float capRadius = 0.0f;
+            float capHalfHeight = 0.0f;
+            uint64_t capComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterCapsuleOffset);
+            if (capComp && ds_pubg_valid(capComp)) {
+                capRadius = ds_pubg_read_f32(capComp + kDSPUGCapsuleRadiusOffset);
+                capHalfHeight = ds_pubg_read_f32(capComp + kDSPUGCapsuleHalfHeightOffset);
+                if (!isfinite(capRadius) || capRadius < 0.0f) capRadius = 0.0f;
+                if (!isfinite(capHalfHeight) || capHalfHeight < 0.0f) capHalfHeight = 0.0f;
+            }
+            DSPUBGRotator pawnRot = {};
+            DSPUBGVector pawnScale = { 1.0f, 1.0f, 1.0f };
+            if (rootComp && ds_pubg_valid(rootComp)) {
+                ds_pubg_read(rootComp + 0x1F0ULL, &pawnRot, sizeof(pawnRot));
+                ds_pubg_read(rootComp + 0x1FCULL, &pawnScale, sizeof(pawnScale));
+            }
+            ds_pubg_dynamic_update(pawn, DSPUBGShapeKind::Capsule,
+                                   DSPUBGActorClass::DynamicPawn, 0u,
+                                   rootLoc, pawnRot, pawnScale,
+                                   capRadius, capHalfHeight);
         }
 
         DSPUBGRotator actorRot = {};
@@ -4439,6 +4837,9 @@ static void ds_pubg_tick(void) {
             }
         }
 
+        // [A3] Smart filter: never list self or a teammate as loot.
+        if (ds_pubg_smart_is_skipped(actor)) return;
+
         // 1. Fast RootComponent and Location check FIRST (filters out 95% of non-spatial/offscreen actors without GNames)
         DSPUBGVector rootLoc = {};
         bool hasLoc = false;
@@ -4602,6 +5003,30 @@ static void ds_pubg_tick(void) {
         if (cat == DSPUBGItemCategoryVehicle) {
             stagedVehicleCount++;
         }
+
+        // [A2] Dynamic actor: loot and vehicles are moving objects, refresh
+        // their transform so the shape registry stays current.
+        {
+            uint32_t dynFlags = 0;
+            DSPUBGShapeKind dynShape = DSPUBGShapeKind::Sphere;
+            DSPUBGActorClass dynClass = DSPUBGActorClass::LootItem;
+            if (cat == DSPUBGItemCategoryVehicle) {
+                dynFlags = DSPUBGActVehicle;
+                dynShape = DSPUBGShapeKind::Obb;
+                dynClass = DSPUBGActorClass::DynamicVehicle;
+            } else if (cat == DSPUBGItemCategoryWeapon) {
+                dynFlags = DSPUBGActDropped;
+                dynClass = DSPUBGActorClass::Ignored;
+            }
+            DSPUBGRotator itemRot = {};
+            DSPUBGVector itemScale = { 1.0f, 1.0f, 1.0f };
+            if (rootComp && ds_pubg_valid(rootComp)) {
+                ds_pubg_read(rootComp + 0x1F0ULL, &itemRot, sizeof(itemRot));
+                ds_pubg_read(rootComp + 0x1FCULL, &itemScale, sizeof(itemScale));
+            }
+            ds_pubg_dynamic_update(actor, dynShape, dynClass, dynFlags, rootLoc,
+                                   itemRot, itemScale, 0.0f, 0.0f);
+        }
     };
 
     // -------------------------------------------------------------
@@ -4618,6 +5043,17 @@ static void ds_pubg_tick(void) {
 
         static DSPUBGObstacleBox s_obstaclesStaging[kDSPUBGMaxObstacles];
         int stagedCount = 0;
+
+        // [A1] The cached geometry belongs to one level set: seamless travel
+        // swaps the levels while keeping the same UWorld, so the library is
+        // dropped whenever the level signature changes.
+        uint64_t levelSig = (uint64_t)level ^
+                            ((uint64_t)ds_pubg_read_ptr(world + 0x468ULL) << 1) ^
+                            ((uint64_t)ds_pubg_read_ptr(world + 0x440ULL) << 2);
+        if (levelSig != s_staticActorLevelSig) {
+            s_staticActorLevelSig = levelSig;
+            ds_pubg_static_library_invalidate();
+        }
 
         uint64_t seenLevels[64] = {0};
         int seenCount = 0;
@@ -4652,26 +5088,78 @@ static void ds_pubg_tick(void) {
 
             for (uint32_t i = 0; i < actorsCount && stagedCount < kDSPUBGMaxObstacles; i++) {
                 uint64_t actor = actBuf[i];
-                if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
+                if (!actor || !ds_pubg_valid(actor)) continue;
+
+                // [A3] Smart filter: self, teammates and skipped actors are never geometry.
+                if (ds_pubg_smart_is_skipped(actor)) continue;
+
+                // [A2] Already registered as a moving actor (player, vehicle, loot):
+                // it must never be promoted to static geometry.
+                if (ds_pubg_dynamic_find(actor)) continue;
+
+                // [A1] Static library: geometry is captured once, later passes reuse it
+                // without touching the target process at all. It is refreshed
+                // periodically because a few "scenery" actors (doors, platforms)
+                // can actually move.
+                bool staticFound = false;
+                DSPUBGStaticActor *sEntry = ds_pubg_static_slot(actor, staticFound);
+                const uint64_t kDSPUBGStaticCacheTTL = 60;   // ticks
+                if (staticFound && (s_visTickCounter - sEntry->capturedTick) <= kDSPUBGStaticCacheTTL) {
+                    float dx = sEntry->box.center.X - camLoc.X;
+                    float dy = sEntry->box.center.Y - camLoc.Y;
+                    float dz = sEntry->box.center.Z - camLoc.Z;
+                    float dSq = dx * dx + dy * dy + dz * dz;
+                    if (dSq < (25000.0f * 25000.0f)) { // 250 meters
+                        s_obstaclesStaging[stagedCount++] = sEntry->box;
+                    }
+                    continue;
+                }
 
                 uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
                 DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
 
                 bool isScenery = false;
+                char aName[64] = {0};
                 if (cEntry.actor == actor) {
                     isScenery = cEntry.isScenery;
                     if (!isScenery) continue; // Skip known non-scenery actors
                 } else {
-                    char aName[64] = {0};
-                    if (ds_pubg_get_actor_name(actor, aName, sizeof(aName))) {
-                        if (ds_pubg_is_scenery_name(aName)) {
-                            isScenery = true;
-                            cEntry.actor = actor;
-                            cEntry.isScenery = true;
-                            cEntry.isPawn = false;
-                            cEntry.itemCat = DSPUBGItemCategoryNone;
+                    if (!ds_pubg_get_actor_name(actor, aName, sizeof(aName))) continue;
+
+                    // [A3] Classify before it can become static geometry: vehicles move
+                    // and dropped weapons are loot, so both are skipped here.
+                    DSPUBGActorClass aClass = ds_pubg_smart_classify_scenery(aName);
+                    if (aClass != DSPUBGActorClass::StaticScenery) {
+                        cEntry.actor = actor;
+                        cEntry.isScenery = false;
+                        cEntry.isPawn = false;
+                        cEntry.itemCat = DSPUBGItemCategoryNone;
+                        cEntry.vCommon = 0;
+                        if (aClass == DSPUBGActorClass::DynamicVehicle) {
+                            // [A2] Vehicle: register it as a moving actor instead.
+                            uint64_t vRoot = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+                            DSPUBGVector vLoc = {};
+                            DSPUBGRotator vRot = {};
+                            DSPUBGVector vScale = { 1.0f, 1.0f, 1.0f };
+                            if (vRoot && ds_pubg_valid(vRoot)) {
+                                ds_pubg_read(vRoot + kDSPUBGSceneCompRelativeLocOffset, &vLoc, sizeof(vLoc));
+                                ds_pubg_read(vRoot + 0x1F0ULL, &vRot, sizeof(vRot));
+                                ds_pubg_read(vRoot + 0x1FCULL, &vScale, sizeof(vScale));
+                            }
+                            ds_pubg_dynamic_update(actor, DSPUBGShapeKind::Obb,
+                                                   DSPUBGActorClass::DynamicVehicle,
+                                                   DSPUBGActVehicle, vLoc, vRot, vScale,
+                                                   0.0f, 0.0f);
                         }
+                        continue;
                     }
+
+                    isScenery = true;
+                    cEntry.actor = actor;
+                    cEntry.isScenery = true;
+                    cEntry.isPawn = false;
+                    cEntry.itemCat = DSPUBGItemCategoryNone;
+                    cEntry.vCommon = 0;
                 }
 
                 if (isScenery) {
@@ -4689,6 +5177,14 @@ static void ds_pubg_tick(void) {
                                 if (!smc || !ds_pubg_valid(smc)) smc = rootComp;
                                 if (ds_pubg_extract_obstacle_box(smc, ob)) {
                                     s_obstaclesStaging[stagedCount++] = ob;
+                                    // Cache the geometry: static actors never move.
+                                    if (sEntry) {
+                                        if (!staticFound) s_staticActorCount++;
+                                        sEntry->actor = actor;
+                                        sEntry->component = smc;
+                                        sEntry->box = ob;
+                                        sEntry->capturedTick = s_visTickCounter;
+                                    }
                                 }
                             }
                         }
@@ -4892,4 +5388,8 @@ static void ds_pubg_tick(void) {
             memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
         }
     }
+
+    // [A2] Drop dynamic actors that stopped being refreshed so the registry
+    // never keeps a stale transform alive.
+    ds_pubg_dynamic_prune();
 }
