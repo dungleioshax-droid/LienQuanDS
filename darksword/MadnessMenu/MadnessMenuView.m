@@ -278,7 +278,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.contactBtn.hidden = YES;
     [self.titleBox addSubview:self.contactBtn];
 
-    // 5. Handles: @DLX07  MADNESS~CHANNEL
+    // 5. Handles: @DLX07  DARKSWORD~KERNEL
     self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(224, 3, 72, 18)];
     self.handleMajed.text = @"@DLX07";
     self.handleMajed.textColor = UIColor.whiteColor;
@@ -287,8 +287,8 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleMajed.hidden = YES;
     [self.titleBox addSubview:self.handleMajed];
 
-    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(302, 3, 140, 18)];
-    self.handleChan.text = @"MADNESS~CHANNEL";
+    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(302, 3, 150, 18)];
+    self.handleChan.text = @"DARKSWORD~KERNEL";
     self.handleChan.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
     self.handleChan.font = [UIFont boldSystemFontOfSize:9.5];
     self.handleChan.textAlignment = NSTextAlignmentLeft;
