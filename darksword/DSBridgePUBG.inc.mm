@@ -158,7 +158,15 @@ static inline bool ds_pubg_is_scenery_name(const char *name) {
             strstr(name, "Trace") || strstr(name, "Lobby") ||
             strstr(name, "MainCity") || strstr(name, "Preview") ||
             strstr(name, "Avatar") || strstr(name, "PetAvatar") ||
-            strstr(name, "LobbyModel") || strstr(name, "DefaultPhysicsVolume"));
+            strstr(name, "LobbyModel") || strstr(name, "DefaultPhysicsVolume") ||
+            strstr(name, "Spawner") || strstr(name, "SpawnPoint") ||
+            strstr(name, "SpawnPad") || strstr(name, "Terminal") ||
+            strstr(name, "Station") || strstr(name, "Manager") ||
+            strstr(name, "Stand") || strstr(name, "Table") ||
+            strstr(name, "Board") || strstr(name, "Target") ||
+            strstr(name, "Guide") || strstr(name, "Button") ||
+            strstr(name, "Widget") || strstr(name, "UI") ||
+            strstr(name, "SeatComponent") || strstr(name, "WheelComponent"));
 }
 
 // Precomputes RGBA color and priority for 120 FPS zero-overhead rendering
@@ -692,12 +700,27 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
                         (strcasestr(name, "WheelComponent") != nullptr) ||
                         (strcasestr(name, "VehicleWheel") != nullptr) ||
                         (strcasestr(name, "SeatComponent") != nullptr) ||
+                        (strcasestr(name, "VehicleSeat") != nullptr) ||
                         (strcasestr(name, "Spawner") != nullptr) ||
+                        (strcasestr(name, "SpawnPoint") != nullptr) ||
+                        (strcasestr(name, "SpawnPad") != nullptr) ||
+                        (strcasestr(name, "Spawn") != nullptr) ||
+                        (strcasestr(name, "Terminal") != nullptr) ||
+                        (strcasestr(name, "Station") != nullptr) ||
+                        (strcasestr(name, "Manager") != nullptr) ||
+                        (strcasestr(name, "Stand") != nullptr) ||
+                        (strcasestr(name, "Table") != nullptr) ||
+                        (strcasestr(name, "Board") != nullptr) ||
                         (strcasestr(name, "Audio") != nullptr) ||
                         (strcasestr(name, "Sound") != nullptr) ||
                         (strcasestr(name, "Decal") != nullptr) ||
                         (strcasestr(name, "Weapon") != nullptr) ||
-                        (strcasestr(name, "UI") != nullptr);
+                        (strcasestr(name, "Trigger") != nullptr) ||
+                        (strcasestr(name, "Target") != nullptr) ||
+                        (strcasestr(name, "Guide") != nullptr) ||
+                        (strcasestr(name, "Button") != nullptr) ||
+                        (strcasestr(name, "UI") != nullptr) ||
+                        (strcasestr(name, "Widget") != nullptr);
     if (!isNonVehicle) {
         if (strcasestr(name, "Jeep") || strcasestr(name, "UAZ")) {
             snprintf(outDisplay, outCap, "Xe UAZ");
@@ -789,10 +812,6 @@ static DSPUBGItemCategory ds_pubg_classify_item(const char *name, char *outDispl
         }
         if (strcasestr(name, "ATV")) {
             snprintf(outDisplay, outCap, "Xe ATV");
-            return DSPUBGItemCategoryVehicle;
-        }
-        if (strcasestr(name, "VH_") || strcasestr(name, "WheeledVehicle") || strcasestr(name, "Vehicle_")) {
-            snprintf(outDisplay, outCap, "Xe Ô Tô");
             return DSPUBGItemCategoryVehicle;
         }
     }
@@ -1324,10 +1343,6 @@ static DSPUBGItemCategory ds_pubg_classify_vehicle_type(uint8_t vtype, char *out
             snprintf(outDisplay, outCap, "Xe Bán Tải");
             return DSPUBGItemCategoryVehicle;
         default:
-            if (vtype > 0 && vtype <= 50) {
-                snprintf(outDisplay, outCap, "Xe Ô Tô");
-                return DSPUBGItemCategoryVehicle;
-            }
             break;
     }
     return DSPUBGItemCategoryNone;
@@ -1429,10 +1444,6 @@ static DSPUBGItemCategory ds_pubg_classify_vehicle_shape(uint8_t shape, char *ou
             snprintf(outDisplay, outCap, "Xe Cảnh Sát");
             return DSPUBGItemCategoryVehicle;
         default:
-            if (shape > 0 && shape <= 125) {
-                snprintf(outDisplay, outCap, "Xe Ô Tô");
-                return DSPUBGItemCategoryVehicle;
-            }
             break;
     }
     return DSPUBGItemCategoryNone;
@@ -1481,97 +1492,114 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, const char *prel
             strcasestr(actorName, "Flash") || strcasestr(actorName, "Explo") ||
             strcasestr(actorName, "Fire") || strcasestr(actorName, "Flame") ||
             strcasestr(actorName, "Trigger") || strcasestr(actorName, "Spawner") ||
+            strcasestr(actorName, "SpawnPoint") || strcasestr(actorName, "SpawnPad") ||
+            strcasestr(actorName, "Spawn") || strcasestr(actorName, "Terminal") ||
+            strcasestr(actorName, "Station") || strcasestr(actorName, "Manager") ||
+            strcasestr(actorName, "Stand") || strcasestr(actorName, "Table") ||
+            strcasestr(actorName, "Board") || strcasestr(actorName, "Target") ||
+            strcasestr(actorName, "Guide") || strcasestr(actorName, "Button") ||
+            strcasestr(actorName, "Widget") || strcasestr(actorName, "UI") ||
+            strcasestr(actorName, "Seat") || strcasestr(actorName, "Wheel") ||
             strcasestr(actorName, "Collision") || strcasestr(actorName, "Physics")) {
             return DSPUBGItemCategoryNone;
         }
 
         // 1. Vehicle check by name
-        bool isVehicleActor = (strcasestr(actorName, "Vehicle") != nullptr) ||
-                              (strcasestr(actorName, "VH_") != nullptr) ||
-                              (strcasestr(actorName, "Jeep") != nullptr) ||
-                              (strcasestr(actorName, "UAZ") != nullptr) ||
-                              (strcasestr(actorName, "Dacia") != nullptr) ||
-                              (strcasestr(actorName, "Sedan") != nullptr) ||
-                              (strcasestr(actorName, "Buggy") != nullptr) ||
-                              (strcasestr(actorName, "Motorcycle") != nullptr) ||
-                              (strcasestr(actorName, "Motorbike") != nullptr) ||
-                              (strcasestr(actorName, "Bike") != nullptr) ||
-                              (strcasestr(actorName, "Scooter") != nullptr) ||
-                              (strcasestr(actorName, "TukTuk") != nullptr) ||
-                              (strcasestr(actorName, "MiniBus") != nullptr) ||
-                              (strcasestr(actorName, "Bus_") != nullptr) ||
-                              (strcasestr(actorName, "PG117") != nullptr) ||
-                              (strcasestr(actorName, "Boat") != nullptr) ||
-                              (strcasestr(actorName, "Cano") != nullptr) ||
-                              (strcasestr(actorName, "AquaRail") != nullptr) ||
-                              (strcasestr(actorName, "JetSki") != nullptr) ||
-                              (strcasestr(actorName, "BRDM") != nullptr) ||
-                              (strcasestr(actorName, "Coupe") != nullptr) ||
-                              (strcasestr(actorName, "MonsterTruck") != nullptr) ||
-                              (strcasestr(actorName, "BigFoot") != nullptr) ||
-                              (strcasestr(actorName, "Mirado") != nullptr) ||
-                              (strcasestr(actorName, "Lada") != nullptr) ||
-                              (strcasestr(actorName, "Snowmobile") != nullptr) ||
-                              (strcasestr(actorName, "Snowbike") != nullptr) ||
-                              (strcasestr(actorName, "Bicycle") != nullptr) ||
-                              (strcasestr(actorName, "Tank") != nullptr) ||
-                              (strcasestr(actorName, "Helicopter") != nullptr) ||
-                              (strcasestr(actorName, "DirectFly") != nullptr) ||
-                              (strcasestr(actorName, "Lamborghini") != nullptr) ||
-                              (strcasestr(actorName, "Tesla") != nullptr) ||
-                              (strcasestr(actorName, "ModelY") != nullptr) ||
-                              (strcasestr(actorName, "UTV") != nullptr) ||
-                              (strcasestr(actorName, "ATV") != nullptr) ||
-                              (strcasestr(actorName, "Rony") != nullptr);
+        bool isNonVehicle = (strcasestr(actorName, "Wheel") != nullptr) ||
+                            (strcasestr(actorName, "Seat") != nullptr) ||
+                            (strcasestr(actorName, "Spawner") != nullptr) ||
+                            (strcasestr(actorName, "SpawnPoint") != nullptr) ||
+                            (strcasestr(actorName, "SpawnPad") != nullptr) ||
+                            (strcasestr(actorName, "Spawn") != nullptr) ||
+                            (strcasestr(actorName, "Terminal") != nullptr) ||
+                            (strcasestr(actorName, "Station") != nullptr) ||
+                            (strcasestr(actorName, "Manager") != nullptr) ||
+                            (strcasestr(actorName, "Stand") != nullptr) ||
+                            (strcasestr(actorName, "Table") != nullptr) ||
+                            (strcasestr(actorName, "Board") != nullptr) ||
+                            (strcasestr(actorName, "Audio") != nullptr) ||
+                            (strcasestr(actorName, "Sound") != nullptr) ||
+                            (strcasestr(actorName, "Decal") != nullptr) ||
+                            (strcasestr(actorName, "Weapon") != nullptr) ||
+                            (strcasestr(actorName, "Trigger") != nullptr) ||
+                            (strcasestr(actorName, "Target") != nullptr) ||
+                            (strcasestr(actorName, "Guide") != nullptr) ||
+                            (strcasestr(actorName, "Button") != nullptr) ||
+                            (strcasestr(actorName, "UI") != nullptr) ||
+                            (strcasestr(actorName, "Widget") != nullptr);
 
-        if (isVehicleActor) {
+        if (!isNonVehicle) {
             if (strcasestr(actorName, "Jeep") || strcasestr(actorName, "UAZ")) {
                 snprintf(outDisplay, outCap, "Xe UAZ");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Sedan") || strcasestr(actorName, "Dacia")) {
                 snprintf(outDisplay, outCap, "Xe Dacia");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Buggy")) {
                 snprintf(outDisplay, outCap, "Xe Buggy");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "VH_PickUp") || strcasestr(actorName, "VH_Pickup") || (strcasestr(actorName, "Truck") && !strcasestr(actorName, "Monster")) || strcasestr(actorName, "Rony")) {
                 snprintf(outDisplay, outCap, "Xe Bán Tải");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Motorcycle") || strcasestr(actorName, "Motorbike") || strcasestr(actorName, "VH_Motor") || strcasestr(actorName, "Bike")) {
                 snprintf(outDisplay, outCap, "Xe Máy");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Scooter")) {
                 snprintf(outDisplay, outCap, "Xe Scooter");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "TukTuk")) {
                 snprintf(outDisplay, outCap, "Xe TukTuk");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "MiniBus") || strcasestr(actorName, "Bus_")) {
                 snprintf(outDisplay, outCap, "Xe MiniBus");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "PG117") || strcasestr(actorName, "Boat") || strcasestr(actorName, "Cano")) {
                 snprintf(outDisplay, outCap, "Thuyền Cano");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "AquaRail") || strcasestr(actorName, "JetSki")) {
                 snprintf(outDisplay, outCap, "Moto Nước");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "BRDM")) {
                 snprintf(outDisplay, outCap, "Xe BRDM");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Coupe") || strcasestr(actorName, "CoupeRB")) {
                 snprintf(outDisplay, outCap, "Xe Coupe RB");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Mirado")) {
                 snprintf(outDisplay, outCap, "Xe Mirado");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "MonsterTruck") || strcasestr(actorName, "BigFoot")) {
                 snprintf(outDisplay, outCap, "Xe Quái Thú");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Lada")) {
                 snprintf(outDisplay, outCap, "Xe Lada Niva");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Snowmobile") || strcasestr(actorName, "Snowbike")) {
                 snprintf(outDisplay, outCap, "Xe Tuyết");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Bicycle")) {
                 snprintf(outDisplay, outCap, "Xe Đạp");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Tank")) {
                 snprintf(outDisplay, outCap, "Xe Tăng");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Helicopter") || strcasestr(actorName, "DirectFly")) {
                 snprintf(outDisplay, outCap, "Trực Thăng");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Lamborghini")) {
                 snprintf(outDisplay, outCap, "Xe Lamborghini");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "Tesla") || strcasestr(actorName, "ModelY")) {
                 snprintf(outDisplay, outCap, "Xe Model Y");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "UTV")) {
                 snprintf(outDisplay, outCap, "Xe UTV");
+                return DSPUBGItemCategoryVehicle;
             } else if (strcasestr(actorName, "ATV")) {
                 snprintf(outDisplay, outCap, "Xe ATV");
-            } else {
+                return DSPUBGItemCategoryVehicle;
+            } else if (strcasestr(actorName, "VH_") || strcasestr(actorName, "Vehicle")) {
+                // Secondary check via vehicle shape / vtype
                 uint8_t shape = ds_pubg_read_u8(actor + 0x70DULL);
                 if (shape > 0 && shape <= 125) {
                     DSPUBGItemCategory cat = ds_pubg_classify_vehicle_shape(shape, outDisplay, outCap);
@@ -1582,9 +1610,7 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, const char *prel
                     DSPUBGItemCategory cat = ds_pubg_classify_vehicle_type(vtype, outDisplay, outCap);
                     if (cat != DSPUBGItemCategoryNone) return cat;
                 }
-                snprintf(outDisplay, outCap, "Xe Ô Tô");
             }
-            return DSPUBGItemCategoryVehicle;
         }
 
         // 2. AirDrop / DeathBox / Drop check by name
@@ -1685,8 +1711,6 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, const char *prel
                 DSPUBGItemCategory cat = ds_pubg_classify_vehicle_type(vtype, outDisplay, outCap);
                 if (cat != DSPUBGItemCategoryNone) return cat;
             }
-            snprintf(outDisplay, outCap, "Xe Ô Tô");
-            return DSPUBGItemCategoryVehicle;
         }
     }
 
