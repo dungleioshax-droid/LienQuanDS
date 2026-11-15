@@ -1503,9 +1503,13 @@ static void ds_hosted_apply_pubg(void) {
                             !isnan(vx) && !isinf(vx) && !isnan(vy) && !isinf(vy) &&
                             fabsf(ux) < 10000.0f && fabsf(uy) < 10000.0f &&
                             fabsf(vx) < 10000.0f && fabsf(vy) < 10000.0f) {
-                            [skelPath moveToPoint:CGPointMake(ux, uy)];
-                            [skelPath addLineToPoint:CGPointMake(vx, vy)];
-                            drawnLines++;
+                            float segDist = hypotf(ux - vx, uy - vy);
+                            float maxAllowed = fmaxf(fmaxf(p.boxHeight, p.boxWidth) * 0.85f, 60.0f);
+                            if (segDist <= maxAllowed) {
+                                [skelPath moveToPoint:CGPointMake(ux, uy)];
+                                [skelPath addLineToPoint:CGPointMake(vx, vy)];
+                                drawnLines++;
+                            }
                         }
                     }
                 }

@@ -3892,16 +3892,27 @@ static void ds_pubg_tick(void) {
                             bHead = 6; bNeck = 5; bPelvis = 1;
 
                             // Right Arm: UpperArm=13, LowerArm=15, Hand=16
-                            bUprR = 13; bLwrR = 15; bHandR = 16;
-
                             // Left Arm: UpperArm=34, LowerArm=36, Hand=37
+                            bUprR = 13; bLwrR = 15; bHandR = 16;
                             bUprL = 34; bLwrL = 36; bHandL = 37;
+                            DSPUBGVector armA = {}, armB = {};
+                            if (getBoneLocal(13, armA) && getBoneLocal(34, armB)) {
+                                if (armA.Y < armB.Y) {
+                                    bUprR = 34; bLwrR = 36; bHandR = 37;
+                                    bUprL = 13; bLwrL = 15; bHandL = 16;
+                                }
+                            }
 
-                            // Right Leg: Thigh=57, Calf=58, Foot=59
-                            bThighR = 57; bCalfR = 58; bFootR = 59;
-
-                            // Left Leg: Thigh=53, Calf=54, Foot=55
-                            bThighL = 53; bCalfL = 54; bFootL = 55;
+                            // Dynamic Y-axis leg determination between chain {55, 56, 57} and {59, 60, 61}
+                            bThighR = 55; bCalfR = 56; bFootR = 57;
+                            bThighL = 59; bCalfL = 60; bFootL = 61;
+                            DSPUBGVector legA = {}, legB = {};
+                            if (getBoneLocal(55, legA) && getBoneLocal(59, legB)) {
+                                if (legA.Y < legB.Y) {
+                                    bThighR = 59; bCalfR = 60; bFootR = 61;
+                                    bThighL = 55; bCalfL = 56; bFootL = 57;
+                                }
+                            }
                         }
 
                         const int jointIndices[15] = {
@@ -3912,16 +3923,59 @@ static void ds_pubg_tick(void) {
                             bThighL, bCalfL, bFootL
                         };
 
+                        DSPUBGVector locals[15] = {};
+                        bool hasLocal[15] = {false};
+                        for (int i = 0; i < 15; i++) {
+                            hasLocal[i] = getBoneLocal(jointIndices[i], locals[i]);
+                        }
+
+                        // Anatomical 3D distance validation in local coordinate space (UE4 centimeters)
+                        // If any child joint exceeds realistic anatomical distance from parent joint, reject it.
+                        auto checkLimb = [&](int parentIdx, int childIdx, float maxDist) {
+                            if (!hasLocal[parentIdx]) {
+                                hasLocal[childIdx] = false;
+                                return;
+                            }
+                            if (hasLocal[childIdx]) {
+                                float d = dist3D(locals[parentIdx], locals[childIdx]);
+                                if (d > maxDist || d < 0.5f) {
+                                    hasLocal[childIdx] = false;
+                                }
+                            }
+                        };
+
+                        // Spine & Head
+                        checkLimb(1, 0, 45.0f);  // Neck <-> Head <= 45cm
+                        checkLimb(1, 2, 95.0f);  // Neck <-> Pelvis <= 95cm
+
+                        // Right Arm
+                        checkLimb(1, 3, 60.0f);  // Neck <-> UprR <= 60cm
+                        checkLimb(3, 4, 60.0f);  // UprR <-> LwrR <= 60cm
+                        checkLimb(4, 5, 55.0f);  // LwrR <-> HandR <= 55cm
+
+                        // Left Arm
+                        checkLimb(1, 6, 60.0f);  // Neck <-> UprL <= 60cm
+                        checkLimb(6, 7, 60.0f);  // UprL <-> LwrL <= 60cm
+                        checkLimb(7, 8, 55.0f);  // LwrL <-> HandL <= 55cm
+
+                        // Right Leg
+                        checkLimb(2, 9, 60.0f);   // Pelvis <-> ThighR <= 60cm
+                        checkLimb(9, 10, 75.0f);  // ThighR <-> CalfR <= 75cm
+                        checkLimb(10, 11, 75.0f); // CalfR <-> FootR <= 75cm
+
+                        // Left Leg
+                        checkLimb(2, 12, 60.0f);  // Pelvis <-> ThighL <= 60cm
+                        checkLimb(12, 13, 75.0f); // ThighL <-> CalfL <= 75cm
+                        checkLimb(13, 14, 75.0f); // CalfL <-> FootL <= 75cm
+
                         uint8_t c2w[48] = {0};
                         ds_pubg_read_c2w(meshComp, rootLoc, halfH, c2w);
 
                         int okBones = 0;
                         for (int i = 0; i < 15; i++) {
-                            int bi = jointIndices[i];
-                            DSPUBGVector localTrans = {};
-                            if (getBoneLocal(bi, localTrans)) {
+                            if (hasLocal[i]) {
                                 DSPUBGVector world = {};
-                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &localTrans, &world);
+                                ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &locals[i], &world);
                                 float sx_proj = 0, sy_proj = 0, d_proj = 0;
                                 if (ds_pubg_cam_basis_project(basis, world, sx_proj, sy_proj, d_proj)) {
                                     p.skeleton[i] = { sx_proj, sy_proj, true };
@@ -3931,9 +3985,8 @@ static void ds_pubg_tick(void) {
                         }
 
                         // Project HeadTop for circle at vHead.Z += 7.0f (exact internal snippet logic)
-                        DSPUBGVector headLocal = {};
-                        if (getBoneLocal(bHead, headLocal)) {
-                            DSPUBGVector headTopLocal = headLocal;
+                        if (hasLocal[0]) {
+                            DSPUBGVector headTopLocal = locals[0];
                             headTopLocal.Z += 7.0f;
                             DSPUBGVector worldHeadTop = {};
                             ds_pubg_bone_world_from_local(c2w, rootLoc, halfH, actorRot, &headTopLocal, &worldHeadTop);
@@ -3951,9 +4004,12 @@ static void ds_pubg_tick(void) {
                             }
                             skeletonDone = true;
 
+                            float minBoneX = 99999.0f, maxBoneX = -99999.0f;
                             float minBoneY = 99999.0f, maxBoneY = -99999.0f;
                             for (int bi = 0; bi < 16; bi++) {
                                 if (p.skeleton[bi].valid) {
+                                    if (p.skeleton[bi].x < minBoneX) minBoneX = p.skeleton[bi].x;
+                                    if (p.skeleton[bi].x > maxBoneX) maxBoneX = p.skeleton[bi].x;
                                     if (p.skeleton[bi].y < minBoneY) minBoneY = p.skeleton[bi].y;
                                     if (p.skeleton[bi].y > maxBoneY) maxBoneY = p.skeleton[bi].y;
                                 }
@@ -3964,8 +4020,9 @@ static void ds_pubg_tick(void) {
                                 topY = realTop;
                                 boxH = realBot - realTop;
                                 if (boxH < 8.0f) boxH = 8.0f;
-                                boxW = boxH * 0.45f;
-                                boxX = centerX - boxW * 0.5f;
+                                float boneSpanX = (maxBoneX > minBoneX) ? (maxBoneX - minBoneX) : 0.0f;
+                                boxW = fmaxf(boneSpanX * 1.15f, boxH * 0.45f);
+                                boxX = (boneSpanX > 0.0f) ? ((minBoneX + maxBoneX) * 0.5f - boxW * 0.5f) : (centerX - boxW * 0.5f);
                                 p.screenX = boxX;
                                 p.screenY = topY;
                                 p.boxWidth = boxW;
