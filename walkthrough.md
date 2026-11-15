@@ -475,3 +475,39 @@ Từ 2 ảnh thực tế của người dùng:
 - **Commit**: `73990bf` (`fix(vischeck): restore Metal RHI GPU occlusion core with Raycast verification filter`).
 - **GitHub Actions Run**: [Workflow Run 43665628206](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43665628206) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 22. Triển Khai Hệ Thống Vischeck Thuần Jolt Physics (Loại Bỏ Hoàn Toàn LastRenderTimeOnScreen)
+
+### A. Lý do chuyển đổi:
+- Người dùng yêu cầu loại bỏ hoàn toàn cơ chế dựa trên GPU timestamp (`LastRenderTimeOnScreen` `0x48C` và `LastSubmitTime` `0x484`).
+- Chuyển hẳn sang phương pháp Jolt Physics (Line-of-Sight Raycast 3D hình học không gian) tương tự các bộ engine raycast chuyên nghiệp (KernelCheat / MADNESS).
+
+### B. Giải pháp kỹ thuật toàn diện:
+1. **Loại bỏ 100% phụ thuộc GPU Rasterization**:
+   - Xóa bỏ việc đọc `kDSPUGPrimitiveLastSubmitTime` và `kDSPUGPrimitiveLastRenderTimeOnScreen`.
+   - Độ chuẩn xác chuyển sang kiểm tra hình học không gian 3D Ray-OBB (Kay-Kajiya slab intersection).
+2. **Quét đa cấp độ (Multi-Level Obstacle Scan - 250m)**:
+   - Thay vì chỉ quét một cấp `PersistentLevel`, hệ thống quét toàn diện:
+     - `PersistentLevel` (`world + 0x30`)
+     - `CurrentLevel` (`world + 0x468`)
+     - Mảng `Levels` (`world + 0x440`)
+     - Mảng `StreamingLevels` (`world + 0x88` $\rightarrow$ `LoadedLevel` `0x168`)
+   - Tăng dung lượng mảng vật cản lên `kDSPUBGMaxObstacles = 1024` hộp, bán kính quét 250m.
+   - Chạy Pre-pass trước `GameState.PlayerArray` giúp dữ liệu vật cản luôn sẵn sàng ngay khi kiểm tra người chơi.
+3. **Raycast Đa Điểm 6 Tia (Multi-Point Line-of-Sight)**:
+   - Bắn đồng thời 6 tia từ Camera tới:
+     - `targetHead`: Xương đầu (`top.Z - 8.0f` hoặc `top.Z - 4.0f` khi knocked).
+     - `targetChest`: Xương ngực / thân trên (`pos.Z + halfH * 0.35f`).
+     - `targetPelvis`: Xương hông (`pos.Z - halfH * 0.15f`).
+     - `targetRight`: Điểm thò người / nghiêng người phải (`targetChest + perp`).
+     - `targetLeft`: Điểm thò người / nghiêng người trái (`targetChest - perp`).
+     - `targetFeet`: Bàn chân (`bot.Z + 10.0f`).
+   - Nếu có ít nhất 1 tia thông suốt (địch thò đầu, hé người qua góc tường/cửa sổ/khe hở) $\rightarrow$ `rawVisible = true` (**Màu Xanh**).
+   - Nếu tất cả các tia bị vật cản che khuất $\rightarrow$ `rawVisible = false` (**Màu Đỏ**).
+4. **Bộ Lọc Chống Rung Nhấp Nháy (Anti-Flicker Hysteresis)**:
+   - Khi nhìn thấy: Chuyển màu Xanh tức thì (0 frame delay).
+   - Khi bị che: Yêu cầu 2 frame liên tiếp để chuyển Đỏ (tránh nhấp nháy 1 frame).
+5. **HUD Thông Số Live**:
+   - Cập nhật chuỗi trạng thái: `[Vis: Jolt Physics (%d obs)]`.

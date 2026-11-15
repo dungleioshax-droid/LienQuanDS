@@ -2844,7 +2844,7 @@ struct DSPUBGObstacleBox {
     DSPUBGRotator rotation;
     float radius;
 };
-static const int kDSPUBGMaxObstacles = 512;
+static const int kDSPUBGMaxObstacles = 1024;
 static DSPUBGObstacleBox s_obstacles[kDSPUBGMaxObstacles] = {};
 static int s_obstacleCount = 0;
 static DSPUBGVector s_lastObstacleScanLoc = { 999999.0f, 999999.0f, 999999.0f };
@@ -2866,8 +2866,8 @@ static const char* ds_pubg_get_debug_status(void) {
     }
     if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots [Vis: Metal Active]",
-                 g_dspubgLastEnemyCount, g_dspubgLastBotCount);
+                 "PUBG: %d Enemies | %d Bots [Vis: Jolt Physics (%d obs)]",
+                 g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount);
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -3115,7 +3115,7 @@ static bool ds_pubg_ray_intersects_box(
     if (!testSlab(uZ, box.extent.Z)) return false;
 
     // Must intersect between camera and target (clip margins to ignore self-hits)
-    return (tMax > 15.0f && tMin < len - 10.0f && tMin <= tMax);
+    return (tMin > 10.0f && tMin < len - 10.0f && tMin <= tMax);
 }
 
 static bool ds_pubg_is_blocked_by_obstacle(const DSPUBGVector &camLoc, const DSPUBGVector &targetLoc) {
@@ -3720,76 +3720,82 @@ static void ds_pubg_tick(void) {
                         p.has3DBox = c3dOk;
 
                         // -------------------------------------------------------------
-                        // High-Accuracy Dual-Layer Vischeck:
-                        // Layer 1: Authentic Apple Metal GPU Rasterization (LastRenderTimeOnScreen 0x48C)
-                        // Layer 2: Map Collision Raycast Verification (Obstacle Ray-OBB)
+                        // Jolt Physics-Style Raycast Obstacle Vischeck:
+                        // Pure 3D Geometric Line-of-Sight verification against world collision geometry
+                        // (OBB Kay-Kajiya slab testing). 100% independent of GPU LastRenderTimeOnScreen.
                         // -------------------------------------------------------------
-                        bool isOccluded = true; // An toàn tuyệt đối: mặc định là Bị che (Đỏ) khi chưa xác thực
-                        if (meshComp && ds_pubg_valid(meshComp)) {
-                            float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
-                            float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
-                            bool timestampsLookValid =
-                                isfinite(lastSubmit) && isfinite(lastOnScreen) &&
-                                lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
-                                lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
+                        bool rawVisible = true;
+                        if (s_obstacleCount > 0) {
+                            // Multi-point Raycast Sampling (Head, Chest, Pelvis, Left/Right Extremities, Feet)
+                            DSPUBGVector targetHead = top; targetHead.Z -= (isKnocked ? 4.0f : 8.0f);
+                            DSPUBGVector targetChest = pos; targetChest.Z += (halfH * 0.35f);
+                            DSPUBGVector targetPelvis = pos; targetPelvis.Z -= (isKnocked ? 0.0f : (halfH * 0.15f));
+                            DSPUBGVector targetFeet = bot; targetFeet.Z += 10.0f;
 
-                            if (timestampsLookValid) {
-                                float dt = lastSubmit - lastOnScreen;
-                                // Metal forward rendering: dt trong khoảng [-0.02s, 0.075s] và lastOnScreen > 0
-                                // là đối tượng thực sự được GPU render lên màn hình.
-                                bool rawVisible = (dt >= -0.02f && dt <= 0.075f) && (lastOnScreen > 0.0f);
+                            // Compute lateral perpendicular vector for shoulder / peek checking
+                            DSPUBGVector toTarget = { pos.X - camLoc.X, pos.Y - camLoc.Y, pos.Z - camLoc.Z };
+                            float horizDist = hypotf(toTarget.X, toTarget.Y);
+                            DSPUBGVector perp = { 0.0f, 0.0f, 0.0f };
+                            if (horizDist > 10.0f) {
+                                float invH = (isKnocked ? 18.0f : 26.0f) / horizDist; // ~26cm shoulder offset
+                                perp.X = -toTarget.Y * invH;
+                                perp.Y = toTarget.X * invH;
+                            }
+                            DSPUBGVector targetRight = { targetChest.X + perp.X, targetChest.Y + perp.Y, targetChest.Z };
+                            DSPUBGVector targetLeft  = { targetChest.X - perp.X, targetChest.Y - perp.Y, targetChest.Z };
 
-                                // Lớp bảo vệ bổ sung: Nếu GPU báo visible nhưng có khối hộp vật cản chắn giữa camera và mục tiêu
-                                if (rawVisible && s_obstacleCount > 0) {
-                                    DSPUBGVector targetHead = top; targetHead.Z -= 8.0f;
-                                    DSPUBGVector targetChest = pos; targetChest.Z += (halfH * 0.45f);
-                                    if (!ds_pubg_ray_has_line_of_sight(camLoc, targetHead) &&
-                                        !ds_pubg_ray_has_line_of_sight(camLoc, targetChest)) {
-                                        rawVisible = false; // Bị tường che chắn
-                                    }
-                                }
+                            // If ANY key body point has clear line of sight, target is visible!
+                            bool headVis  = ds_pubg_ray_has_line_of_sight(camLoc, targetHead);
+                            bool chestVis = ds_pubg_ray_has_line_of_sight(camLoc, targetChest);
+                            bool pelvVis  = ds_pubg_ray_has_line_of_sight(camLoc, targetPelvis);
+                            bool rightVis = (perp.X != 0.0f || perp.Y != 0.0f) && ds_pubg_ray_has_line_of_sight(camLoc, targetRight);
+                            bool leftVis  = (perp.X != 0.0f || perp.Y != 0.0f) && ds_pubg_ray_has_line_of_sight(camLoc, targetLeft);
+                            bool feetVis  = ds_pubg_ray_has_line_of_sight(camLoc, targetFeet);
 
-                                int visSlot = -1;
-                                for (int v = 0; v < 128; v++) {
-                                    if (s_visHistories[v].actor == pawn) {
-                                        visSlot = v;
-                                        break;
-                                    }
-                                }
-                                if (visSlot < 0) {
-                                    for (int v = 0; v < 128; v++) {
-                                        if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
-                                            visSlot = v;
-                                            memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
-                                            s_visHistories[v].actor = pawn;
-                                            s_visHistories[v].isOccluded = !rawVisible;
-                                            break;
-                                        }
-                                    }
-                                }
+                            rawVisible = (headVis || chestVis || pelvVis || rightVis || leftVis || feetVis);
+                        }
 
-                                if (visSlot >= 0) {
-                                    DSPUBGVisHistory &vh = s_visHistories[visSlot];
-                                    vh.lastSeenTick = s_visTickCounter;
-                                    vh.actor = pawn;
-
-                                    if (rawVisible) {
-                                        vh.visibleStreak++;
-                                        vh.occludedStreak = 0;
-                                        vh.isOccluded = false; // Phản hồi tức thì khi nhìn thấy (Xanh)
-                                    } else {
-                                        vh.occludedStreak++;
-                                        vh.visibleStreak = 0;
-                                        // Yêu cầu 2 frame liên tiếp không render để chuyển Đỏ (chống giật nháy 1 frame)
-                                        if (vh.occludedStreak >= 2) {
-                                            vh.isOccluded = true;
-                                        }
-                                    }
-                                    isOccluded = vh.isOccluded;
-                                } else {
-                                    isOccluded = !rawVisible;
+                        // Anti-flicker Hysteresis state tracking
+                        bool isOccluded = !rawVisible;
+                        int visSlot = -1;
+                        for (int v = 0; v < 128; v++) {
+                            if (s_visHistories[v].actor == pawn) {
+                                visSlot = v;
+                                break;
+                            }
+                        }
+                        if (visSlot < 0) {
+                            for (int v = 0; v < 128; v++) {
+                                if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
+                                    visSlot = v;
+                                    memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
+                                    s_visHistories[v].actor = pawn;
+                                    s_visHistories[v].isOccluded = !rawVisible;
+                                    break;
                                 }
                             }
+                        }
+
+                        if (visSlot >= 0) {
+                            DSPUBGVisHistory &vh = s_visHistories[visSlot];
+                            vh.lastSeenTick = s_visTickCounter;
+                            vh.actor = pawn;
+
+                            if (rawVisible) {
+                                vh.visibleStreak++;
+                                vh.occludedStreak = 0;
+                                vh.isOccluded = false; // Phản hồi tức thì khi nhìn thấy (Xanh ngay lập tức)
+                            } else {
+                                vh.occludedStreak++;
+                                vh.visibleStreak = 0;
+                                // Yêu cầu 2 frame liên tiếp bị che để chuyển Đỏ (chống giật nháy 1 frame khi di chuyển)
+                                if (vh.occludedStreak >= 2) {
+                                    vh.isOccluded = true;
+                                }
+                            }
+                            isOccluded = vh.isOccluded;
+                        } else {
+                            isOccluded = !rawVisible;
                         }
 
                         p.isOccluded = isOccluded;
@@ -4604,6 +4610,140 @@ static void ds_pubg_tick(void) {
         }
     };
 
+    // -------------------------------------------------------------
+    // Pre-pass: Scan and stage Map Collision Obstacle Boxes (250m radius)
+    // Multi-level scan (PersistentLevel, CurrentLevel, Levels array, StreamingLevels)
+    // Runs before PlayerArray so all obstacle geometry is immediately available for Vischeck.
+    // -------------------------------------------------------------
+    float camMoveDistSq = (camLoc.X - s_lastObstacleScanLoc.X) * (camLoc.X - s_lastObstacleScanLoc.X) +
+                          (camLoc.Y - s_lastObstacleScanLoc.Y) * (camLoc.Y - s_lastObstacleScanLoc.Y) +
+                          (camLoc.Z - s_lastObstacleScanLoc.Z) * (camLoc.Z - s_lastObstacleScanLoc.Z);
+    if ((s_visTickCounter - s_obstacleLastScanTick) >= 8 || camMoveDistSq > 250000.0f || s_obstacleCount == 0) {
+        s_lastObstacleScanLoc = camLoc;
+        s_obstacleLastScanTick = s_visTickCounter;
+
+        static DSPUBGObstacleBox s_obstaclesStaging[kDSPUBGMaxObstacles];
+        int stagedCount = 0;
+
+        uint64_t seenLevels[64] = {0};
+        int seenCount = 0;
+
+        auto scanLevelObstacles = [&](uint64_t lvl) {
+            if (!lvl || !ds_pubg_valid(lvl) || stagedCount >= kDSPUBGMaxObstacles) return;
+            for (int s = 0; s < seenCount; s++) {
+                if (seenLevels[s] == lvl) return;
+            }
+            if (seenCount < 64) seenLevels[seenCount++] = lvl;
+
+            uint64_t actorsData = 0;
+            uint32_t actorsCount = 0;
+            uint64_t arr = ds_pubg_decrypt_actors_array(lvl);
+            if (arr && ds_pubg_valid(arr)) {
+                ds_pubg_actors_array_at(arr, &actorsData, &actorsCount);
+            }
+            if (!actorsData || actorsCount == 0) {
+                ds_pubg_actors_array_at(lvl + 0xA0ULL, &actorsData, &actorsCount);
+            }
+            if (!actorsData || actorsCount == 0) {
+                uint64_t cluster = ds_pubg_read_ptr(lvl + 0xE0ULL);
+                if (cluster && ds_pubg_valid(cluster)) {
+                    ds_pubg_actors_array_at(cluster + 0x28ULL, &actorsData, &actorsCount);
+                }
+            }
+            if (!actorsData || actorsCount == 0) return;
+            if (actorsCount > 4096) actorsCount = 4096;
+
+            std::vector<uint64_t> actBuf(actorsCount, 0);
+            if (!ds_pubg_read(actorsData, actBuf.data(), actorsCount * sizeof(uint64_t))) return;
+
+            for (uint32_t i = 0; i < actorsCount && stagedCount < kDSPUBGMaxObstacles; i++) {
+                uint64_t actor = actBuf[i];
+                if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
+
+                uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
+                DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
+
+                bool isScenery = false;
+                if (cEntry.actor == actor) {
+                    isScenery = cEntry.isScenery;
+                    if (!isScenery) continue; // Skip known non-scenery actors
+                } else {
+                    char aName[64] = {0};
+                    if (ds_pubg_get_actor_name(actor, aName, sizeof(aName))) {
+                        if (ds_pubg_is_scenery_name(aName)) {
+                            isScenery = true;
+                            cEntry.actor = actor;
+                            cEntry.isScenery = true;
+                            cEntry.isPawn = false;
+                            cEntry.itemCat = DSPUBGItemCategoryNone;
+                        }
+                    }
+                }
+
+                if (isScenery) {
+                    uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+                    if (rootComp && ds_pubg_valid(rootComp)) {
+                        DSPUBGVector aLoc = {};
+                        if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &aLoc, sizeof(aLoc))) {
+                            float dx = aLoc.X - camLoc.X;
+                            float dy = aLoc.Y - camLoc.Y;
+                            float dz = aLoc.Z - camLoc.Z;
+                            float dSq = dx * dx + dy * dy + dz * dz;
+                            if (dSq < (25000.0f * 25000.0f)) { // 250 meters
+                                DSPUBGObstacleBox ob = {};
+                                uint64_t smc = ds_pubg_read_ptr(actor + 0x4B0ULL);
+                                if (!smc || !ds_pubg_valid(smc)) smc = rootComp;
+                                if (ds_pubg_extract_obstacle_box(smc, ob)) {
+                                    s_obstaclesStaging[stagedCount++] = ob;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // 1. PersistentLevel
+        if (level) scanLevelObstacles(level);
+
+        // 2. CurrentLevel
+        uint64_t curLvl = ds_pubg_read_ptr(world + 0x468ULL);
+        if (curLvl && curLvl != level) scanLevelObstacles(curLvl);
+
+        // 3. Sub-levels in Levels array (0x440)
+        uint64_t levelsData = ds_pubg_read_ptr(world + 0x440ULL);
+        int32_t levelsCount = ds_pubg_read_i32(world + 0x448ULL);
+        if (levelsData && levelsCount > 0 && levelsCount < 64) {
+            std::vector<uint64_t> lvlArr(levelsCount, 0);
+            if (ds_pubg_read(levelsData, lvlArr.data(), levelsCount * sizeof(uint64_t))) {
+                for (int32_t li = 0; li < levelsCount && stagedCount < kDSPUBGMaxObstacles; li++) {
+                    scanLevelObstacles(lvlArr[li]);
+                }
+            }
+        }
+
+        // 4. StreamingLevels (0x88)
+        uint64_t streamData = ds_pubg_read_ptr(world + 0x88ULL);
+        int32_t streamCount = ds_pubg_read_i32(world + 0x90ULL);
+        if (streamData && streamCount > 0 && streamCount < 64) {
+            std::vector<uint64_t> slArr(streamCount, 0);
+            if (ds_pubg_read(streamData, slArr.data(), streamCount * sizeof(uint64_t))) {
+                for (int32_t si = 0; si < streamCount && stagedCount < kDSPUBGMaxObstacles; si++) {
+                    uint64_t sl = slArr[si];
+                    if (sl && ds_pubg_valid(sl)) {
+                        uint64_t loadedLvl = ds_pubg_read_ptr(sl + 0x168ULL);
+                        if (loadedLvl) scanLevelObstacles(loadedLvl);
+                    }
+                }
+            }
+        }
+
+        if (stagedCount > 0 || s_obstacleCount == 0) {
+            s_obstacleCount = stagedCount;
+            memcpy(s_obstacles, s_obstaclesStaging, (size_t)stagedCount * sizeof(DSPUBGObstacleBox));
+        }
+    }
+
     // Source 1: GameState.PlayerArray
     uint64_t gameState = ds_pubg_read_ptr(world + kDSPUBGWorldGameStateOffset);
     if (!gameState) {
@@ -4658,49 +4798,6 @@ static void ds_pubg_tick(void) {
             static std::vector<uint64_t> s_levelActors;
             if (s_levelActors.size() < actorsCount) s_levelActors.resize(actorsCount);
             if (ds_pubg_read(actorsData, s_levelActors.data(), actorsCount * sizeof(uint64_t))) {
-                // Pre-pass: Scan and stage Map Collision Obstacle Boxes (150m radius) before processing actors
-                float camMoveDistSq = (camLoc.X - s_lastObstacleScanLoc.X) * (camLoc.X - s_lastObstacleScanLoc.X) +
-                                      (camLoc.Y - s_lastObstacleScanLoc.Y) * (camLoc.Y - s_lastObstacleScanLoc.Y) +
-                                      (camLoc.Z - s_lastObstacleScanLoc.Z) * (camLoc.Z - s_lastObstacleScanLoc.Z);
-                if ((s_visTickCounter - s_obstacleLastScanTick) >= 8 || camMoveDistSq > 250000.0f || s_obstacleCount == 0) {
-                    s_lastObstacleScanLoc = camLoc;
-                    s_obstacleLastScanTick = s_visTickCounter;
-
-                    static DSPUBGObstacleBox s_obstaclesStaging[kDSPUBGMaxObstacles];
-                    int stagedCount = 0;
-                    for (uint32_t i = 0; i < actorsCount && stagedCount < kDSPUBGMaxObstacles; i++) {
-                        uint64_t actor = s_levelActors[i];
-                        if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
-
-                        uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-                        DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-                        if (cEntry.actor == actor && cEntry.isScenery) {
-                            uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-                            if (rootComp && ds_pubg_valid(rootComp)) {
-                                DSPUBGVector aLoc = {};
-                                if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &aLoc, sizeof(aLoc))) {
-                                    float dx = aLoc.X - camLoc.X;
-                                    float dy = aLoc.Y - camLoc.Y;
-                                    float dz = aLoc.Z - camLoc.Z;
-                                    float dSq = dx * dx + dy * dy + dz * dz;
-                                    if (dSq < (15000.0f * 15000.0f)) { // 150 meters
-                                        DSPUBGObstacleBox ob = {};
-                                        uint64_t smc = ds_pubg_read_ptr(actor + 0x4B0ULL);
-                                        if (!smc || !ds_pubg_valid(smc)) smc = rootComp;
-                                        if (ds_pubg_extract_obstacle_box(smc, ob)) {
-                                            s_obstaclesStaging[stagedCount++] = ob;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (stagedCount > 0 || s_obstacleCount == 0) {
-                        s_obstacleCount = stagedCount;
-                        memcpy(s_obstacles, s_obstaclesStaging, (size_t)stagedCount * sizeof(DSPUBGObstacleBox));
-                    }
-                }
-
                 for (uint32_t i = 0; i < actorsCount; i++) {
                     uint64_t actor = s_levelActors[i];
                     if (!actor || actor == localPawn || !ds_pubg_valid(actor)) continue;
