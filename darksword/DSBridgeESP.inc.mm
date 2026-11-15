@@ -1673,8 +1673,8 @@ static void ds_hosted_apply_pubg(void) {
             CGFloat strH = 14.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
             lbl.foregroundColor = [UIColor whiteColor].CGColor;
-            lbl.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.75].CGColor;
-            lbl.cornerRadius = 2.5f;
+            lbl.backgroundColor = UIColor.clearColor.CGColor;
+            lbl.cornerRadius = 0.0f;
             lbl.shadowOpacity = 0.0f;
             lbl.shadowRadius = 0.0f;
             lbl.shadowOffset = CGSizeZero;
@@ -1704,8 +1704,8 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             lbl.foregroundColor = itemColor;
-            lbl.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65].CGColor;
-            lbl.cornerRadius = 2.5f;
+            lbl.backgroundColor = UIColor.clearColor.CGColor;
+            lbl.cornerRadius = 0.0f;
             lbl.shadowOpacity = 0.0f;
             lbl.shadowRadius = 0.0f;
             lbl.shadowOffset = CGSizeZero;
@@ -2252,8 +2252,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 itemLbl.shadowRadius = 0.0;
                 itemLbl.shadowOpacity = 0.0;
                 itemLbl.shadowOffset = CGSizeZero;
-                itemLbl.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.70].CGColor;
-                itemLbl.cornerRadius = 2.5;
+                itemLbl.backgroundColor = UIColor.clearColor.CGColor;
+                itemLbl.cornerRadius = 0.0;
                 itemLbl.hidden = YES;
                 [g_hostedLayer addSublayer:itemLbl];
                 g_hostedPUBGItemLabels[i] = itemLbl;
