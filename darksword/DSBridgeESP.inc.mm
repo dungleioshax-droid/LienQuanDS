@@ -1325,21 +1325,8 @@ static void ds_hosted_apply_pubg(void) {
             box.hidden = YES;
         }
 
-        // 3. AI Mark: inverted blue triangle on top of box for AI only
-        if (ai && aiMark) {
-            CGFloat tx = centerX;
-            CGFloat ty = topY - 5.0f;
-            UIBezierPath *triPath = [UIBezierPath bezierPath];
-            [triPath moveToPoint:CGPointMake(tx, ty - 9.0f)];
-            [triPath addLineToPoint:CGPointMake(tx - 7.0f, ty)];
-            [triPath addLineToPoint:CGPointMake(tx + 7.0f, ty)];
-            [triPath closePath];
-            aiMark.path = triPath.CGPath;
-            aiMark.fillColor = [UIColor colorWithRed:0.0/255.0 green:170.0/255.0 blue:255.0/255.0 alpha:0.85].CGColor;
-            aiMark.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.95].CGColor;
-            aiMark.lineWidth = fmaxf(1.0f, g_pubgEspThickness * 0.8f);
-            aiMark.hidden = NO;
-        } else if (aiMark) {
+        // 3. AI Mark: disabled per user request
+        if (aiMark) {
             aiMark.hidden = YES;
         }
 
