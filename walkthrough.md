@@ -447,3 +447,8 @@ Từ 2 ảnh thực tế của người dùng:
 4. **Kết hợp lưới đa giác NVIDIA PhysX**:
    - Tích hợp kiểm tra đồng thời cả va chạm tam giác PhysX (`DarkPhysX::LineOfSight`) và va chạm khối hộp công trình (`Ray-OBB`).
    - Hiển thị thông số trực quan số lượng hộp và đa giác trên HUD: `[Ray: X Boxes, Y Tri]`.
+
+### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `63017a7` (`fix(build): declare s_obstacleCount prior to ds_pubg_get_debug_status`).
+- **GitHub Actions Run**: [Workflow Run 43664546505](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43664546505) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
