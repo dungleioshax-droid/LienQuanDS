@@ -3065,6 +3065,9 @@ static bool ds_pubg_extract_obstacle_box(uint64_t comp, DSPUBGObstacleBox &outBo
     return true;
 }
 
+// Defined in the Actor & Shape Classification section below.
+static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box);
+
 static bool ds_pubg_ray_intersects_box(
     const DSPUBGVector &rayStart,
     const DSPUBGVector &rayEnd,
@@ -3121,9 +3124,6 @@ static bool ds_pubg_ray_intersects_box(
     // Must intersect between camera and target (clip margins to ignore self-hits)
     return (tMin > 10.0f && tMin < len - 10.0f && tMin <= tMax);
 }
-
-// Defined in the Actor & Shape Classification section below.
-static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box);
 
 static bool ds_pubg_is_blocked_by_obstacle(const DSPUBGVector &camLoc, const DSPUBGVector &targetLoc) {
     if (s_obstacleCount <= 0) return false;
