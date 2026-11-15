@@ -992,6 +992,7 @@ static CALayer *g_hostedPUBGGrenadeMarkerFillLayers[kDSPUBGMaxGrenades] = {};
 static CATextLayer *g_hostedPUBGGrenadeDangerBanner = nil;
 static CAShapeLayer *g_hostedPUBGTopCountBgLayer = nil;
 static CATextLayer *g_hostedPUBGTopCountLabel = nil;
+static CATextLayer *g_hostedPUBGStatusLabel = nil;
 
 static void ds_hosted_pubg_hide_all(void) {
     for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
@@ -1022,6 +1023,7 @@ static void ds_hosted_pubg_hide_all(void) {
     if (g_hostedPUBGGrenadeDangerBanner && !g_hostedPUBGGrenadeDangerBanner.hidden) g_hostedPUBGGrenadeDangerBanner.hidden = YES;
     if (g_hostedPUBGTopCountBgLayer && !g_hostedPUBGTopCountBgLayer.hidden) g_hostedPUBGTopCountBgLayer.hidden = YES;
     if (g_hostedPUBGTopCountLabel && !g_hostedPUBGTopCountLabel.hidden) g_hostedPUBGTopCountLabel.hidden = YES;
+    if (g_hostedPUBGStatusLabel && !g_hostedPUBGStatusLabel.hidden) g_hostedPUBGStatusLabel.hidden = YES;
 }
 
 static CGColorRef ds_pubg_cgcolor_from_rgba(uint32_t rgba) {
@@ -1607,6 +1609,33 @@ static void ds_hosted_apply_pubg(void) {
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
             g_hostedPUBGTopCountLabel.hidden = YES;
+        }
+    }
+
+    // Diagnostics line: live vischeck / actor classification state.
+    if (g_hostedPUBGStatusLabel) {
+        const char *dbgStatus = ds_pubg_get_debug_status();
+        NSString *statusStr = dbgStatus ? [NSString stringWithUTF8String:dbgStatus] : @"";
+        if (statusStr.length > 0) {
+            CGFloat sW = 340.0f;
+            CGFloat sH = 12.0f;
+            g_hostedPUBGStatusLabel.frame = CGRectMake((width - sW) * 0.5f, 44.0f, sW, sH);
+            g_hostedPUBGStatusLabel.fontSize = 9.0f;
+            g_hostedPUBGStatusLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:9.0
+                                                                                          weight:UIFontWeightSemibold];
+            g_hostedPUBGStatusLabel.alignmentMode = kCAAlignmentCenter;
+            g_hostedPUBGStatusLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:0.85].CGColor;
+            g_hostedPUBGStatusLabel.backgroundColor = UIColor.clearColor.CGColor;
+            g_hostedPUBGStatusLabel.shadowColor = [UIColor blackColor].CGColor;
+            g_hostedPUBGStatusLabel.shadowRadius = 1.0f;
+            g_hostedPUBGStatusLabel.shadowOpacity = 1.0f;
+            g_hostedPUBGStatusLabel.shadowOffset = CGSizeZero;
+            if (![g_hostedPUBGStatusLabel.string isEqualToString:statusStr]) {
+                g_hostedPUBGStatusLabel.string = statusStr;
+            }
+            g_hostedPUBGStatusLabel.hidden = NO;
+        } else {
+            g_hostedPUBGStatusLabel.hidden = YES;
         }
     }
 
@@ -2597,6 +2626,22 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];
             g_hostedPUBGTopCountLabel = topLabel;
+
+            CATextLayer *statusLabel = [CATextLayer layer];
+            statusLabel.actions = noAnim;
+            statusLabel.contentsScale = scale;
+            statusLabel.alignmentMode = kCAAlignmentCenter;
+            statusLabel.fontSize = 9.0;
+            statusLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:9.0 weight:UIFontWeightSemibold];
+            statusLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:0.85].CGColor;
+            statusLabel.backgroundColor = UIColor.clearColor.CGColor;
+            statusLabel.shadowColor = [UIColor blackColor].CGColor;
+            statusLabel.shadowRadius = 1.0;
+            statusLabel.shadowOpacity = 1.0;
+            statusLabel.shadowOffset = CGSizeZero;
+            statusLabel.hidden = YES;
+            [g_hostedLayer addSublayer:statusLabel];
+            g_hostedPUBGStatusLabel = statusLabel;
         }
 
     g_hostedLayerReady.store(true, std::memory_order_release);

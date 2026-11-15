@@ -2869,7 +2869,7 @@ static const char* ds_pubg_get_debug_status(void) {
     }
     if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots [Vis: Dual-Layer Metal Active (%d obs | %d static | %d dyn)]",
+                 "PUBG: %d Enemies | %d Bots [Vis: %d obs | %d static | %d dyn]",
                  g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount,
                  (int)s_staticActorCount, (int)s_dynamicActorCount);
         return g_dspubgStatusBuf;
