@@ -1467,10 +1467,12 @@ static void ds_hosted_apply_pubg(void) {
                 wLabel.font = (__bridge CFTypeRef)[UIFont boldSystemFontOfSize:9.0];
                 wLabel.foregroundColor = [UIColor whiteColor].CGColor;
                 wLabel.shadowColor = [UIColor blackColor].CGColor;
-                wLabel.shadowOpacity = 1.0f;
-                wLabel.shadowRadius = 1.0f;
+                wLabel.shadowOpacity = 0.0f;
+                wLabel.shadowRadius = 0.0f;
                 wLabel.shadowOffset = CGSizeZero;
-                wLabel.string = dtStr;
+                if (![wLabel.string isEqual:dtStr]) {
+                    wLabel.string = dtStr;
+                }
                 wLabel.hidden = NO;
             } else {
                 wLabel.hidden = YES;
@@ -1604,10 +1606,13 @@ static void ds_hosted_apply_pubg(void) {
             g_hostedPUBGTopCountLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:1.0].CGColor;
             g_hostedPUBGTopCountLabel.backgroundColor = UIColor.clearColor.CGColor;
             g_hostedPUBGTopCountLabel.shadowColor = UIColor.blackColor.CGColor;
-            g_hostedPUBGTopCountLabel.shadowRadius = 1.0f;
-            g_hostedPUBGTopCountLabel.shadowOpacity = 0.85f;
-            g_hostedPUBGTopCountLabel.shadowOffset = CGSizeMake(0.5f, 0.5f);
-            g_hostedPUBGTopCountLabel.string = [NSString stringWithFormat:@"PLAYER AROUND [%d]  BOT AROUND [%d]", totalEnemies, totalBots];
+            g_hostedPUBGTopCountLabel.shadowRadius = 0.0f;
+            g_hostedPUBGTopCountLabel.shadowOpacity = 0.0f;
+            g_hostedPUBGTopCountLabel.shadowOffset = CGSizeZero;
+            NSString *topCountStr = [NSString stringWithFormat:@"PLAYER AROUND [%d]  BOT AROUND [%d]", totalEnemies, totalBots];
+            if (![g_hostedPUBGTopCountLabel.string isEqual:topCountStr]) {
+                g_hostedPUBGTopCountLabel.string = topCountStr;
+            }
             g_hostedPUBGTopCountLabel.hidden = NO;
         } else {
             g_hostedPUBGTopCountLabel.hidden = YES;
@@ -1662,7 +1667,7 @@ static void ds_hosted_apply_pubg(void) {
             default: break;
         }
 
-        float maxDist = (it.category == DSPUBGItemCategoryVehicle) ? 450.0f :
+        float maxDist = (it.category == DSPUBGItemCategoryVehicle) ? fminf(fmaxf(g_pubgItemMaxDistance * 1.6f, 200.0f), 280.0f) :
                         ((it.category == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
         if (!show || !it.isVisible || it.distanceMeters > maxDist) {
             if (!lbl.hidden) lbl.hidden = YES;
@@ -1678,34 +1683,26 @@ static void ds_hosted_apply_pubg(void) {
         CGFloat posY = adjustedPositions[i].y;
 
         if (it.category == DSPUBGItemCategoryVehicle) {
-            NSString *titleStr = nil;
-            if ((g_pubgEspVehicleHp && it.hpMax > 0.0f) || (g_pubgEspVehicleFuel && it.fuelMax > 0.0f)) {
-                float hpVal = it.hp;
-                float fuelPct = (it.fuelMax > 0.0f) ? (it.fuel / it.fuelMax) * 100.0f : 0.0f;
-                if (fuelPct < 0.0f) fuelPct = 0.0f;
-                if (fuelPct > 100.0f) fuelPct = 100.0f;
-                titleStr = [NSString stringWithFormat:@"[%@ %.0fM]\nHP: %.0f | Fuel: %.0f%%", nameStr, it.distanceMeters, hpVal, fuelPct];
-                lbl.wrapped = YES;
-                lbl.fontSize = 8.5;
-            } else {
-                titleStr = [NSString stringWithFormat:@"[%@ %.0fM]", nameStr, it.distanceMeters];
-                lbl.wrapped = NO;
-                lbl.fontSize = 9.0;
-            }
+            NSString *titleStr = [NSString stringWithFormat:@"[%@ %.0fM]", nameStr, it.distanceMeters];
+            lbl.wrapped = NO;
+            lbl.fontSize = 8.5;
 
-            CGFloat strW = 150.0f;
-            CGFloat strH = lbl.wrapped ? 26.0f : 14.0f;
+            CGFloat strW = 120.0f;
+            CGFloat strH = 14.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
             lbl.foregroundColor = [UIColor whiteColor].CGColor;
-            lbl.shadowColor = [UIColor blackColor].CGColor;
-            lbl.shadowOpacity = 1.0f;
-            lbl.shadowRadius = 1.0f;
+            lbl.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.75].CGColor;
+            lbl.cornerRadius = 2.5f;
+            lbl.shadowOpacity = 0.0f;
+            lbl.shadowRadius = 0.0f;
             lbl.shadowOffset = CGSizeZero;
-            lbl.string = titleStr;
+            if (![lbl.string isEqual:titleStr]) {
+                lbl.string = titleStr;
+            }
             if (lbl.hidden) lbl.hidden = NO;
         } else {
             NSString *itemText = [NSString stringWithFormat:@"[%@ %.0fM]", nameStr, it.distanceMeters];
-            CGFloat strW = it.isPriority ? 120.0f : 110.0f;
+            CGFloat strW = it.isPriority ? 115.0f : 100.0f;
             CGFloat strH = it.isPriority ? 16.0f : 13.0f;
             lbl.frame = CGRectMake(posX - strW * 0.5f, posY - strH * 0.5f, strW, strH);
             lbl.fontSize = it.isPriority ? 10.0 : 8.5;
@@ -1725,12 +1722,15 @@ static void ds_hosted_apply_pubg(void) {
             }
 
             lbl.foregroundColor = itemColor;
-            lbl.shadowColor = [UIColor blackColor].CGColor;
-            lbl.shadowOpacity = 1.0f;
-            lbl.shadowRadius = 1.0f;
+            lbl.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65].CGColor;
+            lbl.cornerRadius = 2.5f;
+            lbl.shadowOpacity = 0.0f;
+            lbl.shadowRadius = 0.0f;
             lbl.shadowOffset = CGSizeZero;
             lbl.wrapped = NO;
-            lbl.string = itemText;
+            if (![lbl.string isEqual:itemText]) {
+                lbl.string = itemText;
+            }
             if (lbl.hidden) lbl.hidden = NO;
         }
     }
@@ -2267,9 +2267,11 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
                 itemLbl.font = (__bridge CFTypeRef)[UIFont systemFontOfSize:8.5 weight:UIFontWeightBold];
                 itemLbl.fontSize = 8.5;
                 itemLbl.shadowColor = UIColor.blackColor.CGColor;
-                itemLbl.shadowRadius = 1.0;
-                itemLbl.shadowOpacity = 1.0;
+                itemLbl.shadowRadius = 0.0;
+                itemLbl.shadowOpacity = 0.0;
                 itemLbl.shadowOffset = CGSizeZero;
+                itemLbl.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.70].CGColor;
+                itemLbl.cornerRadius = 2.5;
                 itemLbl.hidden = YES;
                 [g_hostedLayer addSublayer:itemLbl];
                 g_hostedPUBGItemLabels[i] = itemLbl;
@@ -2607,8 +2609,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             topLabel.foregroundColor = [UIColor colorWithRed:255.0/255.0 green:59.0/255.0 blue:48.0/255.0 alpha:1.0].CGColor;
             topLabel.backgroundColor = UIColor.clearColor.CGColor;
             topLabel.shadowColor = UIColor.blackColor.CGColor;
-            topLabel.shadowRadius = 1.5;
-            topLabel.shadowOpacity = 1.0;
+            topLabel.shadowRadius = 0.0;
+            topLabel.shadowOpacity = 0.0;
             topLabel.shadowOffset = CGSizeZero;
             topLabel.hidden = YES;
             [g_hostedLayer addSublayer:topLabel];

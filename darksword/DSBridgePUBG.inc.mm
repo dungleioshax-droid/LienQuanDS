@@ -119,6 +119,11 @@ struct DSPUBGActorCacheEntry {
     bool isPawn;
     DSPUBGItemCategory itemCat;
     char itemName[36];
+    uint64_t vCommon;
+    float cachedHp;
+    float cachedHpMax;
+    float cachedFuel;
+    float cachedFuelMax;
 };
 static const size_t kDSPUBGActorCacheSize = 16384;
 static DSPUBGActorCacheEntry g_dspubgActorCache[kDSPUBGActorCacheSize] = {};
@@ -1433,7 +1438,7 @@ static DSPUBGItemCategory ds_pubg_classify_vehicle_shape(uint8_t shape, char *ou
     return DSPUBGItemCategoryNone;
 }
 
-static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay, size_t outCap) {
+static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, const char *preloadedName, char *outDisplay, size_t outCap) {
     if (!actor || !outDisplay || outCap < 4 || !ds_pubg_valid(actor)) return DSPUBGItemCategoryNone;
     outDisplay[0] = '\0';
 
@@ -1441,9 +1446,15 @@ static DSPUBGItemCategory ds_pubg_identify_item(uint64_t actor, char *outDisplay
     uint8_t aHidden = ds_pubg_read_u8(actor + 0xE8ULL);
     if (aHidden & 0x1) return DSPUBGItemCategoryNone;
 
-    // Optional: Get actor name via GNames if available
+    // Optional: Get actor name via GNames if available (reuse preloadedName if caller already resolved it)
     char actorName[64] = {0};
-    bool hasName = ds_pubg_get_actor_name(actor, actorName, sizeof(actorName));
+    bool hasName = false;
+    if (preloadedName && preloadedName[0] != '\0') {
+        strncpy(actorName, preloadedName, sizeof(actorName) - 1);
+        hasName = true;
+    } else {
+        hasName = ds_pubg_get_actor_name(actor, actorName, sizeof(actorName));
+    }
 
     if (hasName) {
         // Fast reject scenery, props, systems, volumes, decals, bullets, character meshes
@@ -3307,6 +3318,7 @@ static void ds_pubg_tick(void) {
                 cEntry.isScenery = true;
                 cEntry.isPawn = false;
                 cEntry.itemCat = DSPUBGItemCategoryNone;
+                cEntry.vCommon = 0;
                 return false;
             }
 
@@ -3362,6 +3374,7 @@ static void ds_pubg_tick(void) {
         cEntry.isPawn = true;
         cEntry.isScenery = false;
         cEntry.itemCat = DSPUBGItemCategoryNone;
+        cEntry.vCommon = 0;
 
         bool isKnocked = false;
         // Check multiple possible GroggyHealth offsets in STExtraCharacter (shifted by +0x10 in new DUMP: 0xE78, 0xE7C, 0xE80)
@@ -3927,6 +3940,7 @@ static void ds_pubg_tick(void) {
         cEntry.isScenery = false;
         cEntry.isPawn = true;
         cEntry.itemCat = DSPUBGItemCategoryNone;
+        cEntry.vCommon = 0;
         return true;
     };
 
@@ -4234,6 +4248,7 @@ static void ds_pubg_tick(void) {
 
     DSPUBGProjectedItem itemStaging[kDSPUBGMaxItems * 2];
     int itemStagingCount = 0;
+    int stagedVehicleCount = 0;
 
     auto processItemOrVehicle = [&](uint64_t actor) {
         if (itemStagingCount >= (kDSPUBGMaxItems * 2)) return;
@@ -4244,8 +4259,14 @@ static void ds_pubg_tick(void) {
 
         uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-        if (cEntry.actor == actor && cEntry.isScenery) {
-            return;
+        if (cEntry.actor == actor) {
+            if (cEntry.isScenery) return;
+            if (cEntry.itemCat == DSPUBGItemCategoryVehicle && !g_pubgEspVehicle) return;
+            if (cEntry.itemCat == DSPUBGItemCategoryWeapon && !g_pubgEspWeapon) return;
+            if (cEntry.itemCat == DSPUBGItemCategoryScope && !g_pubgEspScope) return;
+            if (cEntry.itemCat == DSPUBGItemCategoryArmor && !g_pubgEspArmor) return;
+            if (cEntry.itemCat == DSPUBGItemCategoryBag && !g_pubgEspBag) return;
+            if (cEntry.itemCat == DSPUBGItemCategoryCrate && !g_pubgEspCrate) return;
         }
 
         if (localPawn) {
@@ -4256,15 +4277,7 @@ static void ds_pubg_tick(void) {
             }
         }
 
-        char actorName[64] = {0};
-        if (ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
-            if (strcasestr(actorName, "Lobby") || strcasestr(actorName, "MainCity") ||
-                strcasestr(actorName, "Preview") || strcasestr(actorName, "Avatar")) {
-                return;
-            }
-        }
-
-        // 1. Fast RootComponent and Location check FIRST (filters out 95% of non-spatial/offscreen actors)
+        // 1. Fast RootComponent and Location check FIRST (filters out 95% of non-spatial/offscreen actors without GNames)
         DSPUBGVector rootLoc = {};
         bool hasLoc = false;
         uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
@@ -4300,7 +4313,11 @@ static void ds_pubg_tick(void) {
         float dy = (rootLoc.Y - basis.ly) * 0.01f;
         float dz = (rootLoc.Z - basis.lz) * 0.01f;
         float dist3D = sqrtf(dx * dx + dy * dy + dz * dz);
-        if (dist3D < 1.0f || dist3D > 450.0f) return;
+        float vehicleMaxDist = fminf(fmaxf(g_pubgItemMaxDistance * 1.6f, 200.0f), 280.0f);
+        float limitDist = (cEntry.actor == actor && cEntry.itemCat == DSPUBGItemCategoryVehicle) ? vehicleMaxDist :
+                          ((cEntry.actor == actor && cEntry.itemCat == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) :
+                           (g_pubgItemMaxDistance > vehicleMaxDist ? g_pubgItemMaxDistance : vehicleMaxDist));
+        if (dist3D < 1.0f || dist3D > limitDist) return;
 
         // 3. Early Screen Projection & Frustum Culling (skip actors behind or off screen)
         float sx = 0, sy = 0, dist = 0;
@@ -4324,17 +4341,31 @@ static void ds_pubg_tick(void) {
                     cEntry.isScenery = false;
                     cEntry.isPawn = false;
                     cEntry.itemCat = DSPUBGItemCategoryNone;
+                    cEntry.vCommon = 0;
                     return;
                 }
             }
         } else {
-            cat = ds_pubg_identify_item(actor, displayName, sizeof(displayName));
+            char actorName[64] = {0};
+            if (ds_pubg_get_actor_name(actor, actorName, sizeof(actorName))) {
+                if (strcasestr(actorName, "Lobby") || strcasestr(actorName, "MainCity") ||
+                    strcasestr(actorName, "Preview") || strcasestr(actorName, "Avatar")) {
+                    cEntry.actor = actor;
+                    cEntry.isScenery = true;
+                    cEntry.isPawn = false;
+                    cEntry.itemCat = DSPUBGItemCategoryNone;
+                    cEntry.vCommon = 0;
+                    return;
+                }
+            }
+            cat = ds_pubg_identify_item(actor, actorName, displayName, sizeof(displayName));
             if (cat == DSPUBGItemCategoryNone) {
                 if (actorName[0] && ds_pubg_is_scenery_name(actorName)) {
                     cEntry.actor = actor;
                     cEntry.isScenery = true;
                     cEntry.isPawn = false;
                     cEntry.itemCat = DSPUBGItemCategoryNone;
+                    cEntry.vCommon = 0;
                 }
                 return;
             }
@@ -4344,6 +4375,11 @@ static void ds_pubg_tick(void) {
             cEntry.itemCat = cat;
             strncpy(cEntry.itemName, displayName, sizeof(cEntry.itemName) - 1);
             cEntry.itemName[sizeof(cEntry.itemName) - 1] = '\0';
+            cEntry.vCommon = 0;
+            cEntry.cachedHp = 0.0f;
+            cEntry.cachedHpMax = 0.0f;
+            cEntry.cachedFuel = 0.0f;
+            cEntry.cachedFuelMax = 0.0f;
         }
 
         if (cat == DSPUBGItemCategoryVehicle && !g_pubgEspVehicle) return;
@@ -4353,9 +4389,13 @@ static void ds_pubg_tick(void) {
         if (cat == DSPUBGItemCategoryBag && !g_pubgEspBag) return;
         if (cat == DSPUBGItemCategoryCrate && !g_pubgEspCrate) return;
 
-        float maxDist = (cat == DSPUBGItemCategoryVehicle) ? 450.0f :
+        float maxDist = (cat == DSPUBGItemCategoryVehicle) ? vehicleMaxDist :
                         ((cat == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
         if (dist3D > maxDist) return;
+
+        if (cat == DSPUBGItemCategoryVehicle && stagedVehicleCount >= 24) {
+            return;
+        }
 
         if (cat == DSPUBGItemCategoryCrate) {
             std::vector<CrateItemInfo> cItems = ds_pubg_get_crate_items(actor);
@@ -4402,33 +4442,7 @@ static void ds_pubg_tick(void) {
         pi.isPriority = cPrio;
 
         if (cat == DSPUBGItemCategoryVehicle) {
-            uint64_t vCommon = ds_pubg_read_ptr(actor + 0xC08ULL);
-            if (!vCommon || !ds_pubg_valid(vCommon)) {
-                vCommon = ds_pubg_read_ptr(actor + 0x6F8ULL);
-            }
-            if (vCommon && ds_pubg_valid(vCommon)) {
-                float hpMax = ds_pubg_read_f32(vCommon + 0x350ULL);
-                float hp = ds_pubg_read_f32(vCommon + 0x354ULL);
-                float fuelMax = ds_pubg_read_f32(vCommon + 0x438ULL);
-                float fuel = ds_pubg_read_f32(vCommon + 0x43CULL);
-
-                if (!isnan(hpMax) && !isinf(hpMax) && hpMax > 0.0f && hpMax <= 200000.0f) {
-                    pi.hpMax = hpMax;
-                    if (!isnan(hp) && !isinf(hp) && hp >= 0.0f) {
-                        pi.hp = (hp > hpMax) ? hpMax : hp;
-                    } else {
-                        pi.hp = 0.0f;
-                    }
-                }
-                if (!isnan(fuelMax) && !isinf(fuelMax) && fuelMax > 0.0f && fuelMax <= 200000.0f) {
-                    pi.fuelMax = fuelMax;
-                    if (!isnan(fuel) && !isinf(fuel) && fuel >= 0.0f) {
-                        pi.fuel = (fuel > fuelMax) ? fuelMax : fuel;
-                    } else {
-                        pi.fuel = 0.0f;
-                    }
-                }
-            }
+            stagedVehicleCount++;
         }
     };
 
@@ -4583,7 +4597,20 @@ static void ds_pubg_tick(void) {
         });
     }
 
-    int copyItemCount = itemStagingCount > kDSPUBGMaxItems ? kDSPUBGMaxItems : itemStagingCount;
+    // Filter and publish items with vehicle quota protection (max 16 nearest vehicles)
+    // to prevent vehicles from crowding out weapons/crates and dropping FPS
+    static const int kDSPUBGMaxPublishedVehicles = 16;
+    DSPUBGProjectedItem finalItems[kDSPUBGMaxItems];
+    int copyItemCount = 0;
+    int publishedVehicles = 0;
+
+    for (int i = 0; i < itemStagingCount && copyItemCount < kDSPUBGMaxItems; i++) {
+        if (itemStaging[i].category == DSPUBGItemCategoryVehicle) {
+            if (publishedVehicles >= kDSPUBGMaxPublishedVehicles) continue;
+            publishedVehicles++;
+        }
+        finalItems[copyItemCount++] = itemStaging[i];
+    }
     int copyGrenadeCount = grenadeStagingCount > kDSPUBGMaxGrenades ? kDSPUBGMaxGrenades : grenadeStagingCount;
 
     os_unfair_lock_lock(&g_dspubgSnapshotLock);
@@ -4593,7 +4620,7 @@ static void ds_pubg_tick(void) {
     g_dspubgTotalBots = total360BotCount;
     ++g_dspubgEpoch;
 
-    memcpy(g_dspubgItems, itemStaging, copyItemCount * sizeof(DSPUBGProjectedItem));
+    memcpy(g_dspubgItems, finalItems, copyItemCount * sizeof(DSPUBGProjectedItem));
     g_dspubgItemCount = copyItemCount;
     ++g_dspubgItemEpoch;
 
