@@ -420,3 +420,30 @@ Từ 2 ảnh thực tế của người dùng:
 - **Commit**: `9308177` (`feat(vischeck): integrate authentic client-side PhysX ray-triangle mesh vischeck`).
 - **GitHub Actions Run**: [Workflow Run 43663107625](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43663107625) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 20. Chuyển Đổi Thuần Raycast Hình Học 100% (Loại Bỏ Hoàn Toàn LastRenderTime)
+
+### A. Lý do chuyển đổi:
+- Người dùng yêu cầu loại bỏ hoàn toàn cơ chế dựa trên `LastRenderTime` / `LastSubmitTime` / `LastRenderTimeOnScreen`.
+- Tránh 100% hiện tượng "xanh ảo" do culling Bounding Box của game engine khi địch đứng sau tường gần mép cửa sổ hoặc góc tường.
+
+### B. Kiến trúc Thuần Raycast Hình Học:
+1. **Loại bỏ 100% Timestamps**:
+   - Xóa bỏ việc đọc `kDSPUGPrimitiveLastSubmitTime` (`0x484`) và `kDSPUGPrimitiveLastRenderTimeOnScreen` (`0x48C`).
+   - Xóa bỏ điều kiện `timestampsLookValid` và công thức `dt = lastSubmit - lastOnScreen`.
+2. **Raycast 3 tia đa điểm (Head, Chest, Pelvis)**:
+   - Bắn 3 tia độc lập từ Camera tới:
+     - `targetHead`: Xương đầu (`top.Z - 8.0f`).
+     - `targetChest`: Xương ngực / thân trên (`pos.Z + halfH * 0.45f`).
+     - `targetPelvis`: Xương hông / thân dưới (`pos.Z + 15.0f`).
+   - Nếu có ít nhất 1 tia thông suốt (địch thò đầu qua cửa sổ, hở người qua khe tường, hoặc đứng ngoài trời) $\rightarrow$ `rawVisible = true` (**Xanh**).
+   - Nếu cả 3 tia đều bị tường/nhà/vật cản chặn $\rightarrow$ `rawVisible = false` (**Đỏ**).
+3. **Mở rộng năng lực Map Collision Box (Ray-OBB)**:
+   - Tăng dung lượng mảng chướng ngại vật từ 128 lên 512 hộp (`kDSPUBGMaxObstacles = 512`).
+   - Mở rộng bán kính quét từ 45m lên 150m (`15000cm`).
+   - Cơ chế quét 2 pha (Pre-pass Double Buffering) giúp mảng vật cản luôn sẵn sàng tức thì trước khi xử lý người chơi.
+4. **Kết hợp lưới đa giác NVIDIA PhysX**:
+   - Tích hợp kiểm tra đồng thời cả va chạm tam giác PhysX (`DarkPhysX::LineOfSight`) và va chạm khối hộp công trình (`Ray-OBB`).
+   - Hiển thị thông số trực quan số lượng hộp và đa giác trên HUD: `[Ray: X Boxes, Y Tri]`.
