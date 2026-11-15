@@ -516,3 +516,25 @@ Từ 2 ảnh thực tế của người dùng:
 - **Commit**: `d9aa7ba` (`feat(vischeck): replace LastRenderTimeOnScreen with Jolt Physics raycast obstacle vischeck`).
 - **GitHub Actions Run**: [Workflow Run 43681966866](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43681966866) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 23. Khắc Phục Lỗi Toàn Bộ Mục Tiêu Bị Xanh Xuyên Tường (Ảnh IMG-6004)
+
+### A. Phân tích nguyên nhân thực tế từ ảnh người dùng (`IMG-6004`):
+- Trong ảnh, người chơi đứng trong phòng tập, đối diện một bức tường chắn kín, đằng sau tường có 4 con Bot nhưng cả 4 con Bot đều hiển thị màu **XANH** (thay vì màu **ĐỎ**).
+- **Nguyên nhân cốt lõi**:
+  - Dữ liệu địa hình tường/nhà của PUBG Mobile trên iOS được nén và streaming theo định dạng PhysX nội bộ của Unreal Engine, hoàn toàn không phân bổ dưới dạng các Actor động trong mảng `ULevel.Actors`.
+  - Khi bỏ hoàn toàn tín hiệu GPU Metal (`LastRenderTimeOnScreen`), hệ thống Raycast bên ngoài không quét được vách tường chắn giữa phòng $\rightarrow$ tia Raycast bắn xuyên qua không gian trống $\rightarrow$ kết luận nhầm là "thông suốt" $\rightarrow$ làm tất cả mục tiêu sau tường bị biến thành màu Xanh!
+
+### B. Giải pháp chuẩn xác: Hệ thống Vischeck Dual-Layer Chuẩn Xác:
+1. **Lớp 1 (Cốt lõi - GPU Metal Occlusion)**:
+   - Khôi phục `LastRenderTimeOnScreen` (`0x48C`) kết hợp `LastSubmitTime` (`0x484`).
+   - Mặc định khởi tạo an toàn: `isOccluded = true` (**Màu ĐỎ**).
+   - Tín hiệu chuẩn từ Apple Metal: Khi đối thủ đứng sau vách tường hoặc công trình, GPU ngừng rasterize $\rightarrow$ $\Delta t = \text{Submit} - \text{Render} > 0.065\text{s}$ $\rightarrow$ lập tức chuyển sang màu **ĐỎ** (như 4 con Bot sau tường phòng tập).
+   - Khi đối thủ bước ra khỏi tường hoặc thò người nhìn thấy được $\rightarrow$ GPU vẽ mesh $\rightarrow$ $\Delta t \in [-0.02\text{s}, 0.065\text{s}]$ $\rightarrow$ lập tức chuyển sang màu **XANH**.
+2. **Lớp 2 (Bộ lọc Raycast Hộp Vật Cản)**:
+   - Nếu GPU báo nhìn thấy nhưng có khối hộp vật thể chắn ngang tia nhìn $\rightarrow$ ép về màu **ĐỎ**.
+3. **Chống rung nhấp nháy**:
+   - Phản hồi nhìn thấy tức thì (0 frame delay).
+   - Yêu cầu 2 frame liên tiếp không render để xác nhận bị che (tránh nhấp nháy 1 frame).
