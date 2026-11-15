@@ -1066,31 +1066,35 @@ static inline bool ds_pubg_is_item_type_enabled(DSPUBGItemCategory cat, const ch
 
     // 8. Weapons grouped by AR, SMG, Shotgun, Sniper
     if (cat == DSPUBGItemCategoryWeapon) {
-        // AR: AKM, M16A4, SCAR-L, M416, Groza, AUG, QBZ, M762, Mk47, G36C, HoneyBadger, ACE32, FAMAS
+        // AR: AKM, M16A4, SCAR-L, M416, Groza, AUG, QBZ, M762, Mk47, G36C, HoneyBadger, ACE32, FAMAS, Abakan, F2000, Súng AR
         if (strstr(name, "AKM") || strstr(name, "M16") || strstr(name, "SCAR") ||
             strstr(name, "M416") || strstr(name, "Groza") || strstr(name, "AUG") ||
             strstr(name, "QBZ") || strstr(name, "M762") || strstr(name, "Mk47") ||
             strstr(name, "G36") || strstr(name, "Honey") || strstr(name, "ACE32") ||
-            strstr(name, "FAMAS")) {
+            strstr(name, "FAMAS") || strstr(name, "Abakan") || strstr(name, "F2000") ||
+            strstr(name, "Súng AR") || strstr(name, "AR Rifle")) {
             return g_pubgEspWeaponAR;
         }
-        // SMG: UZI, UMP45, Vector, Tommy Gun, Bizon, MP5K, P90
+        // SMG: UZI, UMP45, Vector, Tommy Gun, Bizon, MP5K, P90, JS9, Súng SMG
         if (strstr(name, "UZI") || strstr(name, "UMP") || strstr(name, "Vector") ||
             strstr(name, "Tommy") || strstr(name, "Bizon") || strstr(name, "MP5") ||
-            strstr(name, "P90")) {
+            strstr(name, "P90") || strstr(name, "JS9") || strstr(name, "Súng SMG") ||
+            strstr(name, "SMG")) {
             return g_pubgEspWeaponSMG;
         }
-        // Shotgun: S686, S1897, S12K, DBS, M1014, Sawed-Off
+        // Shotgun: S686, S1897, S12K, DBS, M1014, NS2000, SPAS, Sawed-Off, Shotgun
         if (strstr(name, "S686") || strstr(name, "S1897") || strstr(name, "S12K") ||
-            strstr(name, "DBS") || strstr(name, "M1014") || strstr(name, "Sawed")) {
+            strstr(name, "DBS") || strstr(name, "M1014") || strstr(name, "NS2000") ||
+            strstr(name, "SPAS") || strstr(name, "Sawed") || strstr(name, "Shotgun")) {
             return g_pubgEspWeaponShotgun;
         }
-        // Sniper & DMR: Kar98k, M24, AWM, SKS, VSS, Mini14, Mk14, Win94, SLR, QBU, Mosin, AMR, Lynx, VAL
+        // Sniper & DMR: Kar98k, M24, AWM, SKS, VSS, Mini14, Mk14, Win94, SLR, QBU, Mosin, AMR, Lynx, Mk12, Dragunov, Súng Sniper
         if (strstr(name, "Kar98") || strstr(name, "M24") || strstr(name, "AWM") ||
             strstr(name, "SKS") || strstr(name, "VSS") || strstr(name, "Mini14") ||
             strstr(name, "Mk14") || strstr(name, "Win94") || strstr(name, "SLR") ||
             strstr(name, "QBU") || strstr(name, "Mosin") || strstr(name, "AMR") ||
-            strstr(name, "Lynx") || strstr(name, "VAL")) {
+            strstr(name, "Lynx") || strstr(name, "VAL") || strstr(name, "Mk12") ||
+            strstr(name, "Dragunov") || strstr(name, "Súng Sniper") || strstr(name, "Sniper")) {
             return g_pubgEspWeaponSniper;
         }
         // Other weapons (LMG, Pistols, Melee, Pan, Crossbow): M249, DP-28, MG3, P92, Deagle, Pan...

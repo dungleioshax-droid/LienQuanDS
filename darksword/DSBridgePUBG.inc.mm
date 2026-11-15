@@ -1181,8 +1181,14 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 101008: snprintf(outDisplay, outCap, "M762"); return DSPUBGItemCategoryWeapon;
         case 101009: snprintf(outDisplay, outCap, "Mk47"); return DSPUBGItemCategoryWeapon;
         case 101010: snprintf(outDisplay, outCap, "G36C"); return DSPUBGItemCategoryWeapon;
-        case 101011: snprintf(outDisplay, outCap, "HoneyBadger"); return DSPUBGItemCategoryWeapon;
+        case 101011: snprintf(outDisplay, outCap, "FAMAS"); return DSPUBGItemCategoryWeapon;
         case 101012: snprintf(outDisplay, outCap, "ACE32"); return DSPUBGItemCategoryWeapon;
+        case 101013: snprintf(outDisplay, outCap, "HoneyBadger"); return DSPUBGItemCategoryWeapon;
+        case 101100: snprintf(outDisplay, outCap, "FAMAS"); return DSPUBGItemCategoryWeapon;
+        case 101101: snprintf(outDisplay, outCap, "ASM Abakan"); return DSPUBGItemCategoryWeapon;
+        case 101102: snprintf(outDisplay, outCap, "ACE32"); return DSPUBGItemCategoryWeapon;
+        case 101103: snprintf(outDisplay, outCap, "HoneyBadger"); return DSPUBGItemCategoryWeapon;
+        case 101104: snprintf(outDisplay, outCap, "F2000"); return DSPUBGItemCategoryWeapon;
 
         // --- Submachine Guns (SMG) ---
         case 102001: snprintf(outDisplay, outCap, "UZI"); return DSPUBGItemCategoryWeapon;
@@ -1192,6 +1198,7 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 102005: snprintf(outDisplay, outCap, isEn ? "Bizon" : "PP-19 Bizon"); return DSPUBGItemCategoryWeapon;
         case 102007: snprintf(outDisplay, outCap, "MP5K"); return DSPUBGItemCategoryWeapon;
         case 102008: snprintf(outDisplay, outCap, "P90"); return DSPUBGItemCategoryWeapon;
+        case 102101: snprintf(outDisplay, outCap, "JS9"); return DSPUBGItemCategoryWeapon;
 
         // --- Sniper Rifles (SR) & DMR ---
         case 103001: snprintf(outDisplay, outCap, "Kar98k"); return DSPUBGItemCategoryWeapon;
@@ -1207,6 +1214,8 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 103011: snprintf(outDisplay, outCap, "Mosin"); return DSPUBGItemCategoryWeapon;
         case 103012: snprintf(outDisplay, outCap, "Lynx AMR"); return DSPUBGItemCategoryWeapon;
         case 103013: snprintf(outDisplay, outCap, "AMR"); return DSPUBGItemCategoryWeapon;
+        case 103014: snprintf(outDisplay, outCap, "Mk12"); return DSPUBGItemCategoryWeapon;
+        case 103015: snprintf(outDisplay, outCap, "Dragunov"); return DSPUBGItemCategoryWeapon;
 
         // --- Shotguns (SG) ---
         case 104001: snprintf(outDisplay, outCap, "S686"); return DSPUBGItemCategoryWeapon;
@@ -1214,11 +1223,14 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 104003: snprintf(outDisplay, outCap, "S12K"); return DSPUBGItemCategoryWeapon;
         case 104004: snprintf(outDisplay, outCap, "DBS"); return DSPUBGItemCategoryWeapon;
         case 104005: snprintf(outDisplay, outCap, "M1014"); return DSPUBGItemCategoryWeapon;
+        case 104006: case 104100: snprintf(outDisplay, outCap, "NS2000"); return DSPUBGItemCategoryWeapon;
+        case 104101: snprintf(outDisplay, outCap, "SPAS-12"); return DSPUBGItemCategoryWeapon;
 
         // --- Light Machine Guns (LMG) ---
         case 105001: snprintf(outDisplay, outCap, "M249"); return DSPUBGItemCategoryWeapon;
         case 105002: snprintf(outDisplay, outCap, "DP-28"); return DSPUBGItemCategoryWeapon;
         case 105003: snprintf(outDisplay, outCap, "MG3"); return DSPUBGItemCategoryWeapon;
+        case 105010: snprintf(outDisplay, outCap, "M134"); return DSPUBGItemCategoryWeapon;
 
         // --- Pistols & Special ---
         case 106001: snprintf(outDisplay, outCap, "P92"); return DSPUBGItemCategoryWeapon;
@@ -1230,8 +1242,20 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
         case 106007: snprintf(outDisplay, outCap, "Flare Gun"); return DSPUBGItemCategoryWeapon;
         case 106008: snprintf(outDisplay, outCap, "Skorpion"); return DSPUBGItemCategoryWeapon;
         case 106010: snprintf(outDisplay, outCap, "Deagle"); return DSPUBGItemCategoryWeapon;
+
+        // --- Bows, Crossbows & Special ---
         case 107001: snprintf(outDisplay, outCap, isEn ? "Crossbow" : "Nỏ"); return DSPUBGItemCategoryWeapon;
+        case 107002: case 107008: snprintf(outDisplay, outCap, isEn ? "Tactical Crossbow" : "Nỏ Chiến Thuật"); return DSPUBGItemCategoryWeapon;
+        case 107003: snprintf(outDisplay, outCap, isEn ? "Explosive Bow" : "Cung Nổ"); return DSPUBGItemCategoryWeapon;
+        case 107004: case 107005: case 107011: snprintf(outDisplay, outCap, isEn ? "Grapple" : "Cáp Đu"); return DSPUBGItemCategoryWeapon;
+
+        // --- Melee Weapons ---
         case 108001: snprintf(outDisplay, outCap, isEn ? "Pan" : "Chảo"); return DSPUBGItemCategoryWeapon;
+        case 108002: snprintf(outDisplay, outCap, isEn ? "Crowbar" : "Xà Beng"); return DSPUBGItemCategoryWeapon;
+        case 108003: snprintf(outDisplay, outCap, isEn ? "Machete" : "Rựa"); return DSPUBGItemCategoryWeapon;
+        case 108004: snprintf(outDisplay, outCap, isEn ? "Sickle" : "Lưỡi Liềm"); return DSPUBGItemCategoryWeapon;
+        case 108005: case 108008: snprintf(outDisplay, outCap, isEn ? "Katana" : "Kiếm Nhật"); return DSPUBGItemCategoryWeapon;
+        case 108011: snprintf(outDisplay, outCap, isEn ? "Tactical Baton" : "Dùi Cui"); return DSPUBGItemCategoryWeapon;
 
         // --- Scopes & Sights ---
         case 201001: snprintf(outDisplay, outCap, "RedDot"); return DSPUBGItemCategoryScope;
@@ -1290,24 +1314,59 @@ static DSPUBGItemCategory ds_pubg_classify_item_id(int itemId, char *outDisplay,
             break;
     }
 
-    if (itemId >= 101000 && itemId < 109000) {
-        snprintf(outDisplay, outCap, isEn ? "Gun #%d" : "Súng (#%d)", itemId % 1000);
+    // Meaningful category fallbacks instead of cryptic "Súng (#%d)"
+    if (itemId >= 101000 && itemId < 102000) {
+        snprintf(outDisplay, outCap, isEn ? "AR Rifle" : "Súng AR");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 102000 && itemId < 103000) {
+        snprintf(outDisplay, outCap, isEn ? "SMG" : "Súng SMG");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 103000 && itemId < 104000) {
+        snprintf(outDisplay, outCap, isEn ? "Sniper" : "Súng Sniper");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 104000 && itemId < 105000) {
+        snprintf(outDisplay, outCap, "Shotgun");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 105000 && itemId < 106000) {
+        snprintf(outDisplay, outCap, isEn ? "LMG" : "Súng Máy LMG");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 106000 && itemId < 107000) {
+        snprintf(outDisplay, outCap, isEn ? "Pistol" : "Súng Lục");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 107000 && itemId < 108000) {
+        snprintf(outDisplay, outCap, isEn ? "Crossbow" : "Nỏ / Cung");
+        return DSPUBGItemCategoryWeapon;
+    }
+    if (itemId >= 108000 && itemId < 109000) {
+        snprintf(outDisplay, outCap, isEn ? "Melee" : "Cận Chiến");
         return DSPUBGItemCategoryWeapon;
     }
     if (itemId >= 201000 && itemId < 202000) {
-        snprintf(outDisplay, outCap, isEn ? "Scope #%d" : "Scope (#%d)", itemId % 1000);
+        snprintf(outDisplay, outCap, isEn ? "Scope" : "Ống Ngắm");
         return DSPUBGItemCategoryScope;
     }
     if (itemId >= 501000 && itemId < 502000) {
-        snprintf(outDisplay, outCap, isEn ? "Armor #%d" : "Giáp (#%d)", itemId % 10);
+        int lv = itemId % 10;
+        if (lv >= 1 && lv <= 3) snprintf(outDisplay, outCap, isEn ? "Armor Lv%d" : "Giáp %d", lv);
+        else snprintf(outDisplay, outCap, isEn ? "Armor" : "Giáp");
         return DSPUBGItemCategoryArmor;
     }
     if (itemId >= 502000 && itemId < 503000) {
-        snprintf(outDisplay, outCap, isEn ? "Helmet #%d" : "Mũ (#%d)", itemId % 10);
+        int lv = itemId % 10;
+        if (lv >= 1 && lv <= 3) snprintf(outDisplay, outCap, isEn ? "Helmet Lv%d" : "Mũ %d", lv);
+        else snprintf(outDisplay, outCap, isEn ? "Helmet" : "Mũ");
         return DSPUBGItemCategoryArmor;
     }
     if (itemId >= 503000 && itemId < 504000) {
-        snprintf(outDisplay, outCap, isEn ? "Bag #%d" : "Balo (#%d)", itemId % 10);
+        int lv = itemId % 10;
+        if (lv >= 1 && lv <= 3) snprintf(outDisplay, outCap, isEn ? "Bag Lv%d" : "Balo %d", lv);
+        else snprintf(outDisplay, outCap, isEn ? "Bag" : "Balo");
         return DSPUBGItemCategoryBag;
     }
 
@@ -1813,14 +1872,14 @@ static std::vector<CrateItemInfo> ds_pubg_get_crate_items(uint64_t crateActor) {
         results.push_back(info);
     };
 
-    // Fast direct check for PickUpListWrapperActor.PickUpDataList (offset 0x968, stride 0x38, ID at +0x4)
+    // Fast direct check for PickUpListWrapperActor.PickUpDataList (offset 0x968, stride 0x40, ID at +0x4)
     for (uint64_t target : targets) {
         if (!target || !ds_pubg_valid(target)) continue;
         uint64_t dataPtr = ds_pubg_read_ptr(target + 0x968ULL);
         uint32_t count = ds_pubg_read_u32(target + 0x970ULL);
         if (dataPtr && ds_pubg_valid(dataPtr) && count > 0 && count <= 64) {
             for (uint32_t i = 0; i < count; i++) {
-                uint64_t elem = dataPtr + i * 0x38ULL;
+                uint64_t elem = dataPtr + i * 0x40ULL;
                 int id = ds_pubg_read_i32(elem + 0x4ULL);
                 int qty = ds_pubg_read_i32(elem + 0x18ULL);
                 addItem(id, qty);
@@ -3787,7 +3846,9 @@ static void ds_pubg_tick(void) {
                             memcpy(&outV.X, boneEntry + 0x10, 4);
                             memcpy(&outV.Y, boneEntry + 0x14, 4);
                             memcpy(&outV.Z, boneEntry + 0x18, 4);
-                            return (!isnan(outV.X) && !isinf(outV.X) && !isnan(outV.Y) && !isinf(outV.Y) && !isnan(outV.Z) && !isinf(outV.Z));
+                            if (isnan(outV.X) || isinf(outV.X) || isnan(outV.Y) || isinf(outV.Y) || isnan(outV.Z) || isinf(outV.Z)) return false;
+                            if (fabsf(outV.X) < 0.01f && fabsf(outV.Y) < 0.01f && fabsf(outV.Z) < 0.01f) return false;
+                            return true;
                         };
 
                         auto dist3D = [](const DSPUBGVector &a, const DSPUBGVector &b) -> float {
@@ -3827,35 +3888,20 @@ static void ds_pubg_tick(void) {
                                 bThighL = 19; bCalfL = 20; bFootL = 21;
                             }
                         } else {
-                            // Player & Bot rig (67 bones - ShadowTrackerExtra)
+                            // Player & Bot rig (67 bones - ShadowTrackerExtra standard UE4 skeleton)
                             bHead = 6; bNeck = 5; bPelvis = 1;
 
-                            // Right Arm (stable UE4 humanoid rig: UpperArm=13, LowerArm=15, Hand=16):
+                            // Right Arm: UpperArm=13, LowerArm=15, Hand=16
                             bUprR = 13; bLwrR = 15; bHandR = 16;
 
-                            // Left Arm (stable UE4 humanoid rig: UpperArm=34, LowerArm=36, Hand=37):
+                            // Left Arm: UpperArm=34, LowerArm=36, Hand=37
                             bUprL = 34; bLwrL = 36; bHandL = 37;
 
-                            // Dynamic Armed vs Unarmed Leg Selection:
-                            // Unarmed (tay không / gục ngã): Right={55, 56, 57}, Left={59, 60, 61}
-                            // Armed (cầm súng):             Right={57, 58, 59}, Left={53, 54, 55}
-                            bool isArmedPose = (p.weaponName[0] != '\0');
-                            if (!isArmedPose && !p.isKnocked) {
-                                DSPUBGVector pelvisLoc = {}, bone61Loc = {};
-                                if (getBoneLocal(1, pelvisLoc) && getBoneLocal(61, bone61Loc)) {
-                                    if (bone61Loc.Z >= pelvisLoc.Z - 35.0f) {
-                                        isArmedPose = true;
-                                    }
-                                }
-                            }
+                            // Right Leg: Thigh=57, Calf=58, Foot=59
+                            bThighR = 57; bCalfR = 58; bFootR = 59;
 
-                            if (isArmedPose) {
-                                bThighR = 57; bCalfR = 58; bFootR = 59;
-                                bThighL = 53; bCalfL = 54; bFootL = 55;
-                            } else {
-                                bThighR = 55; bCalfR = 56; bFootR = 57;
-                                bThighL = 59; bCalfL = 60; bFootL = 61;
-                            }
+                            // Left Leg: Thigh=53, Calf=54, Foot=55
+                            bThighL = 53; bCalfL = 54; bFootL = 55;
                         }
 
                         const int jointIndices[15] = {
