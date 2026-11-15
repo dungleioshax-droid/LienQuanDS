@@ -71,10 +71,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
 @property (nonatomic, strong) MenuToggleButton *btnAirdrop;
 @property (nonatomic, strong) MenuToggleButton *btnAccessory;
 @property (nonatomic, strong) MenuToggleButton *btnDrug;
-@property (nonatomic, strong) MenuToggleButton *btnVal;
-@property (nonatomic, strong) MenuToggleButton *btnAkm;
-@property (nonatomic, strong) MenuToggleButton *btnM416;
-@property (nonatomic, strong) MenuToggleButton *btnScarl;
+@property (nonatomic, strong) MenuToggleButton *btnWeaponAR;
+@property (nonatomic, strong) MenuToggleButton *btnWeaponSMG;
+@property (nonatomic, strong) MenuToggleButton *btnWeaponShotgun;
+@property (nonatomic, strong) MenuToggleButton *btnWeaponSniper;
+@property (nonatomic, strong) MenuToggleButton *btnArmorLv1;
+@property (nonatomic, strong) MenuToggleButton *btnArmorLv2;
+@property (nonatomic, strong) MenuToggleButton *btnArmorLv3;
+@property (nonatomic, strong) MenuToggleButton *btnAmmo;
 @property (nonatomic, strong) MenuSliderRow *sliderItemDist;
 
 @end
@@ -113,10 +117,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
     if ([defaults objectForKey:@"pubg_crate"] != nil) g_pubgEspCrate = [defaults boolForKey:@"pubg_crate"];
     if ([defaults objectForKey:@"pubg_flaregun"] != nil) g_pubgEspFlareGun = [defaults boolForKey:@"pubg_flaregun"];
     if ([defaults objectForKey:@"pubg_drug"] != nil) g_pubgEspDrug = [defaults boolForKey:@"pubg_drug"];
-    if ([defaults objectForKey:@"pubg_val"] != nil) g_pubgEspVal = [defaults boolForKey:@"pubg_val"];
-    if ([defaults objectForKey:@"pubg_akm"] != nil) g_pubgEspAkm = [defaults boolForKey:@"pubg_akm"];
-    if ([defaults objectForKey:@"pubg_m416"] != nil) g_pubgEspM416 = [defaults boolForKey:@"pubg_m416"];
-    if ([defaults objectForKey:@"pubg_scarl"] != nil) g_pubgEspScarl = [defaults boolForKey:@"pubg_scarl"];
+    if ([defaults objectForKey:@"pubg_weapon_ar"] != nil) g_pubgEspWeaponAR = [defaults boolForKey:@"pubg_weapon_ar"];
+    if ([defaults objectForKey:@"pubg_weapon_smg"] != nil) g_pubgEspWeaponSMG = [defaults boolForKey:@"pubg_weapon_smg"];
+    if ([defaults objectForKey:@"pubg_weapon_shotgun"] != nil) g_pubgEspWeaponShotgun = [defaults boolForKey:@"pubg_weapon_shotgun"];
+    if ([defaults objectForKey:@"pubg_weapon_sniper"] != nil) g_pubgEspWeaponSniper = [defaults boolForKey:@"pubg_weapon_sniper"];
+    if ([defaults objectForKey:@"pubg_armor_lv1"] != nil) g_pubgEspArmorLv1 = [defaults boolForKey:@"pubg_armor_lv1"];
+    if ([defaults objectForKey:@"pubg_armor_lv2"] != nil) g_pubgEspArmorLv2 = [defaults boolForKey:@"pubg_armor_lv2"];
+    if ([defaults objectForKey:@"pubg_armor_lv3"] != nil) g_pubgEspArmorLv3 = [defaults boolForKey:@"pubg_armor_lv3"];
+    if ([defaults objectForKey:@"pubg_ammo"] != nil) g_pubgEspAmmo = [defaults boolForKey:@"pubg_ammo"];
     if ([defaults objectForKey:@"pubg_zoom_dist"] != nil) g_dspubgMaxDistance = [defaults floatForKey:@"pubg_zoom_dist"];
     if ([defaults objectForKey:@"pubg_item_dist"] != nil) g_pubgItemMaxDistance = [defaults floatForKey:@"pubg_item_dist"];
     if ([defaults objectForKey:@"pubg_thickness"] != nil) {
@@ -504,6 +512,16 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnAirdrop setTitle:@"THÍNH" forState:UIControlStateNormal];
         [self.btnAccessory setTitle:@"PHỤ KIỆN" forState:UIControlStateNormal];
         [self.btnDrug setTitle:@"HỒI MÁU" forState:UIControlStateNormal];
+
+        [self.btnWeaponAR setTitle:@"SÚNG AR" forState:UIControlStateNormal];
+        [self.btnWeaponSMG setTitle:@"SÚNG SMG" forState:UIControlStateNormal];
+        [self.btnWeaponShotgun setTitle:@"SHOTGUN" forState:UIControlStateNormal];
+        [self.btnWeaponSniper setTitle:@"SÚNG NGẮM" forState:UIControlStateNormal];
+
+        [self.btnArmorLv1 setTitle:@"CẤP 1" forState:UIControlStateNormal];
+        [self.btnArmorLv2 setTitle:@"CẤP 2" forState:UIControlStateNormal];
+        [self.btnArmorLv3 setTitle:@"CẤP 3" forState:UIControlStateNormal];
+        [self.btnAmmo setTitle:@"ĐẠN DƯỢC" forState:UIControlStateNormal];
     } else {
         [self.btnEspEnable setTitle:@"ENABLE" forState:UIControlStateNormal];
         [self.btnLine setTitle:@"DRAW LINE" forState:UIControlStateNormal];
@@ -526,6 +544,16 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnAirdrop setTitle:@"AIRDROP" forState:UIControlStateNormal];
         [self.btnAccessory setTitle:@"ACCESSORY" forState:UIControlStateNormal];
         [self.btnDrug setTitle:@"DRUG" forState:UIControlStateNormal];
+
+        [self.btnWeaponAR setTitle:@"AR" forState:UIControlStateNormal];
+        [self.btnWeaponSMG setTitle:@"SMG" forState:UIControlStateNormal];
+        [self.btnWeaponShotgun setTitle:@"SHOTGUN" forState:UIControlStateNormal];
+        [self.btnWeaponSniper setTitle:@"SNIPER" forState:UIControlStateNormal];
+
+        [self.btnArmorLv1 setTitle:@"LEVEL 1" forState:UIControlStateNormal];
+        [self.btnArmorLv2 setTitle:@"LEVEL 2" forState:UIControlStateNormal];
+        [self.btnArmorLv3 setTitle:@"LEVEL 3" forState:UIControlStateNormal];
+        [self.btnAmmo setTitle:@"AMMO" forState:UIControlStateNormal];
     }
 }
 
@@ -653,7 +681,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
 
     // Row 0 (y = 142): [ ENABLE ], [ VEHICLE ], [ GRENADE WARN ], [ LOOT BOX ]
     self.btnMatEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 142, colW, btnH) inView:self.scroll italic:YES];
-    self.btnMatEnable.on = (g_pubgEspWeapon || g_pubgEspArmor || g_pubgEspScope);
+    self.btnMatEnable.on = (g_pubgEspWeaponAR || g_pubgEspArmorLv1 || g_pubgEspScope);
     self.btnMatEnable.onToggle = ^(BOOL isOn) {
         weakSelf.btnVeh.on = isOn;
         weakSelf.btnGrenade.on = isOn;
@@ -662,15 +690,19 @@ static const CGFloat kMadnessPanelH = 325.0f;
         weakSelf.btnAirdrop.on = isOn;
         weakSelf.btnAccessory.on = isOn;
         weakSelf.btnDrug.on = isOn;
-        weakSelf.btnVal.on = isOn;
-        weakSelf.btnAkm.on = isOn;
-        weakSelf.btnM416.on = isOn;
-        weakSelf.btnScarl.on = isOn;
+        weakSelf.btnWeaponAR.on = isOn;
+        weakSelf.btnWeaponSMG.on = isOn;
+        weakSelf.btnWeaponShotgun.on = isOn;
+        weakSelf.btnWeaponSniper.on = isOn;
+        weakSelf.btnArmorLv1.on = isOn;
+        weakSelf.btnArmorLv2.on = isOn;
+        weakSelf.btnArmorLv3.on = isOn;
+        weakSelf.btnAmmo.on = isOn;
 
         g_pubgEspWeapon = isOn;
         g_pubgEspArmor = isOn;
-        g_pubgEspScope = isOn;
         g_pubgEspBag = isOn;
+        g_pubgEspScope = isOn;
         g_pubgEspCrate = isOn;
         g_pubgEspVehicle = isOn;
         g_pubgEspVehicleHp = isOn;
@@ -678,10 +710,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
         g_pubgEspGrenade = isOn;
         g_pubgEspFlareGun = isOn;
         g_pubgEspDrug = isOn;
-        g_pubgEspVal = isOn;
-        g_pubgEspAkm = isOn;
-        g_pubgEspM416 = isOn;
-        g_pubgEspScarl = isOn;
+        g_pubgEspWeaponAR = isOn;
+        g_pubgEspWeaponSMG = isOn;
+        g_pubgEspWeaponShotgun = isOn;
+        g_pubgEspWeaponSniper = isOn;
+        g_pubgEspArmorLv1 = isOn;
+        g_pubgEspArmorLv2 = isOn;
+        g_pubgEspArmorLv3 = isOn;
+        g_pubgEspAmmo = isOn;
 
         NSUserDefaults *def = NSUserDefaults.standardUserDefaults;
         [def setBool:isOn forKey:@"pubg_weapon"];
@@ -693,10 +729,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [def setBool:isOn forKey:@"pubg_grenade"];
         [def setBool:isOn forKey:@"pubg_flaregun"];
         [def setBool:isOn forKey:@"pubg_drug"];
-        [def setBool:isOn forKey:@"pubg_val"];
-        [def setBool:isOn forKey:@"pubg_akm"];
-        [def setBool:isOn forKey:@"pubg_m416"];
-        [def setBool:isOn forKey:@"pubg_scarl"];
+        [def setBool:isOn forKey:@"pubg_weapon_ar"];
+        [def setBool:isOn forKey:@"pubg_weapon_smg"];
+        [def setBool:isOn forKey:@"pubg_weapon_shotgun"];
+        [def setBool:isOn forKey:@"pubg_weapon_sniper"];
+        [def setBool:isOn forKey:@"pubg_armor_lv1"];
+        [def setBool:isOn forKey:@"pubg_armor_lv2"];
+        [def setBool:isOn forKey:@"pubg_armor_lv3"];
+        [def setBool:isOn forKey:@"pubg_ammo"];
     };
 
     self.btnVeh = [self btn:@"VEHICLE" frame:CGRectMake(x1, 142, colW, btnH) inView:self.scroll italic:YES];
@@ -756,37 +796,66 @@ static const CGFloat kMadnessPanelH = 325.0f;
     sep.backgroundColor = UIColor.yellowColor;
     [self.scroll addSubview:sep];
 
-    // Row 2 (y = 196): [ VAL ], [ AKM ], [ M416 ], [ SCAR-L ]
-    self.btnVal = [self btn:@"VAL" frame:CGRectMake(x0, 196, colW, btnH) inView:self.scroll italic:YES];
-    self.btnVal.on = g_pubgEspVal;
-    self.btnVal.onToggle = ^(BOOL isOn) {
-        g_pubgEspVal = isOn;
-        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_val"];
+    // Row 2 (y = 196): [ AR ], [ SMG ], [ SHOTGUN ], [ SNIPER ]
+    self.btnWeaponAR = [self btn:@"AR" frame:CGRectMake(x0, 196, colW, btnH) inView:self.scroll italic:YES];
+    self.btnWeaponAR.on = g_pubgEspWeaponAR;
+    self.btnWeaponAR.onToggle = ^(BOOL isOn) {
+        g_pubgEspWeaponAR = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_weapon_ar"];
     };
 
-    self.btnAkm = [self btn:@"AKM" frame:CGRectMake(x1, 196, colW, btnH) inView:self.scroll italic:YES];
-    self.btnAkm.on = g_pubgEspAkm;
-    self.btnAkm.onToggle = ^(BOOL isOn) {
-        g_pubgEspAkm = isOn;
-        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_akm"];
+    self.btnWeaponSMG = [self btn:@"SMG" frame:CGRectMake(x1, 196, colW, btnH) inView:self.scroll italic:YES];
+    self.btnWeaponSMG.on = g_pubgEspWeaponSMG;
+    self.btnWeaponSMG.onToggle = ^(BOOL isOn) {
+        g_pubgEspWeaponSMG = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_weapon_smg"];
     };
 
-    self.btnM416 = [self btn:@"M416" frame:CGRectMake(x2, 196, colW, btnH) inView:self.scroll italic:YES];
-    self.btnM416.on = g_pubgEspM416;
-    self.btnM416.onToggle = ^(BOOL isOn) {
-        g_pubgEspM416 = isOn;
-        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_m416"];
+    self.btnWeaponShotgun = [self btn:@"SHOTGUN" frame:CGRectMake(x2, 196, colW, btnH) inView:self.scroll italic:YES];
+    self.btnWeaponShotgun.on = g_pubgEspWeaponShotgun;
+    self.btnWeaponShotgun.onToggle = ^(BOOL isOn) {
+        g_pubgEspWeaponShotgun = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_weapon_shotgun"];
     };
 
-    self.btnScarl = [self btn:@"SCAR-L" frame:CGRectMake(x3, 196, colW, btnH) inView:self.scroll italic:YES];
-    self.btnScarl.on = g_pubgEspScarl;
-    self.btnScarl.onToggle = ^(BOOL isOn) {
-        g_pubgEspScarl = isOn;
-        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_scarl"];
+    self.btnWeaponSniper = [self btn:@"SNIPER" frame:CGRectMake(x3, 196, colW, btnH) inView:self.scroll italic:YES];
+    self.btnWeaponSniper.on = g_pubgEspWeaponSniper;
+    self.btnWeaponSniper.onToggle = ^(BOOL isOn) {
+        g_pubgEspWeaponSniper = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_weapon_sniper"];
     };
 
-    // Material Distance Slider (y = 220): [ 300 ]  DISTANCE
-    self.sliderItemDist = [[MenuSliderRow alloc] initWithFrame:CGRectMake(12, 220, 476, 20) min:50 max:500 value:g_pubgItemMaxDistance name:@"DISTANCE"];
+    // Row 3 (y = 220): [ LEVEL 1 ], [ LEVEL 2 ], [ LEVEL 3 ], [ AMMO ]
+    self.btnArmorLv1 = [self btn:@"LEVEL 1" frame:CGRectMake(x0, 220, colW, btnH) inView:self.scroll italic:YES];
+    self.btnArmorLv1.on = g_pubgEspArmorLv1;
+    self.btnArmorLv1.onToggle = ^(BOOL isOn) {
+        g_pubgEspArmorLv1 = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_armor_lv1"];
+    };
+
+    self.btnArmorLv2 = [self btn:@"LEVEL 2" frame:CGRectMake(x1, 220, colW, btnH) inView:self.scroll italic:YES];
+    self.btnArmorLv2.on = g_pubgEspArmorLv2;
+    self.btnArmorLv2.onToggle = ^(BOOL isOn) {
+        g_pubgEspArmorLv2 = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_armor_lv2"];
+    };
+
+    self.btnArmorLv3 = [self btn:@"LEVEL 3" frame:CGRectMake(x2, 220, colW, btnH) inView:self.scroll italic:YES];
+    self.btnArmorLv3.on = g_pubgEspArmorLv3;
+    self.btnArmorLv3.onToggle = ^(BOOL isOn) {
+        g_pubgEspArmorLv3 = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_armor_lv3"];
+    };
+
+    self.btnAmmo = [self btn:@"AMMO" frame:CGRectMake(x3, 220, colW, btnH) inView:self.scroll italic:YES];
+    self.btnAmmo.on = g_pubgEspAmmo;
+    self.btnAmmo.onToggle = ^(BOOL isOn) {
+        g_pubgEspAmmo = isOn;
+        [NSUserDefaults.standardUserDefaults setBool:isOn forKey:@"pubg_ammo"];
+    };
+
+    // Material Distance Slider (y = 246): [ 300 ]  DISTANCE
+    self.sliderItemDist = [[MenuSliderRow alloc] initWithFrame:CGRectMake(12, 246, 476, 20) min:50 max:500 value:g_pubgItemMaxDistance name:@"DISTANCE"];
     self.sliderItemDist.displayMode = MenuSliderDisplayRaw;
     self.sliderItemDist.onChange = ^(float v) {
         g_pubgItemMaxDistance = v;
@@ -794,7 +863,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     };
     [self.scroll addSubview:self.sliderItemDist];
 
-    self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 250);
+    self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 280);
     if ([self.currentLang isEqualToString:@"VIE"]) {
         [self updateLanguage:@"VIE"];
     }
@@ -826,10 +895,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
     g_pubgEspCrate = YES;
     g_pubgEspFlareGun = YES;
     g_pubgEspDrug = YES;
-    g_pubgEspVal = YES;
-    g_pubgEspAkm = YES;
-    g_pubgEspM416 = YES;
-    g_pubgEspScarl = YES;
+    g_pubgEspWeaponAR = YES;
+    g_pubgEspWeaponSMG = YES;
+    g_pubgEspWeaponShotgun = YES;
+    g_pubgEspWeaponSniper = YES;
+    g_pubgEspArmorLv1 = YES;
+    g_pubgEspArmorLv2 = YES;
+    g_pubgEspArmorLv3 = YES;
+    g_pubgEspAmmo = YES;
     g_pubgItemMaxDistance = 150.0f;
     g_pubgEspVehicle = YES;
     g_pubgEspVehicleHp = YES;
@@ -857,10 +930,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [defaults setBool:YES forKey:@"pubg_crate"];
     [defaults setBool:YES forKey:@"pubg_flaregun"];
     [defaults setBool:YES forKey:@"pubg_drug"];
-    [defaults setBool:YES forKey:@"pubg_val"];
-    [defaults setBool:YES forKey:@"pubg_akm"];
-    [defaults setBool:YES forKey:@"pubg_m416"];
-    [defaults setBool:YES forKey:@"pubg_scarl"];
+    [defaults setBool:YES forKey:@"pubg_weapon_ar"];
+    [defaults setBool:YES forKey:@"pubg_weapon_smg"];
+    [defaults setBool:YES forKey:@"pubg_weapon_shotgun"];
+    [defaults setBool:YES forKey:@"pubg_weapon_sniper"];
+    [defaults setBool:YES forKey:@"pubg_armor_lv1"];
+    [defaults setBool:YES forKey:@"pubg_armor_lv2"];
+    [defaults setBool:YES forKey:@"pubg_armor_lv3"];
+    [defaults setBool:YES forKey:@"pubg_ammo"];
     [defaults setFloat:150.0f forKey:@"pubg_item_dist"];
     [defaults setBool:YES forKey:@"pubg_vehicle"];
     [defaults setBool:YES forKey:@"pubg_vehicle_hp"];
@@ -888,10 +965,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.btnAirdrop.on = YES;
     self.btnAccessory.on = YES;
     self.btnDrug.on = YES;
-    self.btnVal.on = YES;
-    self.btnAkm.on = YES;
-    self.btnM416.on = YES;
-    self.btnScarl.on = YES;
+    self.btnWeaponAR.on = YES;
+    self.btnWeaponSMG.on = YES;
+    self.btnWeaponShotgun.on = YES;
+    self.btnWeaponSniper.on = YES;
+    self.btnArmorLv1.on = YES;
+    self.btnArmorLv2.on = YES;
+    self.btnArmorLv3.on = YES;
+    self.btnAmmo.on = YES;
     [self.sliderItemDist setSliderValue:150.0f];
 }
 

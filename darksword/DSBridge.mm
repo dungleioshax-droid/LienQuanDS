@@ -994,10 +994,111 @@ static BOOL g_pubgEspScope = YES;
 static BOOL g_pubgEspCrate = YES;
 static BOOL g_pubgEspFlareGun = YES;
 static BOOL g_pubgEspDrug = YES;
+static BOOL g_pubgEspWeaponAR = YES;
+static BOOL g_pubgEspWeaponSMG = YES;
+static BOOL g_pubgEspWeaponShotgun = YES;
+static BOOL g_pubgEspWeaponSniper = YES;
+static BOOL g_pubgEspArmorLv1 = YES;
+static BOOL g_pubgEspArmorLv2 = YES;
+static BOOL g_pubgEspArmorLv3 = YES;
+static BOOL g_pubgEspAmmo = YES;
 static BOOL g_pubgEspVal = YES;
 static BOOL g_pubgEspAkm = YES;
 static BOOL g_pubgEspM416 = YES;
 static BOOL g_pubgEspScarl = YES;
+
+static inline bool ds_pubg_is_item_type_enabled(DSPUBGItemCategory cat, const char *name) {
+    if (!name || name[0] == '\0') return true;
+
+    // 1. Vehicle
+    if (cat == DSPUBGItemCategoryVehicle) {
+        return g_pubgEspVehicle;
+    }
+
+    // 2. AirDrop / DeathBox / Ammo
+    if (cat == DSPUBGItemCategoryCrate) {
+        if (strstr(name, "Đạn") || strstr(name, "Ammo") || strstr(name, "9mm") ||
+            strstr(name, "7.62") || strstr(name, "5.56") || strstr(name, "12G") ||
+            strstr(name, "12Guage") || strstr(name, ".300") || strstr(name, ".45") ||
+            strstr(name, "45ACP") || strstr(name, "5.7")) {
+            return g_pubgEspAmmo;
+        }
+        return g_pubgEspCrate;
+    }
+
+    // 3. Flare Gun / Flare Ammo
+    if (strstr(name, "Flare")) {
+        return g_pubgEspFlareGun;
+    }
+
+    // 4. Drugs / Medicine
+    if (strstr(name, "Nước") || strstr(name, "Thuốc") || strstr(name, "Máu") ||
+        strstr(name, "Adrenaline") || strstr(name, "FirstAid") || strstr(name, "MedKit") ||
+        strstr(name, "Bandage") || strstr(name, "Painkiller") || strstr(name, "EnergyDrink")) {
+        return g_pubgEspDrug;
+    }
+
+    // 5. Scopes / Accessories
+    if (cat == DSPUBGItemCategoryScope || strstr(name, "Scope") || strstr(name, "Holo") ||
+        strstr(name, "RedDot") || strstr(name, "Nòng") || strstr(name, "Băng") ||
+        strstr(name, "Tay Cầm") || strstr(name, "Compensator") || strstr(name, "Suppressor") ||
+        strstr(name, "Stock") || strstr(name, "Choke")) {
+        return g_pubgEspScope;
+    }
+
+    // 6. Grenades / Thrown items
+    if (strstr(name, "Lựu") || strstr(name, "Khói") || strstr(name, "Xăng") ||
+        strstr(name, "Choáng") || strstr(name, "Grenade") || strstr(name, "Smoke") ||
+        strstr(name, "Molotof") || strstr(name, "Flash")) {
+        return g_pubgEspGrenade;
+    }
+
+    // 7. Armor, Helmets, Backpacks by Level (LV1, LV2, LV3)
+    if (cat == DSPUBGItemCategoryArmor || cat == DSPUBGItemCategoryBag ||
+        strstr(name, "Giáp") || strstr(name, "Mũ") || strstr(name, "Balo") ||
+        strstr(name, "Armor") || strstr(name, "Helmet") || strstr(name, "Bag") ||
+        strstr(name, "Head")) {
+        if (strstr(name, "3")) return g_pubgEspArmorLv3;
+        if (strstr(name, "2")) return g_pubgEspArmorLv2;
+        if (strstr(name, "1")) return g_pubgEspArmorLv1;
+        return (g_pubgEspArmorLv1 || g_pubgEspArmorLv2 || g_pubgEspArmorLv3);
+    }
+
+    // 8. Weapons grouped by AR, SMG, Shotgun, Sniper
+    if (cat == DSPUBGItemCategoryWeapon) {
+        // AR: AKM, M16A4, SCAR-L, M416, Groza, AUG, QBZ, M762, Mk47, G36C, HoneyBadger, ACE32, FAMAS
+        if (strstr(name, "AKM") || strstr(name, "M16") || strstr(name, "SCAR") ||
+            strstr(name, "M416") || strstr(name, "Groza") || strstr(name, "AUG") ||
+            strstr(name, "QBZ") || strstr(name, "M762") || strstr(name, "Mk47") ||
+            strstr(name, "G36") || strstr(name, "Honey") || strstr(name, "ACE32") ||
+            strstr(name, "FAMAS")) {
+            return g_pubgEspWeaponAR;
+        }
+        // SMG: UZI, UMP45, Vector, Tommy Gun, Bizon, MP5K, P90
+        if (strstr(name, "UZI") || strstr(name, "UMP") || strstr(name, "Vector") ||
+            strstr(name, "Tommy") || strstr(name, "Bizon") || strstr(name, "MP5") ||
+            strstr(name, "P90")) {
+            return g_pubgEspWeaponSMG;
+        }
+        // Shotgun: S686, S1897, S12K, DBS, M1014, Sawed-Off
+        if (strstr(name, "S686") || strstr(name, "S1897") || strstr(name, "S12K") ||
+            strstr(name, "DBS") || strstr(name, "M1014") || strstr(name, "Sawed")) {
+            return g_pubgEspWeaponShotgun;
+        }
+        // Sniper & DMR: Kar98k, M24, AWM, SKS, VSS, Mini14, Mk14, Win94, SLR, QBU, Mosin, AMR, Lynx, VAL
+        if (strstr(name, "Kar98") || strstr(name, "M24") || strstr(name, "AWM") ||
+            strstr(name, "SKS") || strstr(name, "VSS") || strstr(name, "Mini14") ||
+            strstr(name, "Mk14") || strstr(name, "Win94") || strstr(name, "SLR") ||
+            strstr(name, "QBU") || strstr(name, "Mosin") || strstr(name, "AMR") ||
+            strstr(name, "Lynx") || strstr(name, "VAL")) {
+            return g_pubgEspWeaponSniper;
+        }
+        // Other weapons (LMG, Pistols, Melee, Pan, Crossbow): M249, DP-28, MG3, P92, Deagle, Pan...
+        return (g_pubgEspWeaponAR || g_pubgEspWeaponSMG || g_pubgEspWeaponShotgun || g_pubgEspWeaponSniper);
+    }
+
+    return true;
+}
 static void ds_pubg_tick(void);
 static bool ds_pubg_has_render_source(void);
 static const char* ds_pubg_get_debug_status(void);

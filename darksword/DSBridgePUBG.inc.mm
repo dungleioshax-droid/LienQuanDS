@@ -4276,8 +4276,10 @@ static void ds_pubg_tick(void) {
 
     auto processItemOrVehicle = [&](uint64_t actor) {
         if (itemStagingCount >= (kDSPUBGMaxItems * 2)) return;
-        if (!g_pubgEspVehicle && !g_pubgEspWeapon && !g_pubgEspArmor &&
-            !g_pubgEspBag && !g_pubgEspScope && !g_pubgEspCrate) {
+        if (!g_pubgEspVehicle && !g_pubgEspCrate && !g_pubgEspScope && !g_pubgEspDrug &&
+            !g_pubgEspFlareGun && !g_pubgEspGrenade &&
+            !g_pubgEspWeaponAR && !g_pubgEspWeaponSMG && !g_pubgEspWeaponShotgun && !g_pubgEspWeaponSniper &&
+            !g_pubgEspArmorLv1 && !g_pubgEspArmorLv2 && !g_pubgEspArmorLv3 && !g_pubgEspAmmo) {
             return;
         }
 
@@ -4285,12 +4287,9 @@ static void ds_pubg_tick(void) {
         DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
         if (cEntry.actor == actor) {
             if (cEntry.isScenery) return;
-            if (cEntry.itemCat == DSPUBGItemCategoryVehicle && !g_pubgEspVehicle) return;
-            if (cEntry.itemCat == DSPUBGItemCategoryWeapon && !g_pubgEspWeapon) return;
-            if (cEntry.itemCat == DSPUBGItemCategoryScope && !g_pubgEspScope) return;
-            if (cEntry.itemCat == DSPUBGItemCategoryArmor && !g_pubgEspArmor) return;
-            if (cEntry.itemCat == DSPUBGItemCategoryBag && !g_pubgEspBag) return;
-            if (cEntry.itemCat == DSPUBGItemCategoryCrate && !g_pubgEspCrate) return;
+            if (cEntry.itemCat != DSPUBGItemCategoryNone) {
+                if (!ds_pubg_is_item_type_enabled(cEntry.itemCat, cEntry.itemName)) return;
+            }
         }
 
         if (localPawn) {
@@ -4406,12 +4405,7 @@ static void ds_pubg_tick(void) {
             cEntry.cachedFuelMax = 0.0f;
         }
 
-        if (cat == DSPUBGItemCategoryVehicle && !g_pubgEspVehicle) return;
-        if (cat == DSPUBGItemCategoryWeapon && !g_pubgEspWeapon) return;
-        if (cat == DSPUBGItemCategoryScope && !g_pubgEspScope) return;
-        if (cat == DSPUBGItemCategoryArmor && !g_pubgEspArmor) return;
-        if (cat == DSPUBGItemCategoryBag && !g_pubgEspBag) return;
-        if (cat == DSPUBGItemCategoryCrate && !g_pubgEspCrate) return;
+        if (!ds_pubg_is_item_type_enabled(cat, displayName)) return;
 
         float maxDist = (cat == DSPUBGItemCategoryVehicle) ? vehicleMaxDist :
                         ((cat == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
@@ -4425,6 +4419,7 @@ static void ds_pubg_tick(void) {
             std::vector<CrateItemInfo> cItems = ds_pubg_get_crate_items(actor);
             if (!cItems.empty()) {
                 for (const auto &ci : cItems) {
+                    if (!ds_pubg_is_item_type_enabled(ci.category, ci.name)) continue;
                     if (itemStagingCount >= (kDSPUBGMaxItems * 2 - 2)) break;
                     DSPUBGProjectedItem &pi = itemStaging[itemStagingCount++];
                     pi.screenX = sx;

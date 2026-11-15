@@ -1643,16 +1643,7 @@ static void ds_hosted_apply_pubg(void) {
         }
 
         const DSPUBGProjectedItem &it = items[i];
-        bool show = false;
-        switch (it.category) {
-            case DSPUBGItemCategoryVehicle: show = g_pubgEspVehicle; break;
-            case DSPUBGItemCategoryWeapon:  show = (g_pubgEspWeapon || g_pubgEspCrate); break;
-            case DSPUBGItemCategoryScope:   show = (g_pubgEspScope || g_pubgEspCrate); break;
-            case DSPUBGItemCategoryArmor:   show = (g_pubgEspArmor || g_pubgEspCrate); break;
-            case DSPUBGItemCategoryBag:     show = (g_pubgEspBag || g_pubgEspCrate); break;
-            case DSPUBGItemCategoryCrate:   show = g_pubgEspCrate; break;
-            default: break;
-        }
+        bool show = ds_pubg_is_item_type_enabled(it.category, it.name);
 
         float maxDist = (it.category == DSPUBGItemCategoryVehicle) ? fminf(fmaxf(g_pubgItemMaxDistance * 1.6f, 200.0f), 280.0f) :
                         ((it.category == DSPUBGItemCategoryCrate) ? (g_pubgItemMaxDistance * 2.0f) : g_pubgItemMaxDistance);
