@@ -2788,8 +2788,8 @@ static const char* ds_pubg_get_debug_status(void) {
     }
     if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots [Ray: %d Boxes, %d Tri]",
-                 g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount, DarkPhysX::GetMeshCount());
+                 "PUBG: %d Enemies | %d Bots [Vis: Metal Active]",
+                 g_dspubgLastEnemyCount, g_dspubgLastBotCount);
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -3654,63 +3654,76 @@ static void ds_pubg_tick(void) {
                         p.has3DBox = c3dOk;
 
                         // -------------------------------------------------------------
-                        // Pure Geometric Raycast Vischeck (100% Geometry, NO Timestamps)
-                        // Bắn tia ngắm 3D từ Camera tới Xương Đầu (Head), Ngực (Chest) và Hông (Pelvis)
-                        // Xuyên qua lưới va chạm PhysX và các khối hộp chướng ngại vật (Ray-OBB)
-                        // Tầm nhìn thông suốt = Xanh (Visible), Có tường/vật cản chắn = Đỏ (Occluded)
+                        // High-Accuracy Dual-Layer Vischeck:
+                        // Layer 1: Authentic Apple Metal GPU Rasterization (LastRenderTimeOnScreen 0x48C)
+                        // Layer 2: Hybrid Map Collision Raycast Verification (PhysX & Obstacle Ray-OBB)
                         // -------------------------------------------------------------
-                        DSPUBGVector targetHead = top;
-                        targetHead.Z -= 8.0f; // Tâm đầu
+                        bool isOccluded = true; // An toàn tuyệt đối: mặc định là Bị che (Đỏ) khi chưa xác thực
+                        if (meshComp && ds_pubg_valid(meshComp)) {
+                            float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
+                            float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
+                            bool timestampsLookValid =
+                                isfinite(lastSubmit) && isfinite(lastOnScreen) &&
+                                lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
+                                lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
 
-                        DSPUBGVector targetChest = pos;
-                        targetChest.Z += (halfH * 0.45f); // Tâm ngực / thân trên
+                            if (timestampsLookValid) {
+                                float dt = lastSubmit - lastOnScreen;
+                                // Metal forward rendering: dt trong khoảng [-0.02s, 0.075s] và lastOnScreen > 0
+                                // là đối tượng thực sự được GPU render lên màn hình.
+                                bool rawVisible = (dt >= -0.02f && dt <= 0.075f) && (lastOnScreen > 0.0f);
 
-                        DSPUBGVector targetPelvis = pos;
-                        targetPelvis.Z += 15.0f; // Hông / thân dưới
+                                // Lớp bảo vệ bổ sung: Nếu GPU báo visible nhưng có khối hộp vật cản chắn giữa camera và mục tiêu
+                                if (rawVisible && (s_obstacleCount > 0 || (g_pubgPhysXVischeck && DarkPhysX::GetMeshCount() > 0))) {
+                                    DSPUBGVector targetHead = top; targetHead.Z -= 8.0f;
+                                    DSPUBGVector targetChest = pos; targetChest.Z += (halfH * 0.45f);
+                                    if (!ds_pubg_ray_has_line_of_sight(camLoc, targetHead) &&
+                                        !ds_pubg_ray_has_line_of_sight(camLoc, targetChest)) {
+                                        rawVisible = false; // Bị tường che chắn
+                                    }
+                                }
 
-                        bool headVisible = ds_pubg_ray_has_line_of_sight(camLoc, targetHead);
-                        bool chestVisible = ds_pubg_ray_has_line_of_sight(camLoc, targetChest);
-                        bool pelvisVisible = ds_pubg_ray_has_line_of_sight(camLoc, targetPelvis);
-                        bool rawVisible = (headVisible || chestVisible || pelvisVisible);
+                                int visSlot = -1;
+                                for (int v = 0; v < 128; v++) {
+                                    if (s_visHistories[v].actor == pawn) {
+                                        visSlot = v;
+                                        break;
+                                    }
+                                }
+                                if (visSlot < 0) {
+                                    for (int v = 0; v < 128; v++) {
+                                        if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
+                                            visSlot = v;
+                                            memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
+                                            s_visHistories[v].actor = pawn;
+                                            s_visHistories[v].isOccluded = !rawVisible;
+                                            break;
+                                        }
+                                    }
+                                }
 
-                        int visSlot = -1;
-                        for (int v = 0; v < 128; v++) {
-                            if (s_visHistories[v].actor == pawn) {
-                                visSlot = v;
-                                break;
-                            }
-                        }
-                        if (visSlot < 0) {
-                            for (int v = 0; v < 128; v++) {
-                                if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
-                                    visSlot = v;
-                                    memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
-                                    s_visHistories[v].actor = pawn;
-                                    s_visHistories[v].isOccluded = !rawVisible;
-                                    break;
+                                if (visSlot >= 0) {
+                                    DSPUBGVisHistory &vh = s_visHistories[visSlot];
+                                    vh.lastSeenTick = s_visTickCounter;
+                                    vh.actor = pawn;
+
+                                    if (rawVisible) {
+                                        vh.visibleStreak++;
+                                        vh.occludedStreak = 0;
+                                        vh.isOccluded = false; // Phản hồi tức thì khi nhìn thấy (Xanh)
+                                    } else {
+                                        vh.occludedStreak++;
+                                        vh.visibleStreak = 0;
+                                        // Yêu cầu 2 frame liên tiếp không render để chuyển Đỏ (chống giật nháy 1 frame)
+                                        if (vh.occludedStreak >= 2) {
+                                            vh.isOccluded = true;
+                                        }
+                                    }
+                                    isOccluded = vh.isOccluded;
+                                } else {
+                                    isOccluded = !rawVisible;
                                 }
                             }
-                        }
-
-                        bool isOccluded = !rawVisible;
-                        if (visSlot >= 0) {
-                            DSPUBGVisHistory &vh = s_visHistories[visSlot];
-                            vh.lastSeenTick = s_visTickCounter;
-                            vh.actor = pawn;
-
-                            if (rawVisible) {
-                                vh.visibleStreak++;
-                                vh.occludedStreak = 0;
-                                vh.isOccluded = false; // Phản hồi tức thì khi tia ngắm thông suốt (Xanh)
-                            } else {
-                                vh.occludedStreak++;
-                                vh.visibleStreak = 0;
-                                // Cần 2 frame liên tiếp bị che khuất để chuyển Đỏ (chống giật nháy khi chạy qua khe hẹp)
-                                if (vh.occludedStreak >= 2) {
-                                    vh.isOccluded = true;
-                                }
-                            }
-                            isOccluded = vh.isOccluded;
                         }
 
                         p.isOccluded = isOccluded;

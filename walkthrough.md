@@ -452,3 +452,21 @@ Từ 2 ảnh thực tế của người dùng:
 - **Commit**: `63017a7` (`fix(build): declare s_obstacleCount prior to ds_pubg_get_debug_status`).
 - **GitHub Actions Run**: [Workflow Run 43664546505](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43664546505) — Kết quả: **Success**.
 - **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
+
+---
+
+## 21. Khôi Phục Hệ Thống Vischeck Lai Chuẩn Xác (Metal GPU RHI + Raycast Verification)
+
+### A. Phân tích nguyên nhân bản thuần Raycast không hoạt động:
+- Trong PUBG Mobile trên iOS, dữ liệu bản đồ địa hình tĩnh (nhà cửa, vách tường, núi đồi) được nén và streaming theo định dạng riêng của Unreal Engine, hoàn toàn không được phân bổ dưới dạng các Actor động trong mảng `ULevel.Actors`.
+- Khi DarkPubg đọc bộ nhớ từ bên ngoài mà bỏ hẳn tín hiệu GPU (`LastRenderTimeOnScreen`), hệ thống Raycast không tìm thấy vật cản nào trên đường đi $\rightarrow$ dẫn tới hiện tượng mọi mục tiêu luôn bị báo là nhìn thấy (100% màu Xanh kể cả sau tường kín).
+
+### B. Giải pháp tối ưu: Hệ thống Vischeck Dual-Layer:
+1. **Lớp 1 (Cốt lõi): GPU Metal Hardware Occlusion**:
+   - Sử dụng `LastRenderTimeOnScreen` (`0x48C`) kết hợp `LastSubmitTime` (`0x484`).
+   - Tín hiệu chuẩn xác nhất từ GPU Metal: khi mục tiêu bị bất kỳ vách tường hay vật cản nào che chắn, GPU ngừng vẽ $\rightarrow$ lập tức chuyển sang màu **ĐỎ**.
+   - Cửa sổ thời gian chuẩn: $[-0.02\text{s}, 0.075\text{s}]$.
+2. **Lớp 2 (Kiểm tra kép): Raycast Filter**:
+   - Khi GPU báo nhìn thấy, nếu có va chạm khối hộp hay lưới PhysX chắn ngang tia nhìn $\rightarrow$ ép về màu **ĐỎ**.
+3. **Mặc định an toàn**:
+   - Khởi tạo `isOccluded = true` (Đỏ) cho mọi trường hợp chưa được xác thực.
