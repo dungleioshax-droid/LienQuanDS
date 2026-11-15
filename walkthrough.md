@@ -470,3 +470,8 @@ Từ 2 ảnh thực tế của người dùng:
    - Khi GPU báo nhìn thấy, nếu có va chạm khối hộp hay lưới PhysX chắn ngang tia nhìn $\rightarrow$ ép về màu **ĐỎ**.
 3. **Mặc định an toàn**:
    - Khởi tạo `isOccluded = true` (Đỏ) cho mọi trường hợp chưa được xác thực.
+
+### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `73990bf` (`fix(vischeck): restore Metal RHI GPU occlusion core with Raycast verification filter`).
+- **GitHub Actions Run**: [Workflow Run 43665628206](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43665628206) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
