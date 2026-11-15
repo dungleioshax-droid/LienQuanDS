@@ -415,3 +415,8 @@ Từ 2 ảnh thực tế của người dùng:
 
 3. **An toàn 100% Read-Only**:
    - Toàn bộ thao tác chỉ đọc bộ nhớ ảo, hoàn toàn không can thiệp luồng game hay bộ nhớ trò chơi, tuyệt đối an toàn trước Tencent ACE.
+
+### B. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `9308177` (`feat(vischeck): integrate authentic client-side PhysX ray-triangle mesh vischeck`).
+- **GitHub Actions Run**: [Workflow Run 43663107625](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43663107625) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
