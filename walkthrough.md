@@ -511,3 +511,8 @@ Từ 2 ảnh thực tế của người dùng:
    - Khi bị che: Yêu cầu 2 frame liên tiếp để chuyển Đỏ (tránh nhấp nháy 1 frame).
 5. **HUD Thông Số Live**:
    - Cập nhật chuỗi trạng thái: `[Vis: Jolt Physics (%d obs)]`.
+
+### C. Kết quả Build & File IPA Mới Nhất:
+- **Commit**: `d9aa7ba` (`feat(vischeck): replace LastRenderTimeOnScreen with Jolt Physics raycast obstacle vischeck`).
+- **GitHub Actions Run**: [Workflow Run 43681966866](https://github.com/dungleioshax-droid/LienQuanDS/actions/runs/43681966866) — Kết quả: **Success**.
+- **File IPA hoàn thiện**: [DarkPubg_1.0-1.ipa](file:///home/dungle/DarkPubg/packages/DarkPubg_1.0-1.ipa).
