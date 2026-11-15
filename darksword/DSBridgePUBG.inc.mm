@@ -60,9 +60,6 @@ static const uint64_t kDSPUBGCharacterMeshOffset             = 0x510ULL;  // AST
 static const uint64_t kDSPUBGMeshBoxExtentZOffset            = 0xBA0ULL;  // Mesh.Bounds.BoxExtent.Z
 // UE4 UPrimitiveComponent render timestamps (inherited by USkeletalMeshComponent).
 // These are world-time values (seconds) written by the renderer every frame.
-static const uint64_t kDSPUGPrimitiveLastSubmitTime         = 0x484ULL;  // LastSubmitTime
-static const uint64_t kDSPUGPrimitiveLastRenderTime         = 0x488ULL;  // LastRenderTime
-static const uint64_t kDSPUGPrimitiveLastRenderTimeOnScreen = 0x48CULL;  // LastRenderTimeOnScreen
 static const uint64_t kDSPUBGCharacterPlayerNameOffset       = 0x960ULL;  // UAECharacter.PlayerName (FString)
 static const uint64_t kDSPUBGCharacterNationOffset           = 0x970ULL;  // UAECharacter.Nation (FString)
 static const uint64_t kDSPUBGCharacterPlayerKeyOffset        = 0x990ULL;  // UAECharacter.PlayerKey (uint32_t) [DUMP updated]
@@ -3089,6 +3086,9 @@ static bool ds_pubg_ray_intersects_box(
     float dPerpSq = vSq - t_proj * t_proj;
     if (dPerpSq > radius * radius) return false;
 
+    // 1b. The player's own collision must never block the line of sight.
+    if (ds_pubg_box_contains_local_capsule(box)) return false;
+
     // 2. Axes from Rotator
     DSPUBGVector uX = {}, uY = {}, uZ = {};
     ds_pubg_rotator_to_axes(box.rotation, uX, uY, uZ);
@@ -3128,8 +3128,6 @@ static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box);
 static bool ds_pubg_is_blocked_by_obstacle(const DSPUBGVector &camLoc, const DSPUBGVector &targetLoc) {
     if (s_obstacleCount <= 0) return false;
     for (int i = 0; i < s_obstacleCount; i++) {
-        // [A3] The player's own collision must never block the sight line.
-        if (ds_pubg_box_contains_local_capsule(s_obstacles[i])) continue;
         if (ds_pubg_ray_intersects_box(camLoc, targetLoc, s_obstacles[i])) {
             return true;
         }
@@ -3209,10 +3207,44 @@ static inline size_t ds_pubg_static_hash(uint64_t actor) {
     return (size_t)((actor >> 4) ^ (actor >> 17)) & (kDSPUBGStaticActorSlots - 1);
 }
 
+// --- A1b. Non-static actor memory ---------------------------------------------
+// Actors that are known to be *not* world geometry (players, loot, lights,
+// volumes, ...). Kept here so the static scanner never has to read their name
+// again, and - more importantly - so it never has to write into the shared
+// actor cache that the player and item scanners own.
+static const size_t kDSPUBGNonStaticSlots = 4096;   // power of two
+static uint64_t s_nonStaticActors[kDSPUBGNonStaticSlots] = {};
+
+static inline size_t ds_pubg_nonstatic_hash(uint64_t actor) {
+    return (size_t)((actor >> 4) ^ (actor >> 15)) & (kDSPUBGNonStaticSlots - 1);
+}
+
+static bool ds_pubg_nonstatic_known(uint64_t actor) {
+    if (!actor) return true;
+    size_t idx = ds_pubg_nonstatic_hash(actor);
+    for (size_t probe = 0; probe < kDSPUBGNonStaticSlots; probe++) {
+        uint64_t slot = s_nonStaticActors[(idx + probe) & (kDSPUBGNonStaticSlots - 1)];
+        if (slot == actor) return true;
+        if (slot == 0) return false;
+    }
+    return false;
+}
+
+static void ds_pubg_nonstatic_remember(uint64_t actor) {
+    if (!actor) return;
+    size_t idx = ds_pubg_nonstatic_hash(actor);
+    for (size_t probe = 0; probe < kDSPUBGNonStaticSlots; probe++) {
+        uint64_t &slot = s_nonStaticActors[(idx + probe) & (kDSPUBGNonStaticSlots - 1)];
+        if (slot == actor) return;
+        if (slot == 0) { slot = actor; return; }
+    }
+}
+
 // A new UWorld means every cached transform is stale: drop the whole library.
 static void ds_pubg_static_library_reset(uint64_t world) {
     if (world == s_staticActorWorld) return;
     memset(s_staticActors, 0, sizeof(s_staticActors));
+    memset(s_nonStaticActors, 0, sizeof(s_nonStaticActors));
     s_staticActorCount = 0;
     s_staticActorWorld = world;
 }
@@ -3222,6 +3254,7 @@ static void ds_pubg_static_library_reset(uint64_t world) {
 // so the next frame does not clear the (still empty) library again.
 static void ds_pubg_static_library_invalidate(void) {
     memset(s_staticActors, 0, sizeof(s_staticActors));
+    memset(s_nonStaticActors, 0, sizeof(s_nonStaticActors));
     s_staticActorCount = 0;
 }
 
@@ -3398,6 +3431,19 @@ static bool ds_pubg_smart_detect_local_capsule(uint64_t localPawn) {
     return true;
 }
 
+// Characters are never world geometry. They must be recognised before the
+// scenery list, because a pawn can carry a scenery-looking token (bots are
+// often named "...Target...") and would otherwise be baked into the obstacle
+// list and block its own line of sight.
+static inline bool ds_pubg_smart_is_pawn_name(const char *name) {
+    if (!name || !name[0]) return false;
+    return (strstr(name, "Pawn") || strstr(name, "Character") ||
+            strstr(name, "Player") || strstr(name, "Target") ||
+            strstr(name, "Dummy") || strstr(name, "Model") ||
+            strstr(name, "Avatar") || strstr(name, "Soldier") ||
+            strstr(name, "Bot") || strstr(name, "AI_"));
+}
+
 // Vehicles move, so they must never be baked into the static geometry cache.
 static inline bool ds_pubg_smart_is_vehicle_name(const char *name) {
     if (!name || !name[0]) return false;
@@ -3425,9 +3471,10 @@ static inline bool ds_pubg_smart_is_dropped_weapon_name(const char *name) {
 }
 
 // Classify one actor for the static scanner: scenery that is neither a
-// vehicle nor a dropped weapon becomes static geometry.
+// character, a vehicle nor a dropped weapon becomes static geometry.
 static inline DSPUBGActorClass ds_pubg_smart_classify_scenery(const char *name) {
     if (!name || !name[0]) return DSPUBGActorClass::Unknown;
+    if (ds_pubg_smart_is_pawn_name(name)) return DSPUBGActorClass::DynamicPawn;
     if (ds_pubg_smart_is_vehicle_name(name)) return DSPUBGActorClass::DynamicVehicle;
     if (ds_pubg_smart_is_dropped_weapon_name(name)) return DSPUBGActorClass::Ignored;
     if (ds_pubg_is_scenery_name(name)) return DSPUBGActorClass::StaticScenery;
@@ -4118,76 +4165,86 @@ static void ds_pubg_tick(void) {
                         p.has3DBox = c3dOk;
 
                         // -------------------------------------------------------------
-                        // High-Accuracy Dual-Layer Vischeck:
-                        // Layer 1 (Core): Apple Metal GPU Hardware Occlusion (LastRenderTimeOnScreen 0x48C)
-                        // Layer 2 (Verification): Map Collision Ray-OBB Obstacle Verification
+                        // Pure Physics Vischeck (PhysX style raycast query):
+                        // Không dùng GPU timestamp. Visibility được quyết định bằng cách
+                        // bắn chùm tia (ray bundle) từ camera vào các điểm trên thân địch
+                        // (đầu, ngực, hông, chân, 2 vai) và test Ray-OBB (Kay-Kajiya slab)
+                        // với thư viện vật cản của bản đồ. Chỉ cần 1 tia lọt qua là
+                        // thấy được một phần thân -> Xanh.
                         // -------------------------------------------------------------
-                        bool isOccluded = true; // An toàn tuyệt đối: mặc định là Bị che (Đỏ) khi đứng sau tường
-                        if (meshComp && ds_pubg_valid(meshComp)) {
-                            float lastSubmit = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastSubmitTime);
-                            float lastOnScreen = ds_pubg_read_f32(meshComp + kDSPUGPrimitiveLastRenderTimeOnScreen);
-                            bool timestampsLookValid =
-                                isfinite(lastSubmit) && isfinite(lastOnScreen) &&
-                                lastSubmit > 1.0f && lastSubmit < 1.0e6f &&
-                                lastOnScreen >= 0.0f && lastOnScreen < 1.0e6f;
+                        bool rawVisible;
+                        if (s_obstacleCount <= 0) {
+                            rawVisible = true; // Chưa có dữ liệu vật cản: coi như thấy
+                        } else {
+                            DSPUBGVector targetHead = top;  targetHead.Z  -= (isKnocked ? 4.0f : 8.0f);
+                            DSPUBGVector targetChest = pos; targetChest.Z += (halfH * 0.35f);
+                            DSPUBGVector targetPelvis = pos;
+                            DSPUBGVector targetFeet = pos;  targetFeet.Z  -= (halfH * 0.9f);
 
-                            if (timestampsLookValid) {
-                                float dt = lastSubmit - lastOnScreen;
-                                // Metal forward rendering: dt trong khoảng [-0.02s, 0.065s] và lastOnScreen > 0
-                                // là đối tượng thực sự được GPU render lên màn hình.
-                                bool rawVisible = (dt >= -0.02f && dt <= 0.065f) && (lastOnScreen > 0.0f);
+                            // 2 điểm probe lệch ngang 18cm, vuông góc với tia nhìn:
+                            // địch chỉ ló vai ra khỏi mép tường vẫn được tính là thấy.
+                            float dirX = pos.X - camLoc.X, dirY = pos.Y - camLoc.Y;
+                            float dirLen = sqrtf(dirX * dirX + dirY * dirY);
+                            float offX = 0.0f, offY = 0.0f;
+                            if (dirLen > 1.0f) {
+                                offX = (-dirY / dirLen) * 18.0f;
+                                offY = ( dirX / dirLen) * 18.0f;
+                            }
+                            DSPUBGVector targetLShoulder = targetChest;
+                            targetLShoulder.X += offX; targetLShoulder.Y += offY;
+                            DSPUBGVector targetRShoulder = targetChest;
+                            targetRShoulder.X -= offX; targetRShoulder.Y -= offY;
 
-                                // Lớp bảo vệ bổ sung: Nếu GPU báo visible nhưng có khối hộp vật cản chắn giữa camera và mục tiêu
-                                if (rawVisible && s_obstacleCount > 0) {
-                                    DSPUBGVector targetHead = top; targetHead.Z -= (isKnocked ? 4.0f : 8.0f);
-                                    DSPUBGVector targetChest = pos; targetChest.Z += (halfH * 0.35f);
-                                    if (!ds_pubg_ray_has_line_of_sight(camLoc, targetHead) &&
-                                        !ds_pubg_ray_has_line_of_sight(camLoc, targetChest)) {
-                                        rawVisible = false; // Bị tường che chắn
-                                    }
-                                }
+                            rawVisible =
+                                ds_pubg_ray_has_line_of_sight(camLoc, targetHead) ||
+                                ds_pubg_ray_has_line_of_sight(camLoc, targetChest) ||
+                                ds_pubg_ray_has_line_of_sight(camLoc, targetPelvis) ||
+                                ds_pubg_ray_has_line_of_sight(camLoc, targetFeet) ||
+                                ds_pubg_ray_has_line_of_sight(camLoc, targetLShoulder) ||
+                                ds_pubg_ray_has_line_of_sight(camLoc, targetRShoulder);
+                        }
 
-                                int visSlot = -1;
-                                for (int v = 0; v < 128; v++) {
-                                    if (s_visHistories[v].actor == pawn) {
-                                        visSlot = v;
-                                        break;
-                                    }
-                                }
-                                if (visSlot < 0) {
-                                    for (int v = 0; v < 128; v++) {
-                                        if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
-                                            visSlot = v;
-                                            memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
-                                            s_visHistories[v].actor = pawn;
-                                            s_visHistories[v].isOccluded = !rawVisible;
-                                            break;
-                                        }
-                                    }
-                                }
-
-                                if (visSlot >= 0) {
-                                    DSPUBGVisHistory &vh = s_visHistories[visSlot];
-                                    vh.lastSeenTick = s_visTickCounter;
-                                    vh.actor = pawn;
-
-                                    if (rawVisible) {
-                                        vh.visibleStreak++;
-                                        vh.occludedStreak = 0;
-                                        vh.isOccluded = false; // Phản hồi tức thì khi nhìn thấy (Xanh)
-                                    } else {
-                                        vh.occludedStreak++;
-                                        vh.visibleStreak = 0;
-                                        // Yêu cầu 2 frame liên tiếp không render để chuyển Đỏ (chống giật nháy 1 frame)
-                                        if (vh.occludedStreak >= 2) {
-                                            vh.isOccluded = true;
-                                        }
-                                    }
-                                    isOccluded = vh.isOccluded;
-                                } else {
-                                    isOccluded = !rawVisible;
+                        // Temporal smoothing: nhìn thấy chuyển Xanh tức thì, mất dấu phải
+                        // 2 frame liên tiếp bị chắn mới chuyển Đỏ (chống giật nháy 1 frame).
+                        int visSlot = -1;
+                        for (int v = 0; v < 128; v++) {
+                            if (s_visHistories[v].actor == pawn) {
+                                visSlot = v;
+                                break;
+                            }
+                        }
+                        if (visSlot < 0) {
+                            for (int v = 0; v < 128; v++) {
+                                if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
+                                    visSlot = v;
+                                    memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
+                                    s_visHistories[v].actor = pawn;
+                                    s_visHistories[v].isOccluded = !rawVisible;
+                                    break;
                                 }
                             }
+                        }
+
+                        bool isOccluded;
+                        if (visSlot >= 0) {
+                            DSPUBGVisHistory &vh = s_visHistories[visSlot];
+                            vh.lastSeenTick = s_visTickCounter;
+                            vh.actor = pawn;
+
+                            if (rawVisible) {
+                                vh.visibleStreak++;
+                                vh.occludedStreak = 0;
+                                vh.isOccluded = false;
+                            } else {
+                                vh.occludedStreak++;
+                                vh.visibleStreak = 0;
+                                if (vh.occludedStreak >= 2) {
+                                    vh.isOccluded = true;
+                                }
+                            }
+                            isOccluded = vh.isOccluded;
+                        } else {
+                            isOccluded = !rawVisible;
                         }
 
                         p.isOccluded = isOccluded;
@@ -5097,10 +5154,21 @@ static void ds_pubg_tick(void) {
                 // it must never be promoted to static geometry.
                 if (ds_pubg_dynamic_find(actor)) continue;
 
-                // [A1] Static library: geometry is captured once, later passes reuse it
-                // without touching the target process at all. It is refreshed
-                // periodically because a few "scenery" actors (doors, platforms)
-                // can actually move.
+
+                // The shared actor cache (g_dspubgActorCache) belongs to the player
+                // and item scanners. This scanner must never write into it: doing so
+                // evicts the player scanner entry, which makes processPawn classify
+                // the pawn by name again - and a pawn whose name matches the scenery
+                // list would then be dropped completely and never rendered.
+                // The classification below therefore uses its own memory only.
+
+                // [A3] Actor already known to be non-geometry (player, loot, light,
+                // volume, ...): skip it without another name lookup.
+                if (ds_pubg_nonstatic_known(actor)) continue;
+
+                // [A1] Static library: geometry captured once, reused afterwards
+                // without touching the target process again. TTL refreshes it
+                // because a few scenery actors (doors, platforms) can move.
                 bool staticFound = false;
                 DSPUBGStaticActor *sEntry = ds_pubg_static_slot(actor, staticFound);
                 const uint64_t kDSPUBGStaticCacheTTL = 60;   // ticks
@@ -5115,54 +5183,35 @@ static void ds_pubg_tick(void) {
                     continue;
                 }
 
-                uint32_t cSlot = ds_pubg_actor_cache_hash(actor);
-                DSPUBGActorCacheEntry &cEntry = g_dspubgActorCache[cSlot];
-
-                bool isScenery = false;
                 char aName[64] = {0};
-                if (cEntry.actor == actor) {
-                    isScenery = cEntry.isScenery;
-                    if (!isScenery) continue; // Skip known non-scenery actors
-                } else {
-                    if (!ds_pubg_get_actor_name(actor, aName, sizeof(aName))) continue;
+                if (!ds_pubg_get_actor_name(actor, aName, sizeof(aName))) continue;
 
-                    // [A3] Classify before it can become static geometry: vehicles move
-                    // and dropped weapons are loot, so both are skipped here.
-                    DSPUBGActorClass aClass = ds_pubg_smart_classify_scenery(aName);
-                    if (aClass != DSPUBGActorClass::StaticScenery) {
-                        cEntry.actor = actor;
-                        cEntry.isScenery = false;
-                        cEntry.isPawn = false;
-                        cEntry.itemCat = DSPUBGItemCategoryNone;
-                        cEntry.vCommon = 0;
-                        if (aClass == DSPUBGActorClass::DynamicVehicle) {
-                            // [A2] Vehicle: register it as a moving actor instead.
-                            uint64_t vRoot = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-                            DSPUBGVector vLoc = {};
-                            DSPUBGRotator vRot = {};
-                            DSPUBGVector vScale = { 1.0f, 1.0f, 1.0f };
-                            if (vRoot && ds_pubg_valid(vRoot)) {
-                                ds_pubg_read(vRoot + kDSPUBGSceneCompRelativeLocOffset, &vLoc, sizeof(vLoc));
-                                ds_pubg_read(vRoot + 0x1F0ULL, &vRot, sizeof(vRot));
-                                ds_pubg_read(vRoot + 0x1FCULL, &vScale, sizeof(vScale));
-                            }
-                            ds_pubg_dynamic_update(actor, DSPUBGShapeKind::Obb,
-                                                   DSPUBGActorClass::DynamicVehicle,
-                                                   DSPUBGActVehicle, vLoc, vRot, vScale,
-                                                   0.0f, 0.0f);
+                // [A3] Classify before it can become static geometry: vehicles move
+                // and dropped weapons are loot, so both are skipped here.
+                DSPUBGActorClass aClass = ds_pubg_smart_classify_scenery(aName);
+                if (aClass != DSPUBGActorClass::StaticScenery) {
+                    ds_pubg_nonstatic_remember(actor);
+                    if (aClass == DSPUBGActorClass::DynamicVehicle) {
+                        // [A2] Vehicle: register it as a moving actor instead.
+                        uint64_t vRoot = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+                        DSPUBGVector vLoc = {};
+                        DSPUBGRotator vRot = {};
+                        DSPUBGVector vScale = { 1.0f, 1.0f, 1.0f };
+                        if (vRoot && ds_pubg_valid(vRoot)) {
+                            ds_pubg_read(vRoot + kDSPUBGSceneCompRelativeLocOffset, &vLoc, sizeof(vLoc));
+                            ds_pubg_read(vRoot + 0x1F0ULL, &vRot, sizeof(vRot));
+                            ds_pubg_read(vRoot + 0x1FCULL, &vScale, sizeof(vScale));
                         }
-                        continue;
+                        ds_pubg_dynamic_update(actor, DSPUBGShapeKind::Obb,
+                                               DSPUBGActorClass::DynamicVehicle,
+                                               DSPUBGActVehicle, vLoc, vRot, vScale,
+                                               0.0f, 0.0f);
                     }
-
-                    isScenery = true;
-                    cEntry.actor = actor;
-                    cEntry.isScenery = true;
-                    cEntry.isPawn = false;
-                    cEntry.itemCat = DSPUBGItemCategoryNone;
-                    cEntry.vCommon = 0;
+                    continue;
                 }
 
-                if (isScenery) {
+                // Static geometry: capture the collision OBB once and cache it.
+                {
                     uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
                     if (rootComp && ds_pubg_valid(rootComp)) {
                         DSPUBGVector aLoc = {};
@@ -5177,7 +5226,6 @@ static void ds_pubg_tick(void) {
                                 if (!smc || !ds_pubg_valid(smc)) smc = rootComp;
                                 if (ds_pubg_extract_obstacle_box(smc, ob)) {
                                     s_obstaclesStaging[stagedCount++] = ob;
-                                    // Cache the geometry: static actors never move.
                                     if (sEntry) {
                                         if (!staticFound) s_staticActorCount++;
                                         sEntry->actor = actor;
