@@ -2756,6 +2756,22 @@ static bool ds_pubg_actors_array_at(uint64_t arr, uint64_t *outData, uint32_t *o
     return true;
 }
 
+// -----------------------------------------------------------------------------
+// Client-Side Map Collision Obstacle Ray-Box Vischeck System
+// (Pure Read-Only Math Ray-OBB Intersection, zero engine hooks, zero anticheat risk)
+// -----------------------------------------------------------------------------
+struct DSPUBGObstacleBox {
+    DSPUBGVector center;
+    DSPUBGVector extent;
+    DSPUBGRotator rotation;
+    float radius;
+};
+static const int kDSPUBGMaxObstacles = 512;
+static DSPUBGObstacleBox s_obstacles[kDSPUBGMaxObstacles] = {};
+static int s_obstacleCount = 0;
+static DSPUBGVector s_lastObstacleScanLoc = { 999999.0f, 999999.0f, 999999.0f };
+static uint64_t s_obstacleLastScanTick = 0;
+
 // Live informative diagnostic HUD string
 static const char* ds_pubg_get_debug_status(void) {
     if (!g_dspubgTargetActive.load(std::memory_order_acquire)) {
@@ -2866,22 +2882,6 @@ static bool ds_pubg_is_in_match(uint64_t world, uint64_t playerController, uint6
 
     return true;
 }
-
-// -----------------------------------------------------------------------------
-// Client-Side Map Collision Obstacle Ray-Box Vischeck System
-// (Pure Read-Only Math Ray-OBB Intersection, zero engine hooks, zero anticheat risk)
-// -----------------------------------------------------------------------------
-struct DSPUBGObstacleBox {
-    DSPUBGVector center;
-    DSPUBGVector extent;
-    DSPUBGRotator rotation;
-    float radius;
-};
-static const int kDSPUBGMaxObstacles = 512;
-static DSPUBGObstacleBox s_obstacles[kDSPUBGMaxObstacles] = {};
-static int s_obstacleCount = 0;
-static DSPUBGVector s_lastObstacleScanLoc = { 999999.0f, 999999.0f, 999999.0f };
-static uint64_t s_obstacleLastScanTick = 0;
 
 static inline void ds_pubg_rotator_to_axes(
     const DSPUBGRotator &rot,
