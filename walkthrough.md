@@ -377,10 +377,12 @@ Từ 2 ảnh thực tế của người dùng:
 ### B. Các thành phần đã triển khai trong mã nguồn:
 1. **Cấu trúc dữ liệu & Quản lý Obstacle Boxes** ([DSBridgePUBG.inc.mm](file:///home/dungle/DarkPubg/darksword/DSBridgePUBG.inc.mm#L2860-L2950)):
    - `DSPUBGObstacleBox`: Lưu tâm khối hộp (`center`), kích thước bán trục (`extent`), góc xoay (`rotation`), và bán kính cầu bao quanh (`radius`).
-   - Mảng bộ đệm `s_obstacles[128]`: Tối ưu hiệu năng, tự động cập nhật mỗi 10 frame hoặc khi người chơi di chuyển $> 3\text{m}$.
+   - Mảng bộ đệm `s_obstacles[4096]`: tự động quét lại mỗi 8 tick, hoặc ngay khi camera di chuyển $> 5\text{m}$ (giữ nguyên toàn bộ hộp trong bán kính 250 m).
 2. **Hàm trích xuất Bounding Box từ StaticMesh (`ds_pubg_extract_obstacle_box`)**:
    - Đọc chính xác tọa độ (`0x1E4`), góc xoay (`0x1F0`), tỷ lệ co giãn (`0x1FC`).
-   - Đọc `ExtendedBounds` (`0x1A8`) và `OcclusionBounds` (`0x54`) từ `UStaticMesh*` (`0xA30`) kết hợp fallback `CachedLocalBounds` (`0xB8C`).
+   - Đọc `FKBoxElem` từ `UStaticMesh.BodySetup.AggGeom` (`0x28` → `BoxElems 0x30`) và `PerInstanceSMData` (`0xBD8`) của ISM, ghép pose component qua chuỗi `AttachParent`.
+   - Fallback `comp + 0xB8C` đã bị xoá: đó là `USkinnedMeshComponent.CachedLocalBounds`, không tồn tại trên `UStaticMeshComponent`, đọc vào padding sinh hộp vật cản ma nuốt mọi tia nhìn.
+   - Cổng class name `"StaticMesh"` / `"Instanced"` và `ds_pubg_box_is_sane()` (half-extent ≤ 5000 cm) chặn bounds gộp của light/volume/decal/terrain.
 3. **Thuật toán Ray-OBB Intersection siêu tốc (`ds_pubg_ray_intersects_box`)**:
    - Bước 1: Lọc nhanh bằng mặt cầu bao (Bounding Sphere rejection).
    - Bước 2: Tách 3 trục trực giao $u_X, u_Y, u_Z$ từ `FRotator`.
