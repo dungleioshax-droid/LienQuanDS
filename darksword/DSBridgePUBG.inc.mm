@@ -4042,6 +4042,18 @@ static uint32_t s_obsNameOk = 0;
 static uint32_t s_obsScenery = 0;
 static uint32_t s_obsBoxOk = 0;
 static uint32_t s_obsLevels = 0;
+// Per-stage drop counters for one scan. S122/B0 only says "no boxes"; these
+// say where the actors went: no root component, no components at all, or
+// components that yielded no geometry from any of the three extractors.
+static uint32_t s_obsNoRoot = 0;
+static uint32_t s_obsNoComp = 0;
+static uint32_t s_obsNoMeshComp = 0;
+static uint32_t s_obsCompBoxes = 0;
+static uint32_t s_obsPxActorsSeen = 0;
+static uint32_t s_obsRootZero = 0;
+static uint32_t s_obsFar = 0;
+static uint32_t s_obsPxIdFound = 0;
+static uint32_t s_obsUnnamed = 0;
 
 // Live informative diagnostic HUD string
 static const char* ds_pubg_get_debug_status(void) {
@@ -4064,7 +4076,8 @@ static const char* ds_pubg_get_debug_status(void) {
                  "PUBG %dE %dB | OBS %d ST %d DYN %d\n"
                  "A%u N%u S%u B%u L%u | PX %u/%u/%u\n"
                  "m:0x%llX g:%lld p:%lld | G %u/%u/%u/%u/%u/%u\n"
-                 "x%u y%u z%u | M %u/%u/%u | GN %d s%d",
+                 "x%u y%u z%u | M %u/%u/%u | GN %d s%d\n"
+                 "act r%u c%u m%u b%u | z%u f%u u%u",
                  g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount,
                  (int)s_staticActorCount, (int)s_dynamicActorCount,
                  s_obsScanActors, s_obsNameOk, s_obsScenery, s_obsBoxOk, s_obsLevels,
@@ -4080,7 +4093,9 @@ static const char* ds_pubg_get_debug_status(void) {
                  s_pxNoAabb, s_pxNoSane, s_pxNoCover,
                  s_pxMeshPtrOk, s_pxMeshVertOk, s_pxMeshStoredOk,
                  g_dspubgGNames ? 1 : 0,
-                 g_dspubgNameLayout.score);
+                 g_dspubgNameLayout.score,
+                 s_obsNoRoot, s_obsNoComp, s_obsNoMeshComp, s_obsCompBoxes,
+                 s_obsRootZero, s_obsFar, s_obsUnnamed);
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -6702,6 +6717,13 @@ static void ds_pubg_tick(void) {
         s_pxMeshPtrOk = 0;
         s_pxMeshVertOk = 0;
         s_pxMeshStoredOk = 0;
+        s_obsNoRoot = 0;
+        s_obsNoComp = 0;
+        s_obsNoMeshComp = 0;
+        s_obsCompBoxes = 0;
+        s_obsRootZero = 0;
+        s_obsFar = 0;
+        s_obsUnnamed = 0;
 
         // [A1] The cached geometry belongs to one level set: seamless travel
         // swaps the levels while keeping the same UWorld, so the library is
@@ -6830,6 +6852,11 @@ static void ds_pubg_tick(void) {
                         continue;
                     }
                 }
+                else {
+                    // GNames never resolved this actor's name. Geometry is
+                    // still attempted below; counted only as a name stat.
+                    s_obsUnnamed++;
+                }
                 s_obsScenery++;
 
                 // Static geometry: capture the collision OBB once and cache it.
@@ -6837,13 +6864,13 @@ static void ds_pubg_tick(void) {
                     uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
                     if (rootComp && ds_pubg_valid(rootComp)) {
                         DSPUBGVector rootLoc = {};
-                        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) continue;
-                        if (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f && fabsf(rootLoc.Z) < 1.0f) continue;
+                        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) { s_obsNoRoot++; continue; }
+                        if (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f && fabsf(rootLoc.Z) < 1.0f) { s_obsRootZero++; continue; }
 
                         float dx = rootLoc.X - camLoc.X;
                         float dy = rootLoc.Y - camLoc.Y;
                         float dz = rootLoc.Z - camLoc.Z;
-                        if (dx * dx + dy * dy + dz * dz >= (25000.0f * 25000.0f)) continue;
+                        if (dx * dx + dy * dy + dz * dz >= (25000.0f * 25000.0f)) { s_obsFar++; continue; }
 
                         // Walk the actor's component list: a building actor usually
                         // owns several instanced wall modules plus a static mesh.
@@ -6891,6 +6918,14 @@ static void ds_pubg_tick(void) {
                         DSPUBGObstacleBox capturedBoxes[kDSPUBGStaticBoxesPerActor] = {};
                         DSPUBGObstacleBox local[kDSPUBGBoxesPerComponent] = {};
 
+                        if (compCount <= 1) s_obsNoComp++;
+                        bool anyMeshComp = false;
+                        uint64_t probeMesh = 0;
+                        for (int ci = 0; ci < compCount && !anyMeshComp; ci++) {
+                            if (ds_pubg_component_has_static_mesh(comps[ci], probeMesh)) anyMeshComp = true;
+                        }
+                        if (!anyMeshComp) s_obsNoMeshComp++;
+
                         for (int ci = 0; ci < compCount && boxTotal < kDSPUBGStaticBoxesPerActor; ci++) {
                             // PhysX first: it is the geometry the game actually
                             // collides with, and it is independent of the cooked
@@ -6903,6 +6938,7 @@ static void ds_pubg_tick(void) {
                             if (n <= 0) {
                                 n = ds_pubg_extract_component_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
                             }
+                            if (n > 0) s_obsCompBoxes++;
                             for (int b = 0; b < n && boxTotal < kDSPUBGStaticBoxesPerActor; b++) {
                                 float bx = local[b].center.X - camLoc.X;
                                 float by = local[b].center.Y - camLoc.Y;
@@ -6960,6 +6996,29 @@ static void ds_pubg_tick(void) {
                 for (int32_t si = 0; si < streamCount && stagedCount < kDSPUBGMaxObstacles; si++) {
                     uint64_t sl = slArr[si];
                     if (sl && ds_pubg_valid(sl)) {
+                        uint64_t loadedLvl = ds_pubg_read_ptr(sl + 0x168ULL);
+                        if (loadedLvl) scanLevelObstacles(loadedLvl);
+                    }
+                }
+            }
+        }
+
+        // 5. WorldComposition.TilesStreaming (0xD08 -> 0x110)
+        // A world-composed map keeps its tiles here, not in StreamingLevels.
+        // Without this pass only the persistent level is walked - the HUD
+        // showed L1 / A124 on a map that has thousands of actors.
+        uint64_t worldComp = ds_pubg_read_ptr(world + 0xD08ULL);
+        if (worldComp && ds_pubg_valid(worldComp)) {
+            uint64_t tilesData = ds_pubg_read_ptr(worldComp + 0x110ULL);
+            int32_t tilesCount = ds_pubg_read_i32(worldComp + 0x118ULL);
+            if (tilesData && tilesCount > 0 && tilesCount < 4096) {
+                std::vector<uint64_t> tileArr((size_t)tilesCount, 0);
+                uint32_t toRead = (uint32_t)tilesCount;
+                if (toRead > 512) toRead = 512;
+                if (ds_pubg_read(tilesData, tileArr.data(), (size_t)toRead * sizeof(uint64_t))) {
+                    for (uint32_t ti = 0; ti < toRead && stagedCount < kDSPUBGMaxObstacles; ti++) {
+                        uint64_t sl = tileArr[ti];
+                        if (!sl || !ds_pubg_valid(sl)) continue;
                         uint64_t loadedLvl = ds_pubg_read_ptr(sl + 0x168ULL);
                         if (loadedLvl) scanLevelObstacles(loadedLvl);
                     }

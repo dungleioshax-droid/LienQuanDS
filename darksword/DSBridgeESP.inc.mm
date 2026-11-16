@@ -1621,7 +1621,7 @@ static void ds_hosted_apply_pubg(void) {
             // and anchor left so the glyph column stays readable.
             CGFloat sW = width - 24.0f;
             if (sW > 760.0f) sW = 760.0f;
-            CGFloat sH = 76.0f;
+            CGFloat sH = 94.0f;
             g_hostedPUBGStatusLabel.frame = CGRectMake(12.0f, 44.0f, sW, sH);
             g_hostedPUBGStatusLabel.fontSize = 9.0f;
             g_hostedPUBGStatusLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:9.0
