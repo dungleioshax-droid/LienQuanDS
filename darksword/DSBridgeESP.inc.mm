@@ -1617,13 +1617,17 @@ static void ds_hosted_apply_pubg(void) {
         const char *dbgStatus = ds_pubg_get_debug_status();
         NSString *statusStr = dbgStatus ? [NSString stringWithUTF8String:dbgStatus] : @"";
         if (statusStr.length > 0) {
-            CGFloat sW = 340.0f;
-            CGFloat sH = 12.0f;
-            g_hostedPUBGStatusLabel.frame = CGRectMake((width - sW) * 0.5f, 44.0f, sW, sH);
+            // Four fixed diagnostic lines; keep the full width so no line clips
+            // and anchor left so the glyph column stays readable.
+            CGFloat sW = width - 24.0f;
+            if (sW > 760.0f) sW = 760.0f;
+            CGFloat sH = 76.0f;
+            g_hostedPUBGStatusLabel.frame = CGRectMake(12.0f, 44.0f, sW, sH);
             g_hostedPUBGStatusLabel.fontSize = 9.0f;
             g_hostedPUBGStatusLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:9.0
                                                                                           weight:UIFontWeightSemibold];
-            g_hostedPUBGStatusLabel.alignmentMode = kCAAlignmentCenter;
+            g_hostedPUBGStatusLabel.alignmentMode = kCAAlignmentLeft;
+            g_hostedPUBGStatusLabel.wrapped = YES;
             g_hostedPUBGStatusLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:0.85].CGColor;
             g_hostedPUBGStatusLabel.backgroundColor = UIColor.clearColor.CGColor;
             g_hostedPUBGStatusLabel.shadowColor = [UIColor blackColor].CGColor;
@@ -2630,7 +2634,8 @@ static unsigned ds_hosted_overlay_setup_on_main(void) {
             CATextLayer *statusLabel = [CATextLayer layer];
             statusLabel.actions = noAnim;
             statusLabel.contentsScale = scale;
-            statusLabel.alignmentMode = kCAAlignmentCenter;
+            statusLabel.alignmentMode = kCAAlignmentLeft;
+            statusLabel.wrapped = YES;
             statusLabel.fontSize = 9.0;
             statusLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:9.0 weight:UIFontWeightSemibold];
             statusLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:0.85].CGColor;
