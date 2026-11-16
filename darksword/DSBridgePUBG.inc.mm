@@ -88,7 +88,7 @@ static int g_dspubgLastActorsCount = 0;
 static int g_dspubgLastEnemyCount = 0;
 static int g_dspubgLastBotCount = 0;
 static uint32_t g_dspubgLastBoneOff = 0;
-static char g_dspubgStatusBuf[128] = "PUBG: Waiting for game process...";
+static char g_dspubgStatusBuf[256] = "PUBG: Waiting for game process...";
 
 // Snapshot storage
 static os_unfair_lock g_dspubgSnapshotLock = OS_UNFAIR_LOCK_INIT;
@@ -2837,11 +2837,13 @@ static bool ds_pubg_actors_array_at(uint64_t arr, uint64_t *outData, uint32_t *o
 // -----------------------------------------------------------------------------
 struct DSPUBGObstacleBox {
     DSPUBGVector center;
-    DSPUBGVector extent;
-    DSPUBGRotator rotation;
-    float radius;
+    DSPUBGVector extent;   // half extents along axisX/Y/Z
+    DSPUBGVector axisX;    // world-space box axes (orthonormal)
+    DSPUBGVector axisY;
+    DSPUBGVector axisZ;
+    float radius;          // circumscribed sphere radius
 };
-static const int kDSPUBGMaxObstacles = 1024;
+static const int kDSPUBGMaxObstacles = 4096;
 static DSPUBGObstacleBox s_obstacles[kDSPUBGMaxObstacles] = {};
 static int s_obstacleCount = 0;
 static DSPUBGVector s_lastObstacleScanLoc = { 999999.0f, 999999.0f, 999999.0f };
@@ -2849,6 +2851,14 @@ static uint64_t s_obstacleLastScanTick = 0;
 // Live counters of the Actor & Shape Classification system (see section A).
 static size_t s_staticActorCount = 0;
 static size_t s_dynamicActorCount = 0;
+// Obstacle pre-pass stage counters (diagnostics: shows exactly which stage
+// of the scan fails: A=actors iterated, N=names resolved, S=scenery
+// classified, B=boxes extracted, L=levels scanned).
+static uint32_t s_obsScanActors = 0;
+static uint32_t s_obsNameOk = 0;
+static uint32_t s_obsScenery = 0;
+static uint32_t s_obsBoxOk = 0;
+static uint32_t s_obsLevels = 0;
 
 // Live informative diagnostic HUD string
 static const char* ds_pubg_get_debug_status(void) {
@@ -2866,9 +2876,10 @@ static const char* ds_pubg_get_debug_status(void) {
     }
     if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0) {
         snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: %d Enemies | %d Bots [Vis: %d obs | %d static | %d dyn]",
+                 "PUBG: %d Enemies | %d Bots [Vis: %d obs | %d static | %d dyn | A%u N%u S%u B%u L%u]",
                  g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount,
-                 (int)s_staticActorCount, (int)s_dynamicActorCount);
+                 (int)s_staticActorCount, (int)s_dynamicActorCount,
+                 s_obsScanActors, s_obsNameOk, s_obsScenery, s_obsBoxOk, s_obsLevels);
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -2993,33 +3004,223 @@ static inline void ds_pubg_rotator_to_axes(
     outZ.Z = CR * CP;
 }
 
-static inline void ds_pubg_rotate_vec(const DSPUBGVector &v, const DSPUBGRotator &rot, DSPUBGVector &out) {
-    DSPUBGVector uX = {}, uY = {}, uZ = {};
-    ds_pubg_rotator_to_axes(rot, uX, uY, uZ);
-    out.X = v.X * uX.X + v.Y * uY.X + v.Z * uZ.X;
-    out.Y = v.X * uX.Y + v.Y * uY.Y + v.Z * uZ.Y;
-    out.Z = v.X * uX.Z + v.Y * uY.Z + v.Z * uZ.Z;
+// --- World-space box helpers ------------------------------------------------
+// A box is stored as center + three orthonormal world axes + half extents, so
+// the slab test never has to re-derive axes from a rotator (ISMs and concave
+// collision elements are not rotator-aligned).
+
+static inline DSPUBGVector ds_pubg_axes_apply(const DSPUBGVector &v,
+                                              const DSPUBGVector &ax,
+                                              const DSPUBGVector &ay,
+                                              const DSPUBGVector &az) {
+    DSPUBGVector out = {};
+    out.X = v.X * ax.X + v.Y * ay.X + v.Z * az.X;
+    out.Y = v.X * ax.Y + v.Y * ay.Y + v.Z * az.Y;
+    out.Z = v.X * ax.Z + v.Y * ay.Z + v.Z * az.Z;
+    return out;
 }
 
-static bool ds_pubg_extract_obstacle_box(uint64_t comp, DSPUBGObstacleBox &outBox) {
+static inline DSPUBGVector ds_pubg_axes_scale(const DSPUBGVector &v,
+                                              const DSPUBGVector &s) {
+    return DSPUBGVector{ v.X * s.X, v.Y * s.Y, v.Z * s.Z };
+}
+
+static inline DSPUBGVector ds_pubg_rotated_axes(const DSPUBGVector &parentX,
+                                                const DSPUBGVector &parentY,
+                                                const DSPUBGVector &parentZ,
+                                                const DSPUBGVector &localAxis) {
+    return ds_pubg_axes_apply(localAxis, parentX, parentY, parentZ);
+}
+
+static inline void ds_pubg_box_finalize(DSPUBGObstacleBox &box) {
+    box.radius = hypotf(hypotf(box.extent.X, box.extent.Y), box.extent.Z);
+    if (!isfinite(box.radius) || box.radius <= 0.0f) box.radius = 1.0f;
+}
+
+// Soft scenery must never become an occlusion box: foliage and terrain would
+// otherwise block the sight line to an enemy standing in the open next to a
+// bush, and a landscape heightfield box covers the whole map.
+static inline bool ds_pubg_is_soft_scenery_name(const char *name) {
+    if (!name || !name[0]) return false;
+    // Only reject far-field / soft geometry. "Tree" also appears in
+    // "TreeHouse" style props, so the check is limited to plain class tokens.
+    return (strstr(name, "Foliage") || strstr(name, "Grass") ||
+            strstr(name, "Bush") || strstr(name, "Landscape") ||
+            strstr(name, "Terrain") || strstr(name, "Heightfield") ||
+            strstr(name, "Water") || strstr(name, "Sky") ||
+            strstr(name, "Cloud") || strstr(name, "Fog") ||
+            strstr(name, "Particle") || strstr(name, "Decal") ||
+            strstr(name, "Decorative") || strstr(name, "TreeFoliage") ||
+            strstr(name, "Billboard"));
+}
+
+// Reads the component's world pose by walking AttachParent. PUBG attaches the
+// building collision components to the level actor, so RelativeLocation alone
+// points at the wrong place (that was one root cause of the vischeck failing
+// near doorways and corners). Composes the UE relative-transform chain:
+//   World = RootLocal * ... * ParentLocal * CompLocal
+// Each local transform is (rotation axes, scale, translation) and the walk
+// goes leaf -> root, prepending every parent onto the accumulated transform.
+static bool ds_pubg_component_world_pose(uint64_t comp,
+                                         DSPUBGVector &outLoc,
+                                         DSPUBGVector &outX,
+                                         DSPUBGVector &outY,
+                                         DSPUBGVector &outZ,
+                                         DSPUBGVector &outScale) {
+    outLoc = DSPUBGVector{};
+    outX = DSPUBGVector{ 1.0f, 0.0f, 0.0f };
+    outY = DSPUBGVector{ 0.0f, 1.0f, 0.0f };
+    outZ = DSPUBGVector{ 0.0f, 0.0f, 1.0f };
+    outScale = DSPUBGVector{ 1.0f, 1.0f, 1.0f };
     if (!comp || !ds_pubg_valid(comp)) return false;
-    DSPUBGVector loc = {};
-    if (!ds_pubg_read(comp + kDSPUBGSceneCompRelativeLocOffset, &loc, sizeof(loc))) return false;
-    if (fabsf(loc.X) < 1.0f && fabsf(loc.Y) < 1.0f && fabsf(loc.Z) < 1.0f) return false;
 
-    DSPUBGRotator rot = {};
-    ds_pubg_read(comp + 0x1F0ULL, &rot, sizeof(rot));
+    bool have = false;
+    DSPUBGVector accLoc = {};
+    DSPUBGVector accScale = { 1.0f, 1.0f, 1.0f };
+    DSPUBGVector accX = { 1.0f, 0.0f, 0.0f };
+    DSPUBGVector accY = { 0.0f, 1.0f, 0.0f };
+    DSPUBGVector accZ = { 0.0f, 0.0f, 1.0f };
 
-    DSPUBGVector scale = { 1.0f, 1.0f, 1.0f };
-    ds_pubg_read(comp + 0x1FCULL, &scale, sizeof(scale));
-    if (fabsf(scale.X) < 0.01f) scale.X = 1.0f;
-    if (fabsf(scale.Y) < 0.01f) scale.Y = 1.0f;
-    if (fabsf(scale.Z) < 0.01f) scale.Z = 1.0f;
+    uint64_t node = comp;
+    for (int depth = 0; depth < 6; depth++) {
+        if (!node || !ds_pubg_valid(node)) break;
 
+        DSPUBGVector loc = {};
+        if (!ds_pubg_read(node + kDSPUBGSceneCompRelativeLocOffset, &loc, sizeof(loc))) break;
+        DSPUBGRotator rot = {};
+        ds_pubg_read(node + 0x1F0ULL, &rot, sizeof(rot));
+        DSPUBGVector sc = { 1.0f, 1.0f, 1.0f };
+        ds_pubg_read(node + 0x1FCULL, &sc, sizeof(sc));
+        if (fabsf(sc.X) < 0.01f) sc.X = 1.0f;
+        if (fabsf(sc.Y) < 0.01f) sc.Y = 1.0f;
+        if (fabsf(sc.Z) < 0.01f) sc.Z = 1.0f;
+
+        DSPUBGVector nx = {}, ny = {}, nz = {};
+        ds_pubg_rotator_to_axes(rot, nx, ny, nz);
+
+        if (!have) {
+            accLoc = loc;
+            accScale = sc;
+            accX = nx;
+            accY = ny;
+            accZ = nz;
+            have = true;
+        } else {
+            // parent ∘ acc
+            DSPUBGVector scaledLoc = ds_pubg_axes_scale(accLoc, sc);
+            DSPUBGVector rotatedLoc = ds_pubg_axes_apply(scaledLoc, nx, ny, nz);
+            accLoc.X = rotatedLoc.X + loc.X;
+            accLoc.Y = rotatedLoc.Y + loc.Y;
+            accLoc.Z = rotatedLoc.Z + loc.Z;
+            accScale.X *= sc.X;
+            accScale.Y *= sc.Y;
+            accScale.Z *= sc.Z;
+            accX = ds_pubg_rotated_axes(nx, ny, nz, accX);
+            accY = ds_pubg_rotated_axes(nx, ny, nz, accY);
+            accZ = ds_pubg_rotated_axes(nx, ny, nz, accZ);
+        }
+
+        node = ds_pubg_read_ptr(node + kDSPUBGSceneCompAttachedParentOffset);
+    }
+
+    if (!have) return false;
+    if (!isfinite(accLoc.X) || !isfinite(accLoc.Y) || !isfinite(accLoc.Z)) return false;
+
+    outLoc = accLoc;
+    outScale = accScale;
+    outX = accX;
+    outY = accY;
+    outZ = accZ;
+    return true;
+}
+
+// Emits every box collision element of UBodySetup.AggGeom (the real cooked
+// collision of the mesh) plus the static mesh bounds as a fallback.
+//   UStaticMeshComponent.StaticMesh  0xA30
+//   UStaticMesh.BodySetup            0xB0
+//   UBodySetup.AggGeom               0x28
+//   FKAggregateGeom.BoxElems         0x30 (TArray, stride 0xB0)
+//   FKBoxElem: Center 0x80, Rotation 0x8C, X/Y/Z half 0x98/0x9C/0xA0
+static int ds_pubg_extract_component_boxes(uint64_t comp,
+                                           const DSPUBGVector &camLoc,
+                                           DSPUBGObstacleBox *outBoxes,
+                                           int maxBoxes) {
+    if (!outBoxes || maxBoxes <= 0) return 0;
+    if (!comp || !ds_pubg_valid(comp)) return 0;
+
+    DSPUBGVector compLoc = {}, compScale = { 1.0f, 1.0f, 1.0f };
+    DSPUBGVector compX = {}, compY = {}, compZ = {};
+    if (!ds_pubg_component_world_pose(comp, compLoc, compX, compY, compZ, compScale)) return 0;
+    if (!isfinite(compLoc.X) || !isfinite(compLoc.Y) || !isfinite(compLoc.Z)) return 0;
+
+    uint64_t staticMesh = ds_pubg_read_ptr(comp + 0xA30ULL);
+    uint64_t bodySetup = 0;
+    if (staticMesh && ds_pubg_valid(staticMesh)) {
+        bodySetup = ds_pubg_read_ptr(staticMesh + 0xB0ULL);
+    }
+
+    int written = 0;
+
+    if (bodySetup && ds_pubg_valid(bodySetup)) {
+        // BuildScale3D scales the cooked collision back to mesh space.
+        DSPUBGVector buildScale = { 1.0f, 1.0f, 1.0f };
+        ds_pubg_read(bodySetup + 0x3B4ULL, &buildScale, sizeof(buildScale));
+        if (fabsf(buildScale.X) < 0.01f) buildScale.X = 1.0f;
+        if (fabsf(buildScale.Y) < 0.01f) buildScale.Y = 1.0f;
+        if (fabsf(buildScale.Z) < 0.01f) buildScale.Z = 1.0f;
+
+        uint64_t boxData = ds_pubg_read_ptr(bodySetup + 0x28ULL + 0x30ULL);
+        uint32_t boxCount = ds_pubg_read_u32(bodySetup + 0x28ULL + 0x30ULL + 0x8ULL);
+        if (boxData && ds_pubg_valid(boxData) && boxCount > 0 && boxCount <= 256) {
+            if (boxCount > (uint32_t)maxBoxes) boxCount = (uint32_t)maxBoxes;
+            for (uint32_t i = 0; i < boxCount; i++) {
+                uint64_t elem = boxData + (uint64_t)i * 0xB0ULL;
+                DSPUBGVector eCenter = {};
+                DSPUBGRotator eRot = {};
+                float ex = 0.0f, ey = 0.0f, ez = 0.0f;
+                if (!ds_pubg_read(elem + 0x80ULL, &eCenter, sizeof(eCenter))) break;
+                ds_pubg_read(elem + 0x8CULL, &eRot, sizeof(eRot));
+                ds_pubg_read(elem + 0x98ULL, &ex, sizeof(ex));
+                ds_pubg_read(elem + 0x9CULL, &ey, sizeof(ey));
+                ds_pubg_read(elem + 0xA0ULL, &ez, sizeof(ez));
+
+                ex *= 0.5f * fabsf(buildScale.X) * fabsf(compScale.X);
+                ey *= 0.5f * fabsf(buildScale.Y) * fabsf(compScale.Y);
+                ez *= 0.5f * fabsf(buildScale.Z) * fabsf(compScale.Z);
+                if (!isfinite(ex) || !isfinite(ey) || !isfinite(ez)) continue;
+                if (ex < 1.0f && ey < 1.0f && ez < 1.0f) continue;
+                if (ex > 20000.0f || ey > 20000.0f || ez > 20000.0f) continue;
+
+                DSPUBGVector localOffset = ds_pubg_axes_scale(
+                    eCenter,
+                    DSPUBGVector{ fabsf(buildScale.X) * fabsf(compScale.X),
+                                  fabsf(buildScale.Y) * fabsf(compScale.Y),
+                                  fabsf(buildScale.Z) * fabsf(compScale.Z) });
+                DSPUBGVector worldOffset = ds_pubg_axes_apply(localOffset, compX, compY, compZ);
+
+                DSPUBGObstacleBox box = {};
+                box.center.X = compLoc.X + worldOffset.X;
+                box.center.Y = compLoc.Y + worldOffset.Y;
+                box.center.Z = compLoc.Z + worldOffset.Z;
+                box.extent = DSPUBGVector{ ex, ey, ez };
+
+                DSPUBGVector exX = {}, exY = {}, exZ = {};
+                ds_pubg_rotator_to_axes(eRot, exX, exY, exZ);
+                box.axisX = ds_pubg_rotated_axes(compX, compY, compZ, exX);
+                box.axisY = ds_pubg_rotated_axes(compX, compY, compZ, exY);
+                box.axisZ = ds_pubg_rotated_axes(compX, compY, compZ, exZ);
+                ds_pubg_box_finalize(box);
+                outBoxes[written++] = box;
+            }
+        }
+    }
+
+    if (written > 0) return written;
+
+    // Fallback: whole-mesh bounds. Good enough for simple props.
     DSPUBGVector boxOrigin = {}, boxExtent = {};
     bool gotBounds = false;
 
-    uint64_t staticMesh = ds_pubg_read_ptr(comp + 0xA30ULL);
     if (staticMesh && ds_pubg_valid(staticMesh)) {
         ds_pubg_read(staticMesh + 0x1A8ULL, &boxOrigin, sizeof(boxOrigin));
         ds_pubg_read(staticMesh + 0x1B4ULL, &boxExtent, sizeof(boxExtent));
@@ -3042,31 +3243,120 @@ static bool ds_pubg_extract_obstacle_box(uint64_t comp, DSPUBGObstacleBox &outBo
         }
     }
 
-    if (!gotBounds) return false;
+    if (!gotBounds) return 0;
 
-    boxExtent.X *= fabsf(scale.X);
-    boxExtent.Y *= fabsf(scale.Y);
-    boxExtent.Z *= fabsf(scale.Z);
+    boxExtent.X *= fabsf(compScale.X);
+    boxExtent.Y *= fabsf(compScale.Y);
+    boxExtent.Z *= fabsf(compScale.Z);
 
-    DSPUBGVector center = loc;
+    DSPUBGObstacleBox box = {};
+    box.center = compLoc;
     if (fabsf(boxOrigin.X) > 0.1f || fabsf(boxOrigin.Y) > 0.1f || fabsf(boxOrigin.Z) > 0.1f) {
-        DSPUBGVector scaledOrigin = { boxOrigin.X * scale.X, boxOrigin.Y * scale.Y, boxOrigin.Z * scale.Z };
-        DSPUBGVector rotOrigin = {};
-        ds_pubg_rotate_vec(scaledOrigin, rot, rotOrigin);
-        center.X += rotOrigin.X;
-        center.Y += rotOrigin.Y;
-        center.Z += rotOrigin.Z;
+        DSPUBGVector scaledOrigin = ds_pubg_axes_scale(boxOrigin, compScale);
+        DSPUBGVector worldOffset = ds_pubg_axes_apply(scaledOrigin, compX, compY, compZ);
+        box.center.X += worldOffset.X;
+        box.center.Y += worldOffset.Y;
+        box.center.Z += worldOffset.Z;
     }
-
-    outBox.center = center;
-    outBox.extent = boxExtent;
-    outBox.rotation = rot;
-    outBox.radius = hypotf(hypotf(boxExtent.X, boxExtent.Y), boxExtent.Z);
-    return true;
+    box.extent = boxExtent;
+    box.axisX = compX;
+    box.axisY = compY;
+    box.axisZ = compZ;
+    ds_pubg_box_finalize(box);
+    outBoxes[0] = box;
+    return 1;
 }
 
-// Defined in the Actor & Shape Classification section below.
-static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box);
+// Instanced static meshes carry their own per-instance matrices. One actor can
+// hold hundreds of wall modules, which is why the old one-box-per-actor scan
+// produced an almost empty obstacle set.
+//   UInstancedStaticMeshComponent.PerInstanceSMData 0xBD8 (TArray<FMatrix 0x40>)
+static int ds_pubg_extract_instanced_boxes(uint64_t comp,
+                                           const DSPUBGVector &camLoc,
+                                           DSPUBGObstacleBox *outBoxes,
+                                           int maxBoxes) {
+    if (!outBoxes || maxBoxes <= 0) return 0;
+    if (!comp || !ds_pubg_valid(comp)) return 0;
+
+    // 0xBD8 is inside UStaticMeshComponent's padding, so gate on the class
+    // name first: a plain static mesh must never be read as an ISM. PUBG
+    // ships several subclasses (Color / Photon / Creative / Hierarchical),
+    // all of which share the same PerInstanceSMData layout.
+    char compClassName[64] = {0};
+    if (!ds_pubg_get_actor_name(comp, compClassName, sizeof(compClassName))) return 0;
+    if (!strstr(compClassName, "Instanced")) return 0;
+    if (strstr(compClassName, "Foliage")) return 0;
+
+    DSPUBGVector compLoc = {}, compScale = { 1.0f, 1.0f, 1.0f };
+    DSPUBGVector compX = {}, compY = {}, compZ = {};
+    if (!ds_pubg_component_world_pose(comp, compLoc, compX, compY, compZ, compScale)) return 0;
+
+    uint64_t mesh = ds_pubg_read_ptr(comp + 0xA30ULL);
+    if (!mesh || !ds_pubg_valid(mesh)) return 0;
+
+    DSPUBGVector meshOrigin = {}, meshExtent = {};
+    ds_pubg_read(mesh + 0x1A8ULL, &meshOrigin, sizeof(meshOrigin));
+    ds_pubg_read(mesh + 0x1B4ULL, &meshExtent, sizeof(meshExtent));
+    if (!(meshExtent.X > 5.0f && meshExtent.Y > 5.0f && meshExtent.Z > 5.0f)) {
+        ds_pubg_read(mesh + 0x54ULL, &meshOrigin, sizeof(meshOrigin));
+        ds_pubg_read(mesh + 0x60ULL, &meshExtent, sizeof(meshExtent));
+    }
+    if (!(meshExtent.X > 1.0f && meshExtent.Y > 1.0f && meshExtent.Z > 1.0f)) return 0;
+    if (meshExtent.X > 30000.0f || meshExtent.Y > 30000.0f || meshExtent.Z > 30000.0f) return 0;
+
+    uint64_t data = ds_pubg_read_ptr(comp + 0xBD8ULL);
+    uint32_t count = ds_pubg_read_u32(comp + 0xBD8ULL + 0x8ULL);
+    if (!data || !ds_pubg_valid(data) || count == 0 || count > 20000) return 0;
+
+    float maxDistSq = 25000.0f * 25000.0f;
+    int written = 0;
+
+    for (uint32_t i = 0; i < count && written < maxBoxes; i++) {
+        uint64_t m = data + (uint64_t)i * 0x40ULL;
+        float mat[16] = {};
+        if (!ds_pubg_read(m, mat, sizeof(mat))) break;
+
+        // FMatrix: XPlane(0..3), YPlane(4..7), ZPlane(8..11), WPlane(12..15)
+        DSPUBGVector iX = { mat[0], mat[1], mat[2] };
+        DSPUBGVector iY = { mat[4], mat[5], mat[6] };
+        DSPUBGVector iZ = { mat[8], mat[9], mat[10] };
+        DSPUBGVector iPos = { mat[12], mat[13], mat[14] };
+        if (!isfinite(iPos.X) || !isfinite(iPos.Y) || !isfinite(iPos.Z)) continue;
+
+        float sx = hypotf(hypotf(iX.X, iX.Y), iX.Z);
+        float sy = hypotf(hypotf(iY.X, iY.Y), iY.Z);
+        float sz = hypotf(hypotf(iZ.X, iZ.Y), iZ.Z);
+        if (!isfinite(sx) || !isfinite(sy) || !isfinite(sz)) continue;
+        if (sx < 0.01f || sy < 0.01f || sz < 0.01f) continue;
+        if (sx > 100.0f || sy > 100.0f || sz > 100.0f) continue;
+
+        DSPUBGVector iAxisX = { iX.X / sx, iX.Y / sx, iX.Z / sx };
+        DSPUBGVector iAxisY = { iY.X / sy, iY.Y / sy, iY.Z / sy };
+        DSPUBGVector iAxisZ = { iZ.X / sz, iZ.Y / sz, iZ.Z / sz };
+
+        DSPUBGVector instLoc = ds_pubg_axes_scale(iPos, compScale);
+        DSPUBGVector worldPos = ds_pubg_axes_apply(instLoc, compX, compY, compZ);
+        DSPUBGVector center = { compLoc.X + worldPos.X, compLoc.Y + worldPos.Y, compLoc.Z + worldPos.Z };
+
+        float dx = center.X - camLoc.X;
+        float dy = center.Y - camLoc.Y;
+        float dz = center.Z - camLoc.Z;
+        if (dx * dx + dy * dy + dz * dz > maxDistSq) continue;
+
+        DSPUBGObstacleBox box = {};
+        box.center = center;
+        box.extent.X = meshExtent.X * sx * fabsf(compScale.X);
+        box.extent.Y = meshExtent.Y * sy * fabsf(compScale.Y);
+        box.extent.Z = meshExtent.Z * sz * fabsf(compScale.Z);
+        box.axisX = ds_pubg_rotated_axes(compX, compY, compZ, iAxisX);
+        box.axisY = ds_pubg_rotated_axes(compX, compY, compZ, iAxisY);
+        box.axisZ = ds_pubg_rotated_axes(compX, compY, compZ, iAxisZ);
+        ds_pubg_box_finalize(box);
+        outBoxes[written++] = box;
+    }
+
+    return written;
+}
 
 static bool ds_pubg_ray_intersects_box(
     const DSPUBGVector &rayStart,
@@ -3089,14 +3379,7 @@ static bool ds_pubg_ray_intersects_box(
     float dPerpSq = vSq - t_proj * t_proj;
     if (dPerpSq > radius * radius) return false;
 
-    // 1b. The player's own collision must never block the line of sight.
-    if (ds_pubg_box_contains_local_capsule(box)) return false;
-
-    // 2. Axes from Rotator
-    DSPUBGVector uX = {}, uY = {}, uZ = {};
-    ds_pubg_rotator_to_axes(box.rotation, uX, uY, uZ);
-
-    // 3. Kay-Kajiya slab test along each of the 3 local box axes
+    // 2. Kay-Kajiya slab test along each of the 3 world-space box axes
     DSPUBGVector diff = { rayStart.X - box.center.X, rayStart.Y - box.center.Y, rayStart.Z - box.center.Z };
     float tMin = 0.0f;
     float tMax = len;
@@ -3117,9 +3400,9 @@ static bool ds_pubg_ray_intersects_box(
         return true;
     };
 
-    if (!testSlab(uX, box.extent.X)) return false;
-    if (!testSlab(uY, box.extent.Y)) return false;
-    if (!testSlab(uZ, box.extent.Z)) return false;
+    if (!testSlab(box.axisX, box.extent.X)) return false;
+    if (!testSlab(box.axisY, box.extent.Y)) return false;
+    if (!testSlab(box.axisZ, box.extent.Z)) return false;
 
     // Must intersect between camera and target (clip margins to ignore self-hits)
     return (tMin > 10.0f && tMin < len - 10.0f && tMin <= tMax);
@@ -3127,7 +3410,30 @@ static bool ds_pubg_ray_intersects_box(
 
 static bool ds_pubg_is_blocked_by_obstacle(const DSPUBGVector &camLoc, const DSPUBGVector &targetLoc) {
     if (s_obstacleCount <= 0) return false;
+
+    // Broad phase: reject every box that cannot possibly lie on the segment
+    // cam->target before running the full slab test. With up to 4096 boxes and
+    // six rays per enemy this keeps the per-frame cost bounded.
+    float segX = targetLoc.X - camLoc.X;
+    float segY = targetLoc.Y - camLoc.Y;
+    float segZ = targetLoc.Z - camLoc.Z;
+    float segLenSq = segX * segX + segY * segY + segZ * segZ;
+    if (segLenSq < 100.0f) return false;
+
     for (int i = 0; i < s_obstacleCount; i++) {
+        const DSPUBGObstacleBox &box = s_obstacles[i];
+        float vx = box.center.X - camLoc.X;
+        float vy = box.center.Y - camLoc.Y;
+        float vz = box.center.Z - camLoc.Z;
+        // Cheap sphere/segment distance test.
+        float t = (vx * segX + vy * segY + vz * segZ) / segLenSq;
+        if (t < 0.0f) t = 0.0f; else if (t > 1.0f) t = 1.0f;
+        float dx = vx - segX * t;
+        float dy = vy - segY * t;
+        float dz = vz - segZ * t;
+        float r = box.radius;
+        if (dx * dx + dy * dy + dz * dz > r * r) continue;
+
         if (ds_pubg_ray_intersects_box(camLoc, targetLoc, s_obstacles[i])) {
             return true;
         }
@@ -3191,10 +3497,16 @@ enum : uint32_t {
 // --- A1. Static Actor Library -------------------------------------------------
 // Cached geometry for immutable actors. Keyed by AActor pointer, open
 // addressed, and bound to one UWorld so a map change drops the whole library.
+// One actor yields at most this many boxes, both when it is scanned fresh and
+// when it is served from the static cache. The two budgets must match, or the
+// geometry would visibly thin out on cached frames.
+static const int kDSPUBGStaticBoxesPerActor = 32;
+static const int kDSPUBGBoxesPerComponent = 32;
 struct DSPUBGStaticActor {
     uint64_t actor;
     uint64_t component;
-    DSPUBGObstacleBox box;
+    int boxCount;
+    DSPUBGObstacleBox boxes[kDSPUBGStaticBoxesPerActor];
     uint64_t capturedTick;
 };
 
@@ -3515,25 +3827,6 @@ static void ds_pubg_smart_begin_frame(uint64_t world, uint64_t localPawn) {
                                    s_localCapsule.radius, s_localCapsule.halfHeight);
         }
     }
-}
-
-// True when the box contains the local capsule: that is the player's own
-// collision and must never block the line of sight to an enemy.
-static bool ds_pubg_box_contains_local_capsule(const DSPUBGObstacleBox &box) {
-    if (!s_localCapsule.valid) return false;
-    DSPUBGVector uX = {}, uY = {}, uZ = {};
-    ds_pubg_rotator_to_axes(box.rotation, uX, uY, uZ);
-    DSPUBGVector d = { s_localCapsule.location.X - box.center.X,
-                       s_localCapsule.location.Y - box.center.Y,
-                       s_localCapsule.location.Z - box.center.Z };
-    float localX = d.X * uX.X + d.Y * uX.Y + d.Z * uX.Z;
-    float localY = d.X * uY.X + d.Y * uY.Y + d.Z * uY.Z;
-    float localZ = d.X * uZ.X + d.Y * uZ.Y + d.Z * uZ.Z;
-    float r = s_localCapsule.radius + 2.0f;
-    float h = s_localCapsule.halfHeight + 2.0f;
-    return fabsf(localX) <= box.extent.X + r &&
-           fabsf(localY) <= box.extent.Y + r &&
-           fabsf(localZ) <= box.extent.Z + h;
 }
 
 static void ds_pubg_tick(void) {
@@ -5094,12 +5387,18 @@ static void ds_pubg_tick(void) {
     float camMoveDistSq = (camLoc.X - s_lastObstacleScanLoc.X) * (camLoc.X - s_lastObstacleScanLoc.X) +
                           (camLoc.Y - s_lastObstacleScanLoc.Y) * (camLoc.Y - s_lastObstacleScanLoc.Y) +
                           (camLoc.Z - s_lastObstacleScanLoc.Z) * (camLoc.Z - s_lastObstacleScanLoc.Z);
-    if ((s_visTickCounter - s_obstacleLastScanTick) >= 8 || camMoveDistSq > 250000.0f || s_obstacleCount == 0) {
+    uint64_t scanInterval = (s_obstacleCount > 0) ? 8 : 30; // empty library: retry slower
+    if ((s_visTickCounter - s_obstacleLastScanTick) >= scanInterval || camMoveDistSq > 250000.0f) {
         s_lastObstacleScanLoc = camLoc;
         s_obstacleLastScanTick = s_visTickCounter;
 
         static DSPUBGObstacleBox s_obstaclesStaging[kDSPUBGMaxObstacles];
         int stagedCount = 0;
+        s_obsScanActors = 0;
+        s_obsNameOk = 0;
+        s_obsScenery = 0;
+        s_obsBoxOk = 0;
+        s_obsLevels = 0;
 
         // [A1] The cached geometry belongs to one level set: seamless travel
         // swaps the levels while keeping the same UWorld, so the library is
@@ -5117,6 +5416,7 @@ static void ds_pubg_tick(void) {
 
         auto scanLevelObstacles = [&](uint64_t lvl) {
             if (!lvl || !ds_pubg_valid(lvl) || stagedCount >= kDSPUBGMaxObstacles) return;
+            s_obsLevels++;
             for (int s = 0; s < seenCount; s++) {
                 if (seenLevels[s] == lvl) return;
             }
@@ -5146,6 +5446,7 @@ static void ds_pubg_tick(void) {
             for (uint32_t i = 0; i < actorsCount && stagedCount < kDSPUBGMaxObstacles; i++) {
                 uint64_t actor = actBuf[i];
                 if (!actor || !ds_pubg_valid(actor)) continue;
+                s_obsScanActors++;
 
                 // [A3] Smart filter: self, teammates and skipped actors are never geometry.
                 if (ds_pubg_smart_is_skipped(actor)) continue;
@@ -5173,18 +5474,26 @@ static void ds_pubg_tick(void) {
                 DSPUBGStaticActor *sEntry = ds_pubg_static_slot(actor, staticFound);
                 const uint64_t kDSPUBGStaticCacheTTL = 60;   // ticks
                 if (staticFound && (s_visTickCounter - sEntry->capturedTick) <= kDSPUBGStaticCacheTTL) {
-                    float dx = sEntry->box.center.X - camLoc.X;
-                    float dy = sEntry->box.center.Y - camLoc.Y;
-                    float dz = sEntry->box.center.Z - camLoc.Z;
-                    float dSq = dx * dx + dy * dy + dz * dz;
-                    if (dSq < (25000.0f * 25000.0f)) { // 250 meters
-                        s_obstaclesStaging[stagedCount++] = sEntry->box;
+                    for (int b = 0; b < sEntry->boxCount && stagedCount < kDSPUBGMaxObstacles; b++) {
+                        float dx = sEntry->boxes[b].center.X - camLoc.X;
+                        float dy = sEntry->boxes[b].center.Y - camLoc.Y;
+                        float dz = sEntry->boxes[b].center.Z - camLoc.Z;
+                        float dSq = dx * dx + dy * dy + dz * dz;
+                        if (dSq < (25000.0f * 25000.0f)) { // 250 meters
+                            s_obstaclesStaging[stagedCount++] = sEntry->boxes[b];
+                        }
                     }
                     continue;
                 }
 
                 char aName[64] = {0};
                 if (!ds_pubg_get_actor_name(actor, aName, sizeof(aName))) continue;
+                s_obsNameOk++;
+
+                if (ds_pubg_is_soft_scenery_name(aName)) {
+                    ds_pubg_nonstatic_remember(actor);
+                    continue;
+                }
 
                 // [A3] Classify before it can become static geometry: vehicles move
                 // and dropped weapons are loot, so both are skipped here.
@@ -5209,32 +5518,77 @@ static void ds_pubg_tick(void) {
                     }
                     continue;
                 }
+                s_obsScenery++;
 
                 // Static geometry: capture the collision OBB once and cache it.
                 {
                     uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
                     if (rootComp && ds_pubg_valid(rootComp)) {
-                        DSPUBGVector aLoc = {};
-                        if (ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &aLoc, sizeof(aLoc))) {
-                            float dx = aLoc.X - camLoc.X;
-                            float dy = aLoc.Y - camLoc.Y;
-                            float dz = aLoc.Z - camLoc.Z;
-                            float dSq = dx * dx + dy * dy + dz * dz;
-                            if (dSq < (25000.0f * 25000.0f)) { // 250 meters
-                                DSPUBGObstacleBox ob = {};
-                                uint64_t smc = ds_pubg_read_ptr(actor + 0x4B0ULL);
-                                if (!smc || !ds_pubg_valid(smc)) smc = rootComp;
-                                if (ds_pubg_extract_obstacle_box(smc, ob)) {
-                                    s_obstaclesStaging[stagedCount++] = ob;
-                                    if (sEntry) {
-                                        if (!staticFound) s_staticActorCount++;
-                                        sEntry->actor = actor;
-                                        sEntry->component = smc;
-                                        sEntry->box = ob;
-                                        sEntry->capturedTick = s_visTickCounter;
-                                    }
+                        DSPUBGVector rootLoc = {};
+                        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) continue;
+                        if (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f && fabsf(rootLoc.Z) < 1.0f) continue;
+
+                        float dx = rootLoc.X - camLoc.X;
+                        float dy = rootLoc.Y - camLoc.Y;
+                        float dz = rootLoc.Z - camLoc.Z;
+                        if (dx * dx + dy * dy + dz * dz >= (25000.0f * 25000.0f)) continue;
+
+                        // Walk the actor's component list: a building actor usually
+                        // owns several instanced wall modules plus a static mesh.
+                        uint64_t comps[24] = {0};
+                        int compCount = 0;
+                        auto pushComp = [&](uint64_t c) {
+                            if (!c || !ds_pubg_valid(c)) return;
+                            for (int k = 0; k < compCount; k++) if (comps[k] == c) return;
+                            if (compCount < 24) comps[compCount++] = c;
+                        };
+                        pushComp(rootComp);
+
+                        // AActor.BlueprintCreatedComponents 0x400, InstanceComponents 0x410
+                        static const uint64_t kActorCompArrays[] = { 0x400ULL, 0x410ULL };
+                        for (uint64_t arrOff : kActorCompArrays) {
+                            uint64_t arrData = ds_pubg_read_ptr(actor + arrOff);
+                            uint32_t arrCount = ds_pubg_read_u32(actor + arrOff + 8ULL);
+                            if (!arrData || !ds_pubg_valid(arrData)) continue;
+                            if (arrCount == 0 || arrCount > 64) continue;
+                            uint64_t buf[64] = {0};
+                            uint32_t toRead = arrCount > 64 ? 64 : arrCount;
+                            if (!ds_pubg_read(arrData, buf, (size_t)toRead * sizeof(uint64_t))) continue;
+                            for (uint32_t k = 0; k < toRead; k++) pushComp(buf[k]);
+                        }
+
+                        int boxTotal = 0;
+                        DSPUBGObstacleBox capturedBoxes[kDSPUBGStaticBoxesPerActor] = {};
+                        DSPUBGObstacleBox local[kDSPUBGBoxesPerComponent] = {};
+
+                        for (int ci = 0; ci < compCount && boxTotal < kDSPUBGStaticBoxesPerActor; ci++) {
+                            int n = ds_pubg_extract_instanced_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
+                            if (n <= 0) {
+                                n = ds_pubg_extract_component_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
+                            }
+                            for (int b = 0; b < n && boxTotal < kDSPUBGStaticBoxesPerActor; b++) {
+                                float bx = local[b].center.X - camLoc.X;
+                                float by = local[b].center.Y - camLoc.Y;
+                                float bz = local[b].center.Z - camLoc.Z;
+                                if (bx * bx + by * by + bz * bz > (25000.0f * 25000.0f)) continue;
+                                capturedBoxes[boxTotal++] = local[b];
+                                if (stagedCount < kDSPUBGMaxObstacles) {
+                                    s_obstaclesStaging[stagedCount++] = local[b];
+                                } else {
+                                    break;
                                 }
                             }
+                        }
+
+                        s_obsBoxOk += (uint32_t)boxTotal;
+
+                        if (boxTotal > 0 && sEntry) {
+                            if (!staticFound) s_staticActorCount++;
+                            sEntry->actor = actor;
+                            sEntry->component = comps[0];
+                            sEntry->boxCount = boxTotal;
+                            memcpy(sEntry->boxes, capturedBoxes, (size_t)boxTotal * sizeof(DSPUBGObstacleBox));
+                            sEntry->capturedTick = s_visTickCounter;
                         }
                     }
                 }

@@ -538,3 +538,65 @@ Từ 2 ảnh thực tế của người dùng:
 3. **Chống rung nhấp nháy**:
    - Phản hồi nhìn thấy tức thì (0 frame delay).
    - Yêu cầu 2 frame liên tiếp không render để xác nhận bị che (tránh nhấp nháy 1 frame).
+
+---
+
+## 24. Fix Vischeck PhysX: Hình Học Collision Thật + Instance Matrix (Bản Vá 2026-11-16)
+
+### A. Vì sao bản "pure PhysX-style raycast" vẫn xuyên tường:
+Bản `ca82390` đọc **bounding box của cả mesh** (`FBoxSphereBounds`) rồi coi mỗi
+actor tĩnh là **một** khối hộp. Với PUBG Mobile điều đó sai ở ba tầng:
+
+1. **Sai đơn vị / sai toạ độ**: `USceneComponent.RelativeLocation` chỉ là toạ độ
+   *tương đối so với AttachParent*, không phải toạ độ thế giới. Khối hộp vì thế
+   nằm sai chỗ, và tia nhìn xuyên qua đúng chỗ bức tường thật.
+2. **Một hộp cho cả một khu nhà**: tường, cửa, cầu thang là các module
+   `InstancedStaticMesh` / `HierarchicalInstancedStaticMesh` với **ma trận riêng
+   cho từng instance** (`PerInstanceSMData`, offset `0xBD8`, stride `0x40`). Đọc
+   bounds của component chỉ ra một hộp bao trùm cả cụm — hoặc không ra hộp nào.
+3. **Bounding box không phải collision**: `UStaticMesh.BodySetup` (`0xB0`) →
+   `UBodySetup.AggGeom` (`0x28`) → `FKAggregateGeom.BoxElems` (`0x30`,
+   stride `0xB0`) chứa hình học va chạm đã cook, đúng thứ engine dùng để chặn
+   đạn. Bản cũ bỏ qua hoàn toàn.
+
+### B. Những gì đã thay trong `darksword/DSBridgePUBG.inc.mm`:
+
+1. **`DSPUBGObstacleBox` lưu trục thế giới** (`axisX/Y/Z`) thay vì `FRotator`.
+   Slab test Kay-Kajiya chạy thẳng trên ba trục đó, không phải suy lại rotator —
+   và instance ISM vốn không căn theo rotator nào cả.
+2. **`ds_pubg_component_world_pose()`** duyệt chuỗi `AttachParent` (tối đa 6 cấp),
+   hợp thành `World = RootLocal * … * CompLocal` đúng thứ tự UE. Đây là chỗ sửa
+   gốc rễ của lỗi "đứng cạnh cửa / góc tường là xuyên".
+3. **`ds_pubg_extract_component_boxes()`** đọc `FKBoxElem` thật:
+   `Center 0x80`, `Rotation 0x8C`, half-extent `0x98/0x9C/0xA0`, nhân
+   `UBodySetup.BuildScale3D` (`0x3B4`) và scale component. Nếu mesh không có
+   box collision thì fallback về `FBoxSphereBounds` như cũ.
+4. **`ds_pubg_extract_instanced_boxes()`** đọc `PerInstanceSMData` (`0xBD8`),
+   tách translation / trục / scale từ `FMatrix` 0x40 mỗi instance, nhân với pose
+   component. Cổng nhận diện là tên class chứa `"Instanced"` và **không** chứa
+   `"Foliage"` (họ foliage phải bị loại).
+5. **Quét component của actor** qua `BlueprintCreatedComponents` (`0x400`) và
+   `InstanceComponents` (`0x410`), tối đa 24 component, thay cho việc đoán
+   `actor + 0x4B0` / `+ 0x208`.
+6. **`kDSPUBGStaticBoxesPerActor = kDSPUBGBoxesPerComponent = 32`**: ngân sách
+   lúc quét mới và lúc phục vụ từ cache **phải bằng nhau**, nếu lệch thì hình học
+   sẽ mỏng đi sau khung hình đầu và gây nháy đỏ/xanh.
+7. **`kDSPUBGMaxObstacles` 1024 → 4096** vì ISM sinh ra hàng trăm hộp mỗi khu.
+8. **Broad phase trên đoạn thẳng** trong `ds_pubg_is_blocked_by_obstacle()`:
+   khoảng cách điểm–đoạn so với bán kính cầu bao, cắt trước khi vào slab test.
+   6 tia × 96 người × 4096 hộp/frame vẫn nằm trong ngân sách.
+9. **Bỏ kiểm tra "hộp chứa capsule người chơi"**: nó loại bỏ mọi khối hộp chứa
+   vị trí người chơi — kể cả bức tường ngay trước mặt. Thân người chơi đã được
+   loại ở tầng actor (skip-set + `ds_pubg_nonstatic_remember`), không cần lọc lại
+   ở tầng hình học.
+10. **`ds_pubg_is_soft_scenery_name()`** chặn foliage / landscape / heightfield /
+    water / sky / decal để cỏ cây không thành vật cản giả.
+
+### C. Kiểm chứng:
+- Harness C++17 (`-Wall -Wextra`, clang) biên dịch sạch phần vischeck.
+- Test hình học: tia xuyên tâm trúng, tia lệch trượt, hộp xoay 45° trúng biên,
+  tia ngắn dừng trước hộp trượt, tia bắt đầu trong hộp không tự chặn,
+  tường chắn giữa camera–địch → `false`, tường lệch sang bên → `true`.
+- HUD hiển thị số hộp thật: `[Vis: N obs | S static | D dyn | A N S B L]`.
+  `B` = số hộp trích được trong lần quét gần nhất; nếu `B = 0` thì `BodySetup`
+  không có box collision và phải xem lại offset cho build game tương ứng.
