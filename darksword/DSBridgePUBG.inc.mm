@@ -88,7 +88,7 @@ static int g_dspubgLastActorsCount = 0;
 static int g_dspubgLastEnemyCount = 0;
 static int g_dspubgLastBotCount = 0;
 static uint32_t g_dspubgLastBoneOff = 0;
-static char g_dspubgStatusBuf[256] = "PUBG: Waiting for game process...";
+static char g_dspubgStatusBuf[384] = "PUBG: Waiting for game process...";
 
 // Snapshot storage
 static os_unfair_lock g_dspubgSnapshotLock = OS_UNFAIR_LOCK_INIT;
@@ -496,40 +496,252 @@ static bool ds_pubg_get_data_ranges(uint64_t vmMap, uint64_t base, std::vector<S
     return !outRanges.empty();
 }
 
-static bool ds_pubg_is_valid_gnames(uint64_t vmMap, uint64_t candidate, uint32_t *outNameOffset) {
-    if (!candidate || !ds_pubg_valid(candidate)) return false;
-    uint64_t chunk0 = 0;
-    if (!ds_debug_read_bytes(vmMap, candidate, &chunk0, sizeof(chunk0))) return false;
-    chunk0 &= 0x0000FFFFFFFFFFFFULL;
-    if (!chunk0 || !ds_pubg_valid(chunk0)) return false;
+// ---------------------------------------------------------------------------
+// GNames layout calibration
+// ---------------------------------------------------------------------------
+// Two incompatible layouts exist across UE4 releases, and picking the wrong one
+// still "works" for a handful of ids, which is exactly how a scan ends up
+// resolving 3 names out of 838 actors and silently produces zero obstacles:
+//
+//   TNameEntryArray  chunk = Blocks[id / 16384]; entry = chunk[id % 16384];
+//                    entry -> { Index u32, Flags u32, name }
+//   FNamePool        block = Blocks[id >> 16]; entry = block + (id & 0xFFFF);
+//                    entry -> { u16 header, name }
+//
+// The compile-time offsets in this file were guesses. Both layouts and every
+// plausible string offset are instead scored against sampled ids, and the
+// combination that decodes the most printable names wins. A wrong guess scores
+// near zero, so the choice is unambiguous.
+enum : int {
+    kDSPUBGNameLayoutArray = 0,   // TNameEntryArray
+    kDSPUBGNameLayoutPool  = 1,   // FNamePool
+};
 
-    uint64_t entry0 = 0;
-    if (!ds_debug_read_bytes(vmMap, chunk0, &entry0, sizeof(entry0))) return false;
-    entry0 &= 0x0000FFFFFFFFFFFFULL;
-    if (!entry0 || !ds_pubg_valid(entry0)) return false;
+struct DSPUBGNameLayout {
+    int mode;
+    uint32_t entryOff;
+    uint32_t blockArrayOff;
+    int score;
+};
 
-    static const uint32_t kOffsets[] = { 0x0C, 0x10, 0x0E, 0x14 };
-    for (uint32_t off : kOffsets) {
-        char buf[16] = {0};
-        if (ds_debug_read_bytes(vmMap, entry0 + off, buf, sizeof(buf) - 1)) {
-            if (strcmp(buf, "None") == 0) {
-                uint64_t entry1 = 0;
-                if (ds_debug_read_bytes(vmMap, chunk0 + 8, &entry1, sizeof(entry1))) {
-                    entry1 &= 0x0000FFFFFFFFFFFFULL;
-                    char buf1[32] = {0};
-                    if (entry1 && ds_pubg_valid(entry1) && ds_debug_read_bytes(vmMap, entry1 + off, buf1, sizeof(buf1) - 1)) {
-                        if (strstr(buf1, "Byte") || strstr(buf1, "Int") || strstr(buf1, "Property") || strstr(buf1, "Bool")) {
-                            if (outNameOffset) *outNameOffset = off;
-                            return true;
-                        }
-                    }
-                }
-                if (outNameOffset) *outNameOffset = off;
-                return true;
+static DSPUBGNameLayout g_dspubgNameLayout = { kDSPUBGNameLayoutArray, 0x0C, 0x00, 0 };
+static bool g_dspubgNamesCalibrated = false;
+
+// Is `s` a believable FName string: printable ASCII, sane length?
+static bool ds_pubg_name_is_plausible(const char *s, size_t cap) {
+    size_t n = 0;
+    while (n < cap && s[n] != '\0') {
+        unsigned char c = (unsigned char)s[n];
+        if (c < 32 || c > 126) return false;
+        n++;
+    }
+    return n >= 2 && n <= 100;
+}
+
+static void ds_pubg_read_cstr(uint64_t vmMap, uint64_t addr, char *buf, size_t cap) {
+    if (!buf || cap < 2) return;
+    buf[0] = '\0';
+    if (!addr || !ds_pubg_valid(addr)) return;
+    if (!ds_debug_read_bytes(vmMap, addr, buf, cap - 1)) return;
+    buf[cap - 1] = '\0';
+}
+
+// Validates one FNamePool entry sitting inside an already-read block copy.
+//
+// An FNamePool id is a *byte offset* into the block, not an entry index, and
+// the header's low bits hold the name length. That gives a self-checking
+// signature: the declared length must equal the string's actual length. Junk
+// memory almost never satisfies it, which is what makes density scanning safe.
+static bool ds_pubg_pool_entry_at(const uint8_t *buf, size_t bufLen, size_t pos,
+                                  uint32_t entryOff, char *out, size_t outCap) {
+    if (!buf || !out || outCap < 3) return false;
+    if (pos + entryOff + 3 > bufLen) return false;
+
+    // The header bitfield differs across UE4 releases: Len may sit in bits
+    // 0..9, 0..10, or shift up by one for a bIsWide flag in bit 0. Every
+    // candidate length is compared against the measured string instead of
+    // assuming one layout.
+    const uint32_t h = (uint32_t)buf[pos] | ((uint32_t)buf[pos + 1] << 8);
+
+    const char *nm = (const char *)(buf + pos + entryOff);
+    size_t room = bufLen - pos - entryOff;
+    size_t n = 0;
+    while (n < room && nm[n] != '\0') {
+        unsigned char c = (unsigned char)nm[n];
+        if (c < 32 || c > 126) return false;
+        n++;
+    }
+    if (n < 2 || n >= room) return false;
+
+    const uint32_t lengths[] = {
+        h & 0x3FFu, (h >> 1) & 0x3FFu, (h >> 5) & 0x3FFu,
+        h & 0x7FFu, (h >> 1) & 0x7FFu
+    };
+    bool lenOk = false;
+    for (uint32_t cand : lengths) {
+        if (cand == n) { lenOk = true; break; }
+    }
+    if (!lenOk) return false;
+    if (n >= outCap) return false;
+
+    memcpy(out, nm, n);
+    out[n] = '\0';
+    return true;
+}
+
+// Counts plausible entries in the head of one block. A live pool is dense -
+// hundreds of entries in 16 KB - while an arbitrary pointer is not.
+static int ds_pubg_pool_block_density(uint64_t vmMap, uint64_t block, uint32_t entryOff,
+                                      char *sampleOut, size_t sampleCap) {
+    if (!block || !ds_pubg_valid(block)) return 0;
+    const size_t kLen = 16384;
+    std::vector<uint8_t> buf(kLen);
+    if (!ds_debug_read_bytes(vmMap, block, buf.data(), kLen)) return 0;
+
+    int hits = 0;
+    char name[96] = {0};
+    for (size_t pos = 0; pos + 4 < kLen; pos += 2) {
+        if (ds_pubg_pool_entry_at(buf.data(), kLen, pos, entryOff, name, sizeof(name))) {
+            hits++;
+            if (sampleOut && sampleCap > 2 && sampleOut[0] == '\0') {
+                strncpy(sampleOut, name, sampleCap - 1);
+                sampleOut[sampleCap - 1] = '\0';
             }
         }
     }
+    return hits;
+}
+
+// Reads one name entry for `id` under a given layout.
+static bool ds_pubg_name_probe(uint64_t vmMap, uint64_t blocksBase,
+                               const DSPUBGNameLayout &lay, uint32_t id,
+                               char *outBuf, size_t outCap) {
+    if (!outBuf || outCap < 2) return false;
+    outBuf[0] = '\0';
+    if (!blocksBase || !ds_pubg_valid(blocksBase)) return false;
+
+    if (lay.mode == kDSPUBGNameLayoutPool) {
+        uint32_t blockIdx = id >> 16;
+        uint32_t offsetInBlock = id & 0xFFFF;
+        uint64_t blockArr = blocksBase + lay.blockArrayOff + (uint64_t)blockIdx * 8ULL;
+        uint64_t block = 0;
+        if (!ds_debug_read_bytes(vmMap, blockArr, &block, sizeof(block))) return false;
+        block &= 0x0000FFFFFFFFFFFFULL;
+        if (!ds_pubg_valid(block)) return false;
+
+        // The pool header sits right before the string, so the entry is read as
+        // a small window and validated the same way the density scan does.
+        const size_t kWin = 512;
+        std::vector<uint8_t> win(kWin);
+        if (!ds_debug_read_bytes(vmMap, block + offsetInBlock, win.data(), kWin)) return false;
+        return ds_pubg_pool_entry_at(win.data(), kWin, 0, lay.entryOff, outBuf, outCap);
+    }
+
+    uint32_t chunkIdx = id / 16384;
+    uint32_t inChunkIdx = id % 16384;
+    uint64_t chunk = 0;
+    if (!ds_debug_read_bytes(vmMap, blocksBase + (uint64_t)chunkIdx * 8ULL, &chunk, sizeof(chunk))) return false;
+    chunk &= 0x0000FFFFFFFFFFFFULL;
+    if (!ds_pubg_valid(chunk)) return false;
+
+    uint64_t entry = 0;
+    if (!ds_debug_read_bytes(vmMap, chunk + (uint64_t)inChunkIdx * 8ULL, &entry, sizeof(entry))) return false;
+    entry &= 0x0000FFFFFFFFFFFFULL;
+    if (!ds_pubg_valid(entry)) return false;
+
+    char raw[96] = {0};
+    ds_pubg_read_cstr(vmMap, entry + lay.entryOff, raw, sizeof(raw));
+    if (!ds_pubg_name_is_plausible(raw, sizeof(raw))) return false;
+
+    strncpy(outBuf, raw, outCap - 1);
+    outBuf[outCap - 1] = '\0';
+    return true;
+}
+
+// Scores the TNameEntryArray layout over sampled ids. The sample spans the id
+// range instead of taking the head: ids 0..4 are structural names that decode
+// under almost any offset, so a head-only check accepts garbage.
+static int ds_pubg_name_score_array(uint64_t vmMap, uint64_t blocksBase, uint32_t entryOff) {
+    static const uint32_t kSampleIds[] = {
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        20, 40, 80, 160, 320, 640, 1000, 2000, 4000,
+        8000, 12000, 16000, 24000, 32000, 48000
+    };
+    DSPUBGNameLayout lay = { kDSPUBGNameLayoutArray, entryOff, 0x00, 0 };
+    char buf[96] = {0};
+    int score = 0;
+    for (uint32_t id : kSampleIds) {
+        if (ds_pubg_name_probe(vmMap, blocksBase, lay, id, buf, sizeof(buf))) score++;
+    }
+    return score;
+}
+
+// Scores the FNamePool layout by block density. `id` is a byte offset there, so
+// sampling fixed small ids measures nothing - the block head is scanned instead.
+static int ds_pubg_name_score_pool(uint64_t vmMap, uint64_t blocksBase,
+                                   uint32_t blockArrayOff, uint32_t entryOff) {
+    uint64_t block = 0;
+    if (!ds_debug_read_bytes(vmMap, blocksBase + blockArrayOff, &block, sizeof(block))) return 0;
+    block &= 0x0000FFFFFFFFFFFFULL;
+    if (!ds_pubg_valid(block)) return 0;
+    return ds_pubg_pool_block_density(vmMap, block, entryOff, nullptr, 0);
+}
+
+static bool ds_pubg_calibrate_names(uint64_t vmMap, uint64_t blocksBase, DSPUBGNameLayout &out) {
+    out = DSPUBGNameLayout{ kDSPUBGNameLayoutArray, 0x0C, 0x00, 0 };
+    if (!blocksBase || !ds_pubg_valid(blocksBase)) return false;
+
+    const int kArrayAccept = 8;    // out of 26 sampled ids
+    // A live pool holds hundreds to thousands of header-matching entries in the
+    // first 16 KB of block 0, far more than the 26 ids the array path samples.
+    // The comparison is therefore relative; the floor only rejects empty blocks.
+    const int kPoolAccept = 8;
+
+    DSPUBGNameLayout best = out;
+    best.score = 0;
+
+    static const uint32_t kEntryOffsets[] = { 0x02, 0x04, 0x06, 0x08, 0x0C, 0x0E, 0x10 };
+    for (uint32_t entryOff : kEntryOffsets) {
+        int score = ds_pubg_name_score_array(vmMap, blocksBase, entryOff);
+        if (score > best.score) {
+            best = DSPUBGNameLayout{ kDSPUBGNameLayoutArray, entryOff, 0x00, score };
+        }
+    }
+
+    static const uint32_t kBlockArrayOffsets[] = { 0x00, 0x08, 0x0C, 0x10, 0x14, 0x18, 0x20 };
+    int poolBest = 0;
+    DSPUBGNameLayout poolLayout = {};
+    for (uint32_t blockOff : kBlockArrayOffsets) {
+        for (uint32_t entryOff : kEntryOffsets) {
+            int density = ds_pubg_name_score_pool(vmMap, blocksBase, blockOff, entryOff);
+            if (density > poolBest) {
+                poolBest = density;
+                poolLayout = DSPUBGNameLayout{ kDSPUBGNameLayoutPool, entryOff, blockOff, density };
+            }
+        }
+    }
+
+    // A dense pool is decisive; the array path only wins when no block looks
+    // like a pool at all.
+    if (poolBest >= kPoolAccept && poolBest > best.score) {
+        out = poolLayout;
+        return true;
+    }
+    if (best.score >= kArrayAccept) {
+        out = best;
+        return true;
+    }
     return false;
+}
+
+static bool ds_pubg_is_valid_gnames(uint64_t vmMap, uint64_t candidate, uint32_t *outNameOffset) {
+    DSPUBGNameLayout layout = {};
+    if (!ds_pubg_calibrate_names(vmMap, candidate, layout)) return false;
+    g_dspubgNameLayout = layout;
+    g_dspubgNamesCalibrated = true;
+    g_dspubgFNameEntryOffset = layout.entryOff;
+    if (outNameOffset) *outNameOffset = layout.entryOff;
+    return true;
 }
 
 static void ds_pubg_try_known_gnames(uint64_t vmMap, uint64_t base) {
@@ -546,16 +758,14 @@ static void ds_pubg_try_known_gnames(uint64_t vmMap, uint64_t base) {
         if (ds_debug_read_bytes(vmMap, base + rva, &val, sizeof(val))) {
             val &= 0x0000FFFFFFFFFFFFULL;
             uint32_t nameOff = 0x0C;
+            // ds_pubg_is_valid_gnames calibrates the layout and stores it, so
+            // nothing here may overwrite that choice.
             if (val && ds_pubg_valid(val) && ds_pubg_is_valid_gnames(vmMap, val, &nameOff)) {
                 g_dspubgGNames = val;
-                g_dspubgFNameEntryOffset = nameOff;
-                g_dspubgGNamesIsChunkArray = true;
                 return;
             }
             if (ds_pubg_is_valid_gnames(vmMap, base + rva, &nameOff)) {
                 g_dspubgGNames = base + rva;
-                g_dspubgFNameEntryOffset = nameOff;
-                g_dspubgGNamesIsChunkArray = false;
                 return;
             }
         }
@@ -583,19 +793,15 @@ static void ds_pubg_scan_for_gnames(uint64_t vmMap, const std::vector<ScanRange>
                 uint64_t ptrAddr = chunkAddr + p * 8;
                 uint32_t nameOff = 0x10;
 
-                // Check 1: ptrAddr holds pointer to chunk array (GNames as uint64_t*)
+                // Check 1: the scanned slot points at the block array.
                 if (ds_pubg_is_valid_gnames(vmMap, val, &nameOff)) {
                     g_dspubgGNames = val;
-                    g_dspubgFNameEntryOffset = nameOff;
-                    g_dspubgGNamesIsChunkArray = true;
                     return;
                 }
 
-                // Check 2: ptrAddr is directly the chunk array (GNames as uint64_t[])
+                // Check 2: the scanned slot itself is the block array.
                 if (ds_pubg_is_valid_gnames(vmMap, ptrAddr, &nameOff)) {
                     g_dspubgGNames = ptrAddr;
-                    g_dspubgFNameEntryOffset = nameOff;
-                    g_dspubgGNamesIsChunkArray = false;
                     return;
                 }
             }
@@ -606,70 +812,52 @@ static void ds_pubg_scan_for_gnames(uint64_t vmMap, const std::vector<ScanRange>
 static bool ds_pubg_get_name_by_id(uint32_t id, char *outBuf, size_t outCap) {
     if (!outBuf || outCap < 2) return false;
     outBuf[0] = '\0';
-    if (!g_dspubgGNames || id == 0 || id > 4194304) return false;
+    if (!g_dspubgGNames || !g_dspubgNamesCalibrated) return false;
+    if (id > 0x00FFFFFFu) return false;
 
-    uint32_t chunkIdx = id / 16384;
-    uint32_t inChunkIdx = id % 16384;
-
-    uint64_t chunk = 0;
-    if (g_dspubgGNamesIsChunkArray) {
-        chunk = ds_pubg_read_ptr(g_dspubgGNames + (chunkIdx * 8ULL));
-    } else {
-        chunk = g_dspubgGNames;
-    }
-    if (!chunk || !ds_pubg_valid(chunk)) return false;
-
-    uint64_t entry = ds_pubg_read_ptr(chunk + (inChunkIdx * 8ULL));
-    if (!entry || !ds_pubg_valid(entry)) return false;
-
-    char raw[64] = {0};
-    if (!ds_debug_read_bytes(g_dspubgVmMap, entry + g_dspubgFNameEntryOffset, raw, sizeof(raw) - 1)) {
-        return false;
-    }
-    raw[sizeof(raw) - 1] = '\0';
-
-    if (raw[0] == '\0') return false;
-    for (size_t i = 0; i < sizeof(raw) && raw[i] != '\0'; i++) {
-        unsigned char c = (unsigned char)raw[i];
-        if (c < 32 || c > 126) {
-            raw[i] = '\0';
-            break;
-        }
-    }
-    if (strlen(raw) < 2) return false;
-
-    strncpy(outBuf, raw, outCap - 1);
-    outBuf[outCap - 1] = '\0';
-    return true;
+    // The calibrated layout is authoritative; the offset baked into this file
+    // is only a starting point for the probe in ds_pubg_calibrate_names.
+    return ds_pubg_name_probe(g_dspubgVmMap, g_dspubgGNames, g_dspubgNameLayout,
+                              id, outBuf, outCap);
 }
 
+// Reads the FName index out of a UObject. DUMP/Offsets.hpp puts NamePrivate at
+// 0x18 and OuterPrivate at 0x20; the previous order read the outer object's
+// name and therefore classified almost every actor as something else entirely.
+static inline uint32_t ds_pubg_object_name_index(uint64_t obj) {
+    if (!obj || !ds_pubg_valid(obj)) return 0;
+    uint32_t idx = ds_pubg_read_u32(obj + 0x18ULL);
+    if (idx == 0 || idx > 0x00FFFFFFu) idx = ds_pubg_read_u32(obj + 0x20ULL);
+    return idx;
+}
+
+// Resolves an actor's class name, then its object name. The class is tried
+// first because scenery filtering keys off "StaticMesh" / "Instanced" tokens,
+// which live on the class; the object name is the instance label and differs
+// per actor.
 static bool ds_pubg_get_actor_name(uint64_t actor, char *outBuf, size_t outCap) {
     if (!actor || !outBuf || outCap < 2) return false;
     outBuf[0] = '\0';
 
-    // 1. Try ClassPrivate at 0x10ULL -> NamePrivate at +0x20ULL (UE4 64-bit standard: 0x18 is OuterPrivate, 0x20 is NamePrivate)
-    uint64_t classPrivate = ds_pubg_read_ptr(actor + 0x10ULL);
-    if (classPrivate && ds_pubg_valid(classPrivate)) {
-        uint32_t classFId = ds_pubg_read_u32(classPrivate + 0x20ULL);
-        if (classFId > 0 && classFId < 2000000 && ds_pubg_get_name_by_id(classFId, outBuf, outCap)) {
-            if (strlen(outBuf) > 1) return true;
+    uint64_t cls = ds_pubg_read_ptr(actor + 0x10ULL);
+    if (cls && ds_pubg_valid(cls)) {
+        uint32_t classIdx = ds_pubg_object_name_index(cls);
+        if (classIdx && ds_pubg_get_name_by_id(classIdx, outBuf, outCap) && strlen(outBuf) > 1) {
+            return true;
         }
-        uint32_t classFId2 = ds_pubg_read_u32(classPrivate + 0x18ULL);
-        if (classFId2 > 0 && classFId2 < 500000 && ds_pubg_get_name_by_id(classFId2, outBuf, outCap)) {
-            if (strlen(outBuf) > 1) return true;
+        uint64_t super = ds_pubg_read_ptr(cls + 0x30ULL);
+        if (super && ds_pubg_valid(super)) {
+            uint32_t superIdx = ds_pubg_object_name_index(super);
+            if (superIdx && ds_pubg_get_name_by_id(superIdx, outBuf, outCap) && strlen(outBuf) > 1) {
+                return true;
+            }
         }
     }
 
-    // 2. Try actor's own FName at +0x20ULL, fallback to +0x18ULL
-    uint32_t actorFId = ds_pubg_read_u32(actor + 0x20ULL);
-    if (actorFId > 0 && actorFId < 2000000 && ds_pubg_get_name_by_id(actorFId, outBuf, outCap)) {
-        if (strlen(outBuf) > 1) return true;
+    uint32_t objIdx = ds_pubg_object_name_index(actor);
+    if (objIdx && ds_pubg_get_name_by_id(objIdx, outBuf, outCap) && strlen(outBuf) > 1) {
+        return true;
     }
-    uint32_t actorFId2 = ds_pubg_read_u32(actor + 0x18ULL);
-    if (actorFId2 > 0 && actorFId2 < 500000 && ds_pubg_get_name_by_id(actorFId2, outBuf, outCap)) {
-        if (strlen(outBuf) > 1) return true;
-    }
-
     return false;
 }
 
@@ -3594,6 +3782,14 @@ static const char* ds_pubg_get_debug_status(void) {
                  s_obsScanActors, s_obsNameOk, s_obsScenery, s_obsBoxOk, s_obsLevels,
                  s_obsPxActors, s_obsPxShapes, s_obsPxBoxes,
                  (unsigned long long)g_dspubgPxShapeMgrOff);
+        size_t used = strlen(g_dspubgStatusBuf);
+        if (used + 48 < sizeof(g_dspubgStatusBuf)) {
+            snprintf(g_dspubgStatusBuf + used, sizeof(g_dspubgStatusBuf) - used,
+                     " | GN %s/%u/0x%X",
+                     g_dspubgGNames ? (g_dspubgNamesCalibrated ? "ok" : "raw") : "none",
+                     g_dspubgNameLayout.score,
+                     g_dspubgFNameEntryOffset);
+        }
         return g_dspubgStatusBuf;
     }
     if (g_dspubgLastActorsCount > 0) {
@@ -3702,12 +3898,31 @@ static inline bool ds_pubg_object_class_contains(uint64_t obj, const char *needl
 
 // A component is usable as an occlusion source only if the mesh pointer at
 // 0xA30 actually leads to a UStaticMesh.
+// A live UStaticMesh also exposes a BodySetup at 0xB0 that points at a
+// UBodySetup carrying an FKAggregateGeom. Checking that shape is structural: it
+// holds whether or not the name pool resolved, which matters because the name
+// gate alone dropped every obstacle when GNames degraded.
+static inline bool ds_pubg_looks_like_static_mesh(uint64_t mesh) {
+    if (!mesh || !ds_pubg_valid(mesh)) return false;
+    if (ds_pubg_object_class_contains(mesh, "StaticMesh")) return true;
+
+    uint64_t bodySetup = ds_pubg_read_ptr(mesh + 0xB0ULL);
+    if (!bodySetup || !ds_pubg_valid(bodySetup)) return false;
+    if (!ds_pubg_object_class_contains(bodySetup, "BodySetup")) {
+        // Even without a resolvable class, a BodySetup always starts with an
+        // FKAggregateGeom whose TArrays must be readable or empty.
+        uint64_t boxData = ds_pubg_read_ptr(bodySetup + 0x28ULL + 0x30ULL);
+        uint32_t boxCount = ds_pubg_read_u32(bodySetup + 0x28ULL + 0x30ULL + 0x8ULL);
+        if (boxCount > 0 && boxCount <= 4096 && (!boxData || !ds_pubg_valid(boxData))) return false;
+    }
+    return true;
+}
+
 static inline bool ds_pubg_component_has_static_mesh(uint64_t comp, uint64_t &outMesh) {
     outMesh = 0;
     if (!comp || !ds_pubg_valid(comp)) return false;
     uint64_t mesh = ds_pubg_read_ptr(comp + 0xA30ULL);
-    if (!mesh || !ds_pubg_valid(mesh)) return false;
-    if (!ds_pubg_object_class_contains(mesh, "StaticMesh")) return false;
+    if (!ds_pubg_looks_like_static_mesh(mesh)) return false;
     outMesh = mesh;
     return true;
 }
@@ -4057,14 +4272,15 @@ static int ds_pubg_extract_instanced_boxes(uint64_t comp,
     if (!outBoxes || maxBoxes <= 0) return 0;
     if (!comp || !ds_pubg_valid(comp)) return 0;
 
-    // 0xBD8 is inside UStaticMeshComponent's padding, so gate on the class
-    // name first: a plain static mesh must never be read as an ISM. PUBG
-    // ships several subclasses (Color / Photon / Creative / Hierarchical),
-    // all of which share the same PerInstanceSMData layout.
+    // 0xBD8 is inside UStaticMeshComponent's padding, so the array there must be
+    // validated before use: a plain static mesh would read garbage as instances.
+    // The class name is a hint only - PUBG ships several subclasses (Color /
+    // Photon / Creative / Hierarchical) and the pool may not resolve them, so a
+    // missing or unmatched name must not disable the instanced path.
     char compClassName[64] = {0};
-    if (!ds_pubg_get_actor_name(comp, compClassName, sizeof(compClassName))) return 0;
-    if (!strstr(compClassName, "Instanced")) return 0;
-    if (strstr(compClassName, "Foliage")) return 0;
+    if (ds_pubg_get_actor_name(comp, compClassName, sizeof(compClassName))) {
+        if (strstr(compClassName, "Foliage")) return 0;
+    }
 
     // The instance data at 0xBD8 only means something when the component truly
     // owns a static mesh; otherwise the count/matrix pair is padding.
@@ -6275,37 +6491,46 @@ static void ds_pubg_tick(void) {
                     continue;
                 }
 
+                // A name is a hint, never a gate. GNames resolution depends on
+                // the pool layout found at runtime, and when it degrades the
+                // previous version discarded every actor before ever reading a
+                // component - a HUD showing A838 N3 S3 B0 with zero obstacles.
+                // Geometry is therefore attempted for every candidate actor;
+                // the name only removes the classes that must never occlude
+                // (foliage, water, sky, pawns, vehicles, loot).
                 char aName[64] = {0};
-                if (!ds_pubg_get_actor_name(actor, aName, sizeof(aName))) continue;
-                s_obsNameOk++;
+                const bool haveName = ds_pubg_get_actor_name(actor, aName, sizeof(aName));
+                if (haveName) s_obsNameOk++;
 
-                if (ds_pubg_is_soft_scenery_name(aName)) {
-                    ds_pubg_nonstatic_remember(actor);
-                    continue;
-                }
-
-                // [A3] Classify before it can become static geometry: vehicles move
-                // and dropped weapons are loot, so both are skipped here.
-                DSPUBGActorClass aClass = ds_pubg_smart_classify_scenery(aName);
-                if (aClass != DSPUBGActorClass::StaticScenery) {
-                    ds_pubg_nonstatic_remember(actor);
-                    if (aClass == DSPUBGActorClass::DynamicVehicle) {
-                        // [A2] Vehicle: register it as a moving actor instead.
-                        uint64_t vRoot = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-                        DSPUBGVector vLoc = {};
-                        DSPUBGRotator vRot = {};
-                        DSPUBGVector vScale = { 1.0f, 1.0f, 1.0f };
-                        if (vRoot && ds_pubg_valid(vRoot)) {
-                            ds_pubg_read(vRoot + kDSPUBGSceneCompRelativeLocOffset, &vLoc, sizeof(vLoc));
-                            ds_pubg_read(vRoot + 0x1F0ULL, &vRot, sizeof(vRot));
-                            ds_pubg_read(vRoot + 0x1FCULL, &vScale, sizeof(vScale));
-                        }
-                        ds_pubg_dynamic_update(actor, DSPUBGShapeKind::Obb,
-                                               DSPUBGActorClass::DynamicVehicle,
-                                               DSPUBGActVehicle, vLoc, vRot, vScale,
-                                               0.0f, 0.0f);
+                if (haveName) {
+                    if (ds_pubg_is_soft_scenery_name(aName)) {
+                        ds_pubg_nonstatic_remember(actor);
+                        continue;
                     }
-                    continue;
+
+                    // [A3] Classify before it can become static geometry:
+                    // vehicles move and dropped weapons are loot.
+                    DSPUBGActorClass aClass = ds_pubg_smart_classify_scenery(aName);
+                    if (aClass != DSPUBGActorClass::StaticScenery) {
+                        ds_pubg_nonstatic_remember(actor);
+                        if (aClass == DSPUBGActorClass::DynamicVehicle) {
+                            // [A2] Vehicle: register it as a moving actor instead.
+                            uint64_t vRoot = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
+                            DSPUBGVector vLoc = {};
+                            DSPUBGRotator vRot = {};
+                            DSPUBGVector vScale = { 1.0f, 1.0f, 1.0f };
+                            if (vRoot && ds_pubg_valid(vRoot)) {
+                                ds_pubg_read(vRoot + kDSPUBGSceneCompRelativeLocOffset, &vLoc, sizeof(vLoc));
+                                ds_pubg_read(vRoot + 0x1F0ULL, &vRot, sizeof(vRot));
+                                ds_pubg_read(vRoot + 0x1FCULL, &vScale, sizeof(vScale));
+                            }
+                            ds_pubg_dynamic_update(actor, DSPUBGShapeKind::Obb,
+                                                   DSPUBGActorClass::DynamicVehicle,
+                                                   DSPUBGActVehicle, vLoc, vRot, vScale,
+                                                   0.0f, 0.0f);
+                        }
+                        continue;
+                    }
                 }
                 s_obsScenery++;
 
@@ -6369,10 +6594,13 @@ static void ds_pubg_tick(void) {
                         DSPUBGObstacleBox local[kDSPUBGBoxesPerComponent] = {};
 
                         for (int ci = 0; ci < compCount && boxTotal < kDSPUBGStaticBoxesPerActor; ci++) {
-                            int n = ds_pubg_extract_instanced_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
-                            if (n <= 0) {
-                                n = ds_pubg_px_component_boxes(comps[ci], camLoc, local,
+                            // PhysX first: it is the geometry the game actually
+                            // collides with, and it is independent of the cooked
+                            // AggregateGeom that may be absent or placeholder.
+                            int n = ds_pubg_px_component_boxes(comps[ci], camLoc, local,
                                                                kDSPUBGBoxesPerComponent);
+                            if (n <= 0) {
+                                n = ds_pubg_extract_instanced_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
                             }
                             if (n <= 0) {
                                 n = ds_pubg_extract_component_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
