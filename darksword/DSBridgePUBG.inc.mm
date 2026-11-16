@@ -3053,6 +3053,31 @@ static inline bool ds_pubg_box_is_sane(const DSPUBGObstacleBox &box) {
     return true;
 }
 
+// Gate on the class of the *mesh object itself*, not on the component's FName.
+// A light / volume / decal / audio component does not point at a UStaticMesh at
+// 0xA30; what lives there is padding that almost never resolves to a live
+// UObject, and never to one whose class name is "StaticMesh". Resolving the
+// mesh class also survives builds where the component FName is unreadable,
+// which would otherwise silently zero out every obstacle box.
+static inline bool ds_pubg_object_class_contains(uint64_t obj, const char *needle) {
+    if (!obj || !needle || !ds_pubg_valid(obj)) return false;
+    char className[64] = {0};
+    if (!ds_pubg_get_actor_name(obj, className, sizeof(className))) return false;
+    return strstr(className, needle) != nullptr;
+}
+
+// A component is usable as an occlusion source only if the mesh pointer at
+// 0xA30 actually leads to a UStaticMesh.
+static inline bool ds_pubg_component_has_static_mesh(uint64_t comp, uint64_t &outMesh) {
+    outMesh = 0;
+    if (!comp || !ds_pubg_valid(comp)) return false;
+    uint64_t mesh = ds_pubg_read_ptr(comp + 0xA30ULL);
+    if (!mesh || !ds_pubg_valid(mesh)) return false;
+    if (!ds_pubg_object_class_contains(mesh, "StaticMesh")) return false;
+    outMesh = mesh;
+    return true;
+}
+
 // Soft scenery must never become an occlusion box: foliage and terrain would
 // otherwise block the sight line to an enemy standing in the open next to a
 // bush, and a landscape heightfield box covers the whole map.
@@ -3164,23 +3189,18 @@ static int ds_pubg_extract_component_boxes(uint64_t comp,
     if (!outBoxes || maxBoxes <= 0) return 0;
     if (!comp || !ds_pubg_valid(comp)) return 0;
 
-    // Only real static mesh components carry a UStaticMesh at 0xA30. Lights,
-    // audio emitters, volumes, decals and triggers do not, and reading their
-    // padding as a mesh produced phantom obstacle boxes.
-    char compClassName[64] = {0};
-    if (!ds_pubg_get_actor_name(comp, compClassName, sizeof(compClassName))) return 0;
-    if (!strstr(compClassName, "StaticMesh")) return 0;
+    // Only real static mesh components resolve to a UStaticMesh at 0xA30.
+    // Lights, audio emitters, volumes, decals and triggers do not, and reading
+    // their padding as a mesh produced phantom obstacle boxes.
+    uint64_t staticMesh = 0;
+    if (!ds_pubg_component_has_static_mesh(comp, staticMesh)) return 0;
 
     DSPUBGVector compLoc = {}, compScale = { 1.0f, 1.0f, 1.0f };
     DSPUBGVector compX = {}, compY = {}, compZ = {};
     if (!ds_pubg_component_world_pose(comp, compLoc, compX, compY, compZ, compScale)) return 0;
     if (!isfinite(compLoc.X) || !isfinite(compLoc.Y) || !isfinite(compLoc.Z)) return 0;
 
-    uint64_t staticMesh = ds_pubg_read_ptr(comp + 0xA30ULL);
-    uint64_t bodySetup = 0;
-    if (staticMesh && ds_pubg_valid(staticMesh)) {
-        bodySetup = ds_pubg_read_ptr(staticMesh + 0xB0ULL);
-    }
+    uint64_t bodySetup = ds_pubg_read_ptr(staticMesh + 0xB0ULL);
 
     int written = 0;
 
@@ -3309,12 +3329,14 @@ static int ds_pubg_extract_instanced_boxes(uint64_t comp,
     if (!strstr(compClassName, "Instanced")) return 0;
     if (strstr(compClassName, "Foliage")) return 0;
 
+    // The instance data at 0xBD8 only means something when the component truly
+    // owns a static mesh; otherwise the count/matrix pair is padding.
+    uint64_t mesh = 0;
+    if (!ds_pubg_component_has_static_mesh(comp, mesh)) return 0;
+
     DSPUBGVector compLoc = {}, compScale = { 1.0f, 1.0f, 1.0f };
     DSPUBGVector compX = {}, compY = {}, compZ = {};
     if (!ds_pubg_component_world_pose(comp, compLoc, compX, compY, compZ, compScale)) return 0;
-
-    uint64_t mesh = ds_pubg_read_ptr(comp + 0xA30ULL);
-    if (!mesh || !ds_pubg_valid(mesh)) return 0;
 
     DSPUBGVector meshOrigin = {}, meshExtent = {};
     ds_pubg_read(mesh + 0x1A8ULL, &meshOrigin, sizeof(meshOrigin));
