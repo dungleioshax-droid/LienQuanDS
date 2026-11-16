@@ -3276,16 +3276,48 @@ enum : int {
     kDSPUBGPxGeomHeightField = 6,
 };
 
-// A PxShape is plausible when the geometry union's discriminant is a real
-// PxGeometryType (0..6). Random pointers essentially never satisfy this at the
-// exact offset PhysX stores it, which makes the offset search below safe.
+// Where the GeometryUnion sits inside NpShape is width dependent: the 0x74
+// constant comes from the 32-bit reference, and the PxTransform/StreamPtr
+// members before it grow when pointers are 8 bytes. 0x74 still reads a value in
+// 0..6 on arm64 often enough to look correct, which is how a probe can accept
+// 89 shapes and build one box out of them. The offset is therefore discovered
+// by requiring the union to yield a usable AABB, never by trusting a constant.
+static uint64_t g_dspubgPxGeomOff = 0;
+
+// Candidate slots for the discriminant. Covers the 32-bit value, the arm64
+// shift, and the neighbouring padding in case a member was added.
+static const uint64_t kDSPUBGPxGeomOffCandidates[] = {
+    0x6CULL, 0x70ULL, 0x74ULL, 0x78ULL, 0x7CULL, 0x80ULL, 0x84ULL, 0x88ULL, 0x8CULL
+};
+
+static inline int32_t ds_pubg_px_geom_type_at(uint64_t shape, uint64_t geomOff) {
+    int32_t type = (int32_t)ds_pubg_read_u32(shape + geomOff);
+    if (type < kDSPUBGPxGeomSphere || type > kDSPUBGPxGeomHeightField) return -1;
+    return type;
+}
+
+// Lenient check used while walking a shape list: the shape is a candidate when
+// any known slot carries a real PxGeometryType.
 static bool ds_pubg_px_shape_type(uint64_t shape, int &outType) {
     outType = -1;
     if (!shape || !ds_pubg_valid(shape)) return false;
-    int32_t type = (int32_t)ds_pubg_read_u32(shape + kDSPUBGPxGeometryOffset);
-    if (type < kDSPUBGPxGeomSphere || type > kDSPUBGPxGeomHeightField) return false;
-    outType = type;
-    return true;
+
+    if (g_dspubgPxGeomOff) {
+        int32_t type = ds_pubg_px_geom_type_at(shape, g_dspubgPxGeomOff);
+        if (type >= 0) {
+            outType = type;
+            return true;
+        }
+        return false;
+    }
+    for (uint64_t off : kDSPUBGPxGeomOffCandidates) {
+        int32_t type = ds_pubg_px_geom_type_at(shape, off);
+        if (type >= 0) {
+            outType = type;
+            return true;
+        }
+    }
+    return false;
 }
 
 // Collect the shape pointers hanging off a PxRigidActor.
@@ -3303,6 +3335,13 @@ static bool ds_pubg_px_shape_type(uint64_t shape, int &outType) {
 static uint32_t s_obsPxActors = 0;
 static uint32_t s_obsPxShapes = 0;
 static uint32_t s_obsPxBoxes = 0;
+// Per-geometry counters. A shape that never reaches a box is either an
+// unsupported primitive, an unreadable mesh header, a degenerate bound or a
+// rejected cover; without these four numbers the fix is guesswork.
+static uint32_t s_pxGeomCount[7] = {};
+static uint32_t s_pxNoAabb = 0;
+static uint32_t s_pxNoCover = 0;
+static uint32_t s_pxNoSane = 0;
 static uint64_t g_dspubgPxShapeMgrOff = 0;
 
 // ds_pubg_read_ptr rejects any address that is not 8-byte aligned, but
@@ -3568,12 +3607,13 @@ static bool ds_pubg_px_mesh_aabb(uint64_t geom, int type, DSPUBGVector &outLo, D
     return ds_pubg_px_aabb_sane(outLo, outHi);
 }
 
-static bool ds_pubg_px_geom_local_aabb(uint64_t shape, DSPUBGVector &outLo, DSPUBGVector &outHi) {
+static bool ds_pubg_px_geom_local_aabb_at(uint64_t shape, uint64_t geomOff,
+                                          DSPUBGVector &outLo, DSPUBGVector &outHi) {
     outLo = {};
     outHi = {};
     if (!shape || !ds_pubg_valid(shape)) return false;
 
-    uint64_t geom = shape + kDSPUBGPxGeometryOffset;
+    uint64_t geom = shape + geomOff;
     int32_t type = (int32_t)ds_pubg_read_u32(geom);
     if (type < kDSPUBGPxGeomSphere || type > kDSPUBGPxGeomHeightField) return false;
 
@@ -3614,31 +3654,106 @@ static bool ds_pubg_px_geom_local_aabb(uint64_t shape, DSPUBGVector &outLo, DSPU
     }
 }
 
-// NpShape.Shape2Actor (PxTransform, +0x50): quat 0x00, position 0x10.
+static bool ds_pubg_px_geom_local_aabb(uint64_t shape, DSPUBGVector &outLo, DSPUBGVector &outHi) {
+    if (g_dspubgPxGeomOff) {
+        return ds_pubg_px_geom_local_aabb_at(shape, g_dspubgPxGeomOff, outLo, outHi);
+    }
+    if (ds_pubg_px_geom_local_aabb_at(shape, kDSPUBGPxGeometryOffset, outLo, outHi)) return true;
+    for (uint64_t off : kDSPUBGPxGeomOffCandidates) {
+        if (off == kDSPUBGPxGeometryOffset) continue;
+        if (ds_pubg_px_geom_local_aabb_at(shape, off, outLo, outHi)) return true;
+    }
+    return false;
+}
+
+// Locks in the geometry offset once a shape is decoded with it. Called from the
+// shape reader, so the first shape that produces a real AABB settles the layout
+// for the session instead of the code guessing again per shape.
+static void ds_pubg_px_note_geom_offset(uint64_t shape) {
+    if (g_dspubgPxGeomOff) return;
+    DSPUBGVector lo = {}, hi = {};
+    if (ds_pubg_px_geom_local_aabb_at(shape, kDSPUBGPxGeometryOffset, lo, hi)) {
+        g_dspubgPxGeomOff = kDSPUBGPxGeometryOffset;
+        return;
+    }
+    for (uint64_t off : kDSPUBGPxGeomOffCandidates) {
+        if (off == kDSPUBGPxGeometryOffset) continue;
+        if (ds_pubg_px_geom_local_aabb_at(shape, off, lo, hi)) {
+            g_dspubgPxGeomOff = off;
+            return;
+        }
+    }
+}
+
+// NpShape.Shape2Actor is a PxTransform: quat (4 floats), then position (3
+// floats) at +0x10. Its offset moves with the pointer width for the same reason
+// the geometry union does, so the transform is located by its own signature - a
+// unit quaternion followed by a small position - instead of a fixed constant.
+static uint64_t g_dspubgPxPoseOff = 0;
+
+static bool ds_pubg_px_read_pose_at(uint64_t shape, uint64_t poseOff,
+                                    DSPUBGVector &outPos,
+                                    DSPUBGVector &outX,
+                                    DSPUBGVector &outY,
+                                    DSPUBGVector &outZ,
+                                    bool *outQuatOk) {
+    outPos = {};
+    outX = DSPUBGVector{ 1.0f, 0.0f, 0.0f };
+    outY = DSPUBGVector{ 0.0f, 1.0f, 0.0f };
+    outZ = DSPUBGVector{ 0.0f, 0.0f, 1.0f };
+    if (outQuatOk) *outQuatOk = false;
+
+    float q[4] = {};
+    if (!ds_pubg_read(shape + poseOff, q, sizeof(q))) return false;
+    float p[3] = {};
+    if (!ds_pubg_read(shape + poseOff + 0x10ULL, p, sizeof(p))) return false;
+
+    for (int i = 0; i < 4; i++) if (!isfinite(q[i])) return false;
+    for (int i = 0; i < 3; i++) if (!isfinite(p[i])) return false;
+
+    // A PxTransform position is a shape offset inside its actor, so a
+    // world-sized translation means the wrong slot was read.
+    const float mag = fabsf(p[0]) + fabsf(p[1]) + fabsf(p[2]);
+    if (mag > 8000.0f) return false;
+
+    const float n = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
+    const bool unitQuat = (n > 0.9f && n < 1.1f);
+    if (unitQuat) {
+        ds_pubg_quat_to_axes(q[0], q[1], q[2], q[3], outX, outY, outZ);
+        if (outQuatOk) *outQuatOk = true;
+    }
+    outPos = DSPUBGVector{ p[0], p[1], p[2] };
+    return true;
+}
+
 static bool ds_pubg_px_shape_local_pose(uint64_t shape,
                                         DSPUBGVector &outPos,
                                         DSPUBGVector &outX,
                                         DSPUBGVector &outY,
                                         DSPUBGVector &outZ) {
-    outPos = {};
-    outX = DSPUBGVector{ 1.0f, 0.0f, 0.0f };
-    outY = DSPUBGVector{ 0.0f, 1.0f, 0.0f };
-    outZ = DSPUBGVector{ 0.0f, 0.0f, 1.0f };
+    static const uint64_t kPoseCandidates[] = {
+        0x50ULL, 0x58ULL, 0x48ULL, 0x60ULL, 0x40ULL, 0x68ULL, 0x38ULL, 0x78ULL
+    };
 
-    float q[4] = {};
-    float p[3] = {};
-    if (!ds_pubg_read(shape + 0x50ULL, q, sizeof(q))) return false;
-    if (!ds_pubg_read(shape + 0x60ULL, p, sizeof(p))) return false;
+    if (g_dspubgPxPoseOff) {
+        return ds_pubg_px_read_pose_at(shape, g_dspubgPxPoseOff, outPos, outX, outY, outZ, nullptr);
+    }
 
-    float n = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-    const bool identity = !(isfinite(n) && n > 0.9f && n < 1.1f);
-    if (!identity) {
-        ds_pubg_quat_to_axes(q[0], q[1], q[2], q[3], outX, outY, outZ);
+    // Only a unit-length quaternion identifies a real PxTransform: an identity
+    // transform is (0,0,0,1), which passes this test too. A slot with merely a
+    // plausible position is rejected - taking it shifted walls off their mesh.
+    for (uint64_t off : kPoseCandidates) {
+        DSPUBGVector pos = {}, x = {}, y = {}, z = {};
+        bool quatOk = false;
+        if (!ds_pubg_px_read_pose_at(shape, off, pos, x, y, z, &quatOk)) continue;
+        if (!quatOk) continue;
+        g_dspubgPxPoseOff = off;
+        outPos = pos; outX = x; outY = y; outZ = z;
+        return true;
     }
-    if (isfinite(p[0]) && isfinite(p[1]) && isfinite(p[2])) {
-        float mag = fabsf(p[0]) + fabsf(p[1]) + fabsf(p[2]);
-        if (mag < 8000.0f) outPos = DSPUBGVector{ p[0], p[1], p[2] };
-    }
+
+    // No transform found: the shape is used with an identity local pose, which
+    // is the common case for collision primitives attached directly.
     return true;
 }
 
@@ -3654,7 +3769,7 @@ static bool ds_pubg_px_shape_box(uint64_t shape,
     if (!shape || !ds_pubg_valid(shape)) return false;
 
     DSPUBGVector localLo = {}, localHi = {};
-    if (!ds_pubg_px_geom_local_aabb(shape, localLo, localHi)) return false;
+    if (!ds_pubg_px_geom_local_aabb(shape, localLo, localHi)) { s_pxNoAabb++; return false; }
 
     DSPUBGVector localMid = { (localLo.X + localHi.X) * 0.5f,
                               (localLo.Y + localHi.Y) * 0.5f,
@@ -3663,7 +3778,10 @@ static bool ds_pubg_px_shape_box(uint64_t shape,
                           (localHi.Y - localLo.Y) * 0.5f,
                           (localHi.Z - localLo.Z) * 0.5f };
 
-    int32_t geomType = (int32_t)ds_pubg_read_u32(shape + kDSPUBGPxGeometryOffset);
+    ds_pubg_px_note_geom_offset(shape);
+    const uint64_t geomOff = g_dspubgPxGeomOff ? g_dspubgPxGeomOff : kDSPUBGPxGeometryOffset;
+    int32_t geomType = (int32_t)ds_pubg_read_u32(shape + geomOff);
+    if (geomType >= 0 && geomType <= 6) s_pxGeomCount[geomType]++;
     const bool rounded = (geomType == kDSPUBGPxGeomSphere || geomType == kDSPUBGPxGeomCapsule);
 
     DSPUBGVector shapePos = {};
@@ -3697,8 +3815,8 @@ static bool ds_pubg_px_shape_box(uint64_t shape,
     outBox.axisZ = ds_pubg_rotated_axes(compX, compY, compZ, shapeZ);
     ds_pubg_box_finalize(outBox);
 
-    if (!ds_pubg_box_is_sane(outBox)) return false;
-    if (!ds_pubg_box_is_valid_cover_ex(outBox, nullptr, rounded)) return false;
+    if (!ds_pubg_box_is_sane(outBox)) { s_pxNoSane++; return false; }
+    if (!ds_pubg_box_is_valid_cover_ex(outBox, nullptr, rounded)) { s_pxNoCover++; return false; }
     return true;
 }
 
@@ -3782,12 +3900,17 @@ static const char* ds_pubg_get_debug_status(void) {
                  s_obsPxActors, s_obsPxShapes, s_obsPxBoxes,
                  (unsigned long long)g_dspubgPxShapeMgrOff);
         size_t used = strlen(g_dspubgStatusBuf);
-        if (used + 48 < sizeof(g_dspubgStatusBuf)) {
+        if (used + 80 < sizeof(g_dspubgStatusBuf)) {
             snprintf(g_dspubgStatusBuf + used, sizeof(g_dspubgStatusBuf) - used,
-                     " | GN %s/%u/0x%X",
-                     g_dspubgGNames ? (g_dspubgNamesCalibrated ? "ok" : "raw") : "none",
-                     g_dspubgNameLayout.score,
-                     g_dspubgFNameEntryOffset);
+                     " | g%lld p%lld | G%d/%d/%d/%d/%d/%d | x%d y%d z%d",
+                     (long long)g_dspubgPxGeomOff, (long long)g_dspubgPxPoseOff,
+                     s_pxGeomCount[kDSPUBGPxGeomBox],
+                     s_pxGeomCount[kDSPUBGPxGeomCapsule],
+                     s_pxGeomCount[kDSPUBGPxGeomSphere],
+                     s_pxGeomCount[kDSPUBGPxGeomConvex],
+                     s_pxGeomCount[kDSPUBGPxGeomTriMesh],
+                     s_pxGeomCount[kDSPUBGPxGeomHeightField],
+                     s_pxNoAabb, s_pxNoSane, s_pxNoCover);
         }
         return g_dspubgStatusBuf;
     }
@@ -6403,6 +6526,10 @@ static void ds_pubg_tick(void) {
         s_obsPxActors = 0;
         s_obsPxShapes = 0;
         s_obsPxBoxes = 0;
+        memset(s_pxGeomCount, 0, sizeof(s_pxGeomCount));
+        s_pxNoAabb = 0;
+        s_pxNoCover = 0;
+        s_pxNoSane = 0;
 
         // [A1] The cached geometry belongs to one level set: seamless travel
         // swaps the levels while keeping the same UWorld, so the library is
