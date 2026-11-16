@@ -106,7 +106,6 @@ static uint64_t g_dspubgGrenadeEpoch = 1;
 
 static uint64_t g_dspubgGNames = 0;
 static uint32_t g_dspubgFNameEntryOffset = 0x0C;
-static bool g_dspubgGNamesIsChunkArray = true;
 
 // Fast Actor Classification Cache: Caches scenery, pawn, and item classification
 // to eliminate repetitive GNames lookups and memory reads for thousands of level actors.
