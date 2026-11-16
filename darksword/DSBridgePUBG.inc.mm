@@ -3456,7 +3456,7 @@ static bool ds_pubg_px_shape_local_pose(uint64_t shape,
 }
 
 // One PxShape -> world-space cover box, composed from the component transform
-// (which carries world rotation/translation/scale) and the shape's local pose.
+// (world rotation and translation) and the shape's local pose.
 static bool ds_pubg_px_shape_box(uint64_t shape,
                                  const DSPUBGVector &compLoc,
                                  const DSPUBGVector &compX,
@@ -3501,10 +3501,6 @@ static bool ds_pubg_px_shape_box(uint64_t shape,
                       rotatedMid.Z + shapePos.Z },
         compX, compY, compZ);
 
-    // UE bakes the component scale into the PhysX geometry when the shape is
-    // created (box half extents are multiplied, meshes get a PxMeshScale), so
-    // only rotation composes here. Scaling again doubled the size and pushed
-    // boxes through neighbouring geometry.
     outBox.center = DSPUBGVector{ compLoc.X + worldOffset.X,
                                   compLoc.Y + worldOffset.Y,
                                   compLoc.Z + worldOffset.Z };
