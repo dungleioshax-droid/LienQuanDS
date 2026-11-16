@@ -80,6 +80,8 @@ static const CGFloat kMadnessPanelH = 325.0f;
 @property (nonatomic, strong) MenuToggleButton *btnArmorLv3;
 @property (nonatomic, strong) MenuToggleButton *btnAmmo;
 @property (nonatomic, strong) MenuSliderRow *sliderItemDist;
+@property (nonatomic, strong) UILabel *headerEsp;
+@property (nonatomic, strong) UILabel *headerMaterial;
 
 @end
 
@@ -148,7 +150,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     return b;
 }
 
-- (void)addSectionHeader:(NSString *)title atY:(CGFloat)y {
+- (UILabel *)addSectionHeader:(NSString *)title atY:(CGFloat)y {
     UILabel *chev = [[UILabel alloc] initWithFrame:CGRectMake(12, y, 14, 18)];
     chev.text = @"⋗";
     chev.textColor = UIColor.yellowColor;
@@ -162,6 +164,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     tit.font = [UIFont boldSystemFontOfSize:11.5];
     tit.textAlignment = NSTextAlignmentLeft;
     [self.scroll addSubview:tit];
+    return tit;
 }
 
 #pragma mark - Chrome (Header & Panels)
@@ -180,9 +183,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
         }
     }
 
-    // Panel container: start collapsed (134 x 30)
+    // Panel container: start collapsed (158 x 30)
     self.panel = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.panel.frame = CGRectMake(startX, startY, 134, 30);
+    self.panel.frame = CGRectMake(startX, startY, 158, 30);
     self.panel.backgroundColor = UIColor.clearColor;
     self.panel.layer.cornerRadius = 8.0;
     self.panel.clipsToBounds = YES;
@@ -220,8 +223,8 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleGlyph.backgroundColor = UIColor.clearColor;
     [self.handle addSubview:self.handleGlyph];
 
-    // Top Dark Header Capsule Bar: collapsed (32, 3, 94, 24)
-    self.titleBox = [[UIView alloc] initWithFrame:CGRectMake(32, 3, 94, 24)];
+    // Top Dark Header Capsule Bar: collapsed (32, 3, 118, 24)
+    self.titleBox = [[UIView alloc] initWithFrame:CGRectMake(32, 3, 118, 24)];
     self.titleBox.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.90];
     self.titleBox.layer.cornerRadius = 12.0;
     self.titleBox.layer.borderColor = [UIColor colorWithWhite:0.25 alpha:0.8].CGColor;
@@ -235,18 +238,21 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.titlePan.cancelsTouchesInView = NO;
     [self.titleBox addGestureRecognizer:self.titlePan];
 
-    // 1. Title: MADNESS
-    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, 2, 58, 20)];
-    self.titleLabel.text = @"MADNESS";
+    UITapGestureRecognizer *titleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(titleBoxTapped:)];
+    [self.titleBox addGestureRecognizer:titleTap];
+
+    // 1. Title: DARKSWORD
+    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, 2, 82, 20)];
+    self.titleLabel.text = @"DARKSWORD";
     self.titleLabel.textColor = UIColor.yellowColor;
-    self.titleLabel.font = [UIFont fontWithName:@"AvenirNextCondensed-HeavyItalic" size:12.5]
-                           ?: [UIFont boldSystemFontOfSize:12.5];
+    self.titleLabel.font = [UIFont fontWithName:@"AvenirNextCondensed-HeavyItalic" size:12.0]
+                           ?: [UIFont boldSystemFontOfSize:12.0];
     self.titleLabel.textAlignment = NSTextAlignmentLeft;
     self.titleLabel.userInteractionEnabled = NO;
     [self.titleBox addSubview:self.titleLabel];
 
     // 2. Mascot icon
-    self.mascotView = [[UIImageView alloc] initWithFrame:CGRectMake(68, 2, 20, 20)];
+    self.mascotView = [[UIImageView alloc] initWithFrame:CGRectMake(92, 2, 20, 20)];
     self.mascotView.image = MadnessMascotImage();
     self.mascotView.contentMode = UIViewContentModeScaleAspectFit;
     self.mascotView.userInteractionEnabled = NO;
@@ -254,7 +260,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
 
     // 3. Language Selector: [ ENG ]  [ VIE ]
     self.btnEng = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.btnEng.frame = CGRectMake(94, 3, 30, 18);
+    self.btnEng.frame = CGRectMake(118, 3, 30, 18);
     self.btnEng.layer.cornerRadius = 3.5;
     self.btnEng.clipsToBounds = YES;
     [self.btnEng setTitle:@"ENG" forState:UIControlStateNormal];
@@ -264,7 +270,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [self.titleBox addSubview:self.btnEng];
 
     self.btnVie = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.btnVie.frame = CGRectMake(128, 3, 28, 18);
+    self.btnVie.frame = CGRectMake(152, 3, 28, 18);
     self.btnVie.layer.cornerRadius = 3.5;
     self.btnVie.clipsToBounds = YES;
     [self.btnVie setTitle:@"VIE" forState:UIControlStateNormal];
@@ -275,7 +281,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
 
     // 4. Contact button: [ DLX07 ]
     self.contactBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.contactBtn.frame = CGRectMake(162, 3, 56, 18);
+    self.contactBtn.frame = CGRectMake(186, 3, 56, 18);
     self.contactBtn.backgroundColor = UIColor.yellowColor;
     self.contactBtn.layer.cornerRadius = 9.0;
     self.contactBtn.clipsToBounds = YES;
@@ -287,7 +293,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [self.titleBox addSubview:self.contactBtn];
 
     // 5. Handles: @DLX07  DARKSWORD~KERNEL
-    self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(224, 3, 72, 18)];
+    self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(248, 3, 72, 18)];
     self.handleMajed.text = @"@DLX07";
     self.handleMajed.textColor = UIColor.whiteColor;
     self.handleMajed.font = [UIFont boldSystemFontOfSize:10.0];
@@ -295,7 +301,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleMajed.hidden = YES;
     [self.titleBox addSubview:self.handleMajed];
 
-    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(302, 3, 150, 18)];
+    self.handleChan = [[UILabel alloc] initWithFrame:CGRectMake(326, 3, 130, 18)];
     self.handleChan.text = @"DARKSWORD~KERNEL";
     self.handleChan.textColor = [UIColor colorWithWhite:0.75 alpha:1.0];
     self.handleChan.font = [UIFont boldSystemFontOfSize:9.5];
@@ -303,10 +309,10 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleChan.hidden = YES;
     [self.titleBox addSubview:self.handleChan];
 
-    // Load persisted language
+    // Load persisted language (default to VIE)
     NSString *savedLang = [NSUserDefaults.standardUserDefaults stringForKey:@"madness_lang"];
     if (!savedLang || (![savedLang isEqualToString:@"ENG"] && ![savedLang isEqualToString:@"VIE"])) {
-        savedLang = @"ENG";
+        savedLang = @"VIE";
     }
     self.currentLang = savedLang;
     [self updateLanguageDisplayOnly];
@@ -491,25 +497,31 @@ static const CGFloat kMadnessPanelH = 325.0f;
 
     BOOL isVie = [lang isEqualToString:@"VIE"];
     if (isVie) {
-        [self.btnEspEnable setTitle:@"BẬT" forState:UIControlStateNormal];
+        if (self.headerEsp) self.headerEsp.text = @"BẢNG ESP NGƯỜI CHƠI";
+        if (self.headerMaterial) self.headerMaterial.text = @"BẢNG HIỆN VẬT PHẨM";
+        if (self.sloganLabel) self.sloganLabel.text = @"DARKSWORD KERNEL • CHÚC BẠN CHƠI VUI VẺ ;)";
+
+        [self.btnEspEnable setTitle:@"BẬT ESP" forState:UIControlStateNormal];
         [self.btnLine setTitle:@"ĐƯỜNG KẺ" forState:UIControlStateNormal];
-        [self.btnEnemyNum setTitle:@"TỔNG ĐỊCH" forState:UIControlStateNormal];
-        [self.btnHealth setTitle:@"MÁU ĐỊCH" forState:UIControlStateNormal];
+        [self.btnEnemyNum setTitle:@"SỐ LƯỢNG ĐỊCH" forState:UIControlStateNormal];
+        [self.btnHealth setTitle:@"THANH MÁU" forState:UIControlStateNormal];
         [self.btnBone setTitle:@"KHUNG XƯƠNG" forState:UIControlStateNormal];
-        [self.btnRadar setTitle:@"RADAR" forState:UIControlStateNormal];
+        [self.btnRadar setTitle:@"RADAR MINI" forState:UIControlStateNormal];
         [self.btnName setTitle:@"TÊN ĐỊCH" forState:UIControlStateNormal];
         [self.btnDist setTitle:@"KHOẢNG CÁCH" forState:UIControlStateNormal];
         [self.btn3D setTitle:@"HỘP 3D" forState:UIControlStateNormal];
         [self.btnArrow setTitle:@"MŨI TÊN 360" forState:UIControlStateNormal];
-        [self.btnTeam setTitle:@"ĐỒNG ĐỘI" forState:UIControlStateNormal];
+        [self.btnTeam setTitle:@"SỐ ĐỘI" forState:UIControlStateNormal];
         [self.btnFlag setTitle:@"QUỐC KỲ" forState:UIControlStateNormal];
 
-        [self.btnMatEnable setTitle:@"BẬT" forState:UIControlStateNormal];
+        if (self.sliderEspDist) self.sliderEspDist.name = @"KHOẢNG CÁCH";
+
+        [self.btnMatEnable setTitle:@"BẬT VẬT PHẨM" forState:UIControlStateNormal];
         [self.btnVeh setTitle:@"XE CỘ" forState:UIControlStateNormal];
-        [self.btnGrenade setTitle:@"BÁO LỰU" forState:UIControlStateNormal];
-        [self.btnLootBox setTitle:@"HÒM ĐỒ" forState:UIControlStateNormal];
+        [self.btnGrenade setTitle:@"CẢNH BÁO LỰU" forState:UIControlStateNormal];
+        [self.btnLootBox setTitle:@"HÒM XÁC" forState:UIControlStateNormal];
         [self.btnFlareGun setTitle:@"THÍNH ĐỎ" forState:UIControlStateNormal];
-        [self.btnAirdrop setTitle:@"THÍNH" forState:UIControlStateNormal];
+        [self.btnAirdrop setTitle:@"HÒM THÍNH" forState:UIControlStateNormal];
         [self.btnAccessory setTitle:@"PHỤ KIỆN" forState:UIControlStateNormal];
         [self.btnDrug setTitle:@"HỒI MÁU" forState:UIControlStateNormal];
 
@@ -518,11 +530,17 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnWeaponShotgun setTitle:@"SHOTGUN" forState:UIControlStateNormal];
         [self.btnWeaponSniper setTitle:@"SÚNG NGẮM" forState:UIControlStateNormal];
 
-        [self.btnArmorLv1 setTitle:@"CẤP 1" forState:UIControlStateNormal];
-        [self.btnArmorLv2 setTitle:@"CẤP 2" forState:UIControlStateNormal];
-        [self.btnArmorLv3 setTitle:@"CẤP 3" forState:UIControlStateNormal];
+        [self.btnArmorLv1 setTitle:@"GIÁP 1" forState:UIControlStateNormal];
+        [self.btnArmorLv2 setTitle:@"GIÁP 2" forState:UIControlStateNormal];
+        [self.btnArmorLv3 setTitle:@"GIÁP 3" forState:UIControlStateNormal];
         [self.btnAmmo setTitle:@"ĐẠN DƯỢC" forState:UIControlStateNormal];
+
+        if (self.sliderItemDist) self.sliderItemDist.name = @"KHOẢNG CÁCH";
     } else {
+        if (self.headerEsp) self.headerEsp.text = @"ESP PANEL";
+        if (self.headerMaterial) self.headerMaterial.text = @"MATERIAL PANEL";
+        if (self.sloganLabel) self.sloganLabel.text = @"DARKSWORD KERNEL • ENJOY THE GAME ;)";
+
         [self.btnEspEnable setTitle:@"ENABLE" forState:UIControlStateNormal];
         [self.btnLine setTitle:@"DRAW LINE" forState:UIControlStateNormal];
         [self.btnEnemyNum setTitle:@"ENEMY NUMBER" forState:UIControlStateNormal];
@@ -535,6 +553,8 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnArrow setTitle:@"ARROW 360" forState:UIControlStateNormal];
         [self.btnTeam setTitle:@"PLAYER TEAM" forState:UIControlStateNormal];
         [self.btnFlag setTitle:@"PLAYER FLAG" forState:UIControlStateNormal];
+
+        if (self.sliderEspDist) self.sliderEspDist.name = @"DISTANCE";
 
         [self.btnMatEnable setTitle:@"ENABLE" forState:UIControlStateNormal];
         [self.btnVeh setTitle:@"VEHICLE" forState:UIControlStateNormal];
@@ -550,10 +570,12 @@ static const CGFloat kMadnessPanelH = 325.0f;
         [self.btnWeaponShotgun setTitle:@"SHOTGUN" forState:UIControlStateNormal];
         [self.btnWeaponSniper setTitle:@"SNIPER" forState:UIControlStateNormal];
 
-        [self.btnArmorLv1 setTitle:@"LEVEL 1" forState:UIControlStateNormal];
-        [self.btnArmorLv2 setTitle:@"LEVEL 2" forState:UIControlStateNormal];
-        [self.btnArmorLv3 setTitle:@"LEVEL 3" forState:UIControlStateNormal];
+        [self.btnArmorLv1 setTitle:@"ARMOR LV1" forState:UIControlStateNormal];
+        [self.btnArmorLv2 setTitle:@"ARMOR LV2" forState:UIControlStateNormal];
+        [self.btnArmorLv3 setTitle:@"ARMOR LV3" forState:UIControlStateNormal];
         [self.btnAmmo setTitle:@"AMMO" forState:UIControlStateNormal];
+
+        if (self.sliderItemDist) self.sliderItemDist.name = @"DISTANCE";
     }
 }
 
@@ -575,7 +597,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     // =========================================================================
     // SECTION 1: > ESP PANEL
     // =========================================================================
-    [self addSectionHeader:@"ESP PANEL" atY:4.0];
+    self.headerEsp = [self addSectionHeader:@"ESP PANEL" atY:4.0];
 
     // Row 0 (y = 24): [ ENABLE ], [ DRAW LINE ], [ ENEMY NUMBER ], [ PLAYER HEALTH ]
     self.btnEspEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 24, colW, btnH) inView:self.scroll italic:YES];
@@ -677,7 +699,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     // =========================================================================
     // SECTION 2: > MATERIAL PANEL
     // =========================================================================
-    [self addSectionHeader:@"MATERIAL PANEL" atY:122.0];
+    self.headerMaterial = [self addSectionHeader:@"MATERIAL PANEL" atY:122.0];
 
     // Row 0 (y = 142): [ ENABLE ], [ VEHICLE ], [ GRENADE WARN ], [ LOOT BOX ]
     self.btnMatEnable = [self btn:@"ENABLE" frame:CGRectMake(x0, 142, colW, btnH) inView:self.scroll italic:YES];
@@ -864,9 +886,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     [self.scroll addSubview:self.sliderItemDist];
 
     self.scroll.contentSize = CGSizeMake(kMadnessPanelW, 280);
-    if ([self.currentLang isEqualToString:@"VIE"]) {
-        [self updateLanguage:@"VIE"];
-    }
+    [self updateLanguage:self.currentLang];
 }
 
 #pragma mark - Reset to Defaults
@@ -1030,7 +1050,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     g_hostedMenuExpanded = NO;
 
     CGRect pf = self.panel.frame;
-    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 134, 30);
+    self.panel.frame = CGRectMake(pf.origin.x, pf.origin.y, 158, 30);
     self.panel.backgroundColor = UIColor.clearColor;
     self.panel.layer.borderWidth = 0.0;
     self.scroll.hidden = YES;
@@ -1038,7 +1058,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.batteryLabel.hidden = YES;
     self.sloganLabel.hidden = YES;
 
-    // Show ONLY icon MADNESS: hide language buttons, contact, and handles
+    // Show ONLY icon DARKSWORD: hide language buttons, contact, and handles
     self.btnEng.hidden = YES;
     self.btnVie.hidden = YES;
     self.contactBtn.hidden = YES;
@@ -1052,7 +1072,13 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.handleGlyph.frame = CGRectMake(0, 0, 24, 24);
     self.handleGlyph.text = @"⋗";
     self.handleGlyph.font = [UIFont boldSystemFontOfSize:20.0];
-    self.titleBox.frame = CGRectMake(32, 3, 94, 24);
+    self.titleBox.frame = CGRectMake(32, 3, 118, 24);
+}
+
+- (void)titleBoxTapped:(UITapGestureRecognizer *)gr {
+    if (!self.asize) {
+        [self controllview];
+    }
 }
 
 - (void)handleTapped:(UIButton *)sender {

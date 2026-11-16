@@ -23,6 +23,7 @@ typedef NS_ENUM(NSInteger, MenuSliderDisplay) {
 @interface MenuSliderRow : UIView
 @property (nonatomic, copy, nullable) void (^onChange)(float);
 @property (nonatomic) MenuSliderDisplay displayMode;
+@property (nonatomic, copy) NSString *name;
 - (instancetype)initWithFrame:(CGRect)frame min:(float)min max:(float)max value:(float)value name:(NSString *)name;
 - (void)setSliderValue:(float)v;
 @end

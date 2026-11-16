@@ -54,7 +54,8 @@ UIFont *MADItalicFont(CGFloat size) {
 - (instancetype)initWithFrame:(CGRect)frame min:(float)min max:(float)max value:(float)value name:(NSString *)name {
     if (!(self = [super initWithFrame:frame])) return nil;
     _displayMode = MenuSliderDisplayRaw;
-    CGFloat sliderW = frame.size.width - 70;
+    CGFloat nameW = 92.0f;
+    CGFloat sliderW = frame.size.width - nameW - 6.0f;
     _s = [[UISlider alloc] initWithFrame:CGRectMake(0, 3, sliderW, 14)];
     _s.minimumValue = min; _s.maximumValue = max; _s.value = value;
     _s.minimumTrackTintColor = UIColor.yellowColor;
@@ -71,15 +72,22 @@ UIFont *MADItalicFont(CGFloat size) {
     _bubble.layer.cornerRadius = 3.5;
     _bubble.clipsToBounds = YES;
     [self addSubview:_bubble];
-    _name = [[UILabel alloc] initWithFrame:CGRectMake(frame.size.width - 66, 1, 64, 18)];
+    _name = [[UILabel alloc] initWithFrame:CGRectMake(frame.size.width - nameW, 1, nameW, 18)];
     _name.text = name;
     _name.textColor = UIColor.yellowColor;
     _name.font = MADItalicFont(10.0);
     _name.textAlignment = NSTextAlignmentRight;
     _name.adjustsFontSizeToFitWidth = YES;
+    _name.minimumScaleFactor = 0.7;
     [self addSubview:_name];
     [self syncBubble];
     return self;
+}
+- (NSString *)name {
+    return _name.text;
+}
+- (void)setName:(NSString *)name {
+    _name.text = name;
 }
 - (int)displayInt {
     float v = _s.value;
