@@ -3037,6 +3037,22 @@ static inline void ds_pubg_box_finalize(DSPUBGObstacleBox &box) {
     if (!isfinite(box.radius) || box.radius <= 0.0f) box.radius = 1.0f;
 }
 
+// A single occlusion box must stay in the size range of a real wall, floor or
+// prop module. Anything larger is an aggregate mesh bound (terrain, landscape,
+// sky dome, a whole building cluster) and would black out every sight line.
+// 50 m half extent is already far beyond any usable wall module.
+static const float kDSPUBGMaxObstacleHalfExtent = 5000.0f;
+
+static inline bool ds_pubg_box_is_sane(const DSPUBGObstacleBox &box) {
+    if (!isfinite(box.center.X) || !isfinite(box.center.Y) || !isfinite(box.center.Z)) return false;
+    if (!isfinite(box.extent.X) || !isfinite(box.extent.Y) || !isfinite(box.extent.Z)) return false;
+    if (box.extent.X <= 0.0f || box.extent.Y <= 0.0f || box.extent.Z <= 0.0f) return false;
+    if (box.extent.X > kDSPUBGMaxObstacleHalfExtent ||
+        box.extent.Y > kDSPUBGMaxObstacleHalfExtent ||
+        box.extent.Z > kDSPUBGMaxObstacleHalfExtent) return false;
+    return true;
+}
+
 // Soft scenery must never become an occlusion box: foliage and terrain would
 // otherwise block the sight line to an enemy standing in the open next to a
 // bush, and a landscape heightfield box covers the whole map.
@@ -3148,6 +3164,13 @@ static int ds_pubg_extract_component_boxes(uint64_t comp,
     if (!outBoxes || maxBoxes <= 0) return 0;
     if (!comp || !ds_pubg_valid(comp)) return 0;
 
+    // Only real static mesh components carry a UStaticMesh at 0xA30. Lights,
+    // audio emitters, volumes, decals and triggers do not, and reading their
+    // padding as a mesh produced phantom obstacle boxes.
+    char compClassName[64] = {0};
+    if (!ds_pubg_get_actor_name(comp, compClassName, sizeof(compClassName))) return 0;
+    if (!strstr(compClassName, "StaticMesh")) return 0;
+
     DSPUBGVector compLoc = {}, compScale = { 1.0f, 1.0f, 1.0f };
     DSPUBGVector compX = {}, compY = {}, compZ = {};
     if (!ds_pubg_component_world_pose(comp, compLoc, compX, compY, compZ, compScale)) return 0;
@@ -3210,6 +3233,7 @@ static int ds_pubg_extract_component_boxes(uint64_t comp,
                 box.axisY = ds_pubg_rotated_axes(compX, compY, compZ, exY);
                 box.axisZ = ds_pubg_rotated_axes(compX, compY, compZ, exZ);
                 ds_pubg_box_finalize(box);
+                if (!ds_pubg_box_is_sane(box)) continue;
                 outBoxes[written++] = box;
             }
         }
@@ -3235,14 +3259,11 @@ static int ds_pubg_extract_component_boxes(uint64_t comp,
         }
     }
 
-    if (!gotBounds) {
-        ds_pubg_read(comp + 0xB8CULL, &boxOrigin, sizeof(boxOrigin));
-        ds_pubg_read(comp + 0xB98ULL, &boxExtent, sizeof(boxExtent));
-        if (boxExtent.X > 5.0f && boxExtent.Y > 5.0f && boxExtent.Z > 5.0f && boxExtent.X < 30000.0f) {
-            gotBounds = true;
-        }
-    }
-
+    // No third fallback: 0xB8C is USkinnedMeshComponent.CachedLocalBounds and
+    // does not exist on UStaticMeshComponent. Reading it returned whatever
+    // happened to live in UStaticMeshComponent's padding, which produced huge
+    // phantom boxes around lights, audio emitters, volumes and decals - the
+    // cause of "everything is red in an empty field".
     if (!gotBounds) return 0;
 
     boxExtent.X *= fabsf(compScale.X);
@@ -3263,6 +3284,7 @@ static int ds_pubg_extract_component_boxes(uint64_t comp,
     box.axisY = compY;
     box.axisZ = compZ;
     ds_pubg_box_finalize(box);
+    if (!ds_pubg_box_is_sane(box)) return 0;
     outBoxes[0] = box;
     return 1;
 }
@@ -3352,6 +3374,7 @@ static int ds_pubg_extract_instanced_boxes(uint64_t comp,
         box.axisY = ds_pubg_rotated_axes(compX, compY, compZ, iAxisY);
         box.axisZ = ds_pubg_rotated_axes(compX, compY, compZ, iAxisZ);
         ds_pubg_box_finalize(box);
+        if (!ds_pubg_box_is_sane(box)) continue;
         outBoxes[written++] = box;
     }
 
