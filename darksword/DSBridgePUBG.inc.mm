@@ -6571,7 +6571,7 @@ static void ds_pubg_tick(void) {
         }
     };
 
-    bool needFullLevelScan = ((++s_levelScanTick % 6 == 0) || (s_cachedLootCount == 0 && (g_pubgEspItem || g_pubgEspVehicle)));
+    bool needFullLevelScan = ((++s_levelScanTick % 6 == 0) || (s_cachedLootCount == 0));
     if (needFullLevelScan && level) {
         int beforeCount = itemStagingCount;
         collectActorsFromLevel(level);
