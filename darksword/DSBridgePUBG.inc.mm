@@ -120,6 +120,11 @@ struct DSPUBGActorCacheEntry {
     float cachedHpMax;
     float cachedFuel;
     float cachedFuelMax;
+    uint64_t rootComp;
+    uint64_t meshComp;
+    uint64_t boneData;
+    uint32_t boneCount;
+    uint32_t boneOffset;
 };
 static const size_t kDSPUBGActorCacheSize = 16384;
 static DSPUBGActorCacheEntry g_dspubgActorCache[kDSPUBGActorCacheSize] = {};
@@ -2491,63 +2496,22 @@ static bool ds_pubg_cam_basis_project(const DSPUBGCamBasis &b, DSPUBGVector worl
 
 static bool ds_pubg_read_c2w(uint64_t meshComp, const DSPUBGVector &rootLoc, float halfH, uint8_t *outC2W) {
     if (!meshComp || !ds_pubg_valid(meshComp) || !outC2W) return false;
-    // In UE4 64-bit arm64, USceneComponent RelativeScale3D is at 0x1FC (ends at 0x208).
-    // FTransform is alignas(16), so ComponentToWorld is located at 0x210 (with 8B alignment padding at 0x208).
-    // On packed/unaligned layouts, test 0x210, 0x208, 0x200, 0x220, 0x218.
-    static const uint32_t kCandidates[] = { 0x210, 0x208, 0x200, 0x220, 0x218 };
-    static uint32_t s_cachedC2WOff = 0;
 
-    auto testCandidate = [&](uint32_t off) -> bool {
-        uint8_t buf[48];
-        if (!ds_pubg_read(meshComp + (uint64_t)off, buf, sizeof(buf))) return false;
-
+    // Direct read from 0x210 (UE4 arm64 USceneComponent::ComponentToWorld aligned offset)
+    if (ds_pubg_read(meshComp + 0x210ULL, outC2W, 48)) {
         float qx = 0, qy = 0, qz = 0, qw = 1.0f;
-        memcpy(&qx, buf + 0x0, 4);
-        memcpy(&qy, buf + 0x4, 4);
-        memcpy(&qz, buf + 0x8, 4);
-        memcpy(&qw, buf + 0xC, 4);
+        memcpy(&qx, outC2W + 0x0, 4);
+        memcpy(&qy, outC2W + 0x4, 4);
+        memcpy(&qz, outC2W + 0x8, 4);
+        memcpy(&qw, outC2W + 0xC, 4);
         float qlen2 = qx * qx + qy * qy + qz * qz + qw * qw;
-        if (isnan(qlen2) || isinf(qlen2) || qlen2 < 0.6f || qlen2 > 1.5f) return false;
-
-        float tx = 0, ty = 0, tz = 0;
-        memcpy(&tx, buf + 0x10, 4);
-        memcpy(&ty, buf + 0x14, 4);
-        memcpy(&tz, buf + 0x18, 4);
-        if (isnan(tx) || isinf(tx) || isnan(ty) || isinf(ty) || isnan(tz) || isinf(tz)) return false;
-
-        float dX = tx - rootLoc.X;
-        float dY = ty - rootLoc.Y;
-        if (dX * dX + dY * dY > (300.0f * 300.0f)) return false;
-
-        float expectedZ = rootLoc.Z - halfH;
-        if (fabsf(tz - expectedZ) > 250.0f && fabsf(tz - rootLoc.Z) > 250.0f) return false;
-
-        float sx = 1.0f, sy = 1.0f, sz = 1.0f;
-        memcpy(&sx, buf + 0x20, 4);
-        memcpy(&sy, buf + 0x24, 4);
-        memcpy(&sz, buf + 0x28, 4);
-        if (isnan(sx) || isinf(sx) || sx < 0.2f || sx > 5.0f ||
-            isnan(sy) || isinf(sy) || sy < 0.2f || sy > 5.0f ||
-            isnan(sz) || isinf(sz) || sz < 0.2f || sz > 5.0f) return false;
-
-        memcpy(outC2W, buf, 48);
-        return true;
-    };
-
-    if (s_cachedC2WOff != 0 && testCandidate(s_cachedC2WOff)) {
-        return true;
-    }
-
-    for (uint32_t off : kCandidates) {
-        if (off == s_cachedC2WOff) continue;
-        if (testCandidate(off)) {
-            s_cachedC2WOff = off;
+        if (!isnan(qlen2) && !isinf(qlen2) && qlen2 >= 0.4f && qlen2 <= 2.2f) {
             return true;
         }
     }
 
-    if (!ds_pubg_read(meshComp + 0x210ULL, outC2W, 48)) {
-        ds_pubg_read(meshComp + 0x208ULL, outC2W, 48);
+    if (ds_pubg_read(meshComp + 0x208ULL, outC2W, 48)) {
+        return true;
     }
     return false;
 }
@@ -2647,9 +2611,14 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
         return true;
     };
 
-    // 1. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
-    // Check CurrentRead index (0xA74 / 0xA78) per-mesh to ensure live pose (crouching/aiming) is never stale
-    int32_t rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
+    // 1. CachedComponentSpaceTransforms (0xCE0) - post-IK fully evaluated transforms
+    if (testOffset(0xCE0)) return true;
+
+    // 2. Double buffer ComponentSpaceTransformsArray[2] (0xA30 / 0xA40)
+    // Read CurrentReadIndex (0xA50 / 0xA54 / 0xA74 / 0xA78)
+    int32_t rd = ds_pubg_read_i32(meshComp + 0xA50ULL);
+    if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA54ULL);
+    if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA74ULL);
     if (rd != 0 && rd != 1) rd = ds_pubg_read_i32(meshComp + 0xA78ULL);
     uint32_t first = (rd == 1) ? 0xA40 : 0xA30;
     uint32_t second = (rd == 1) ? 0xA30 : 0xA40;
@@ -2657,12 +2626,9 @@ static bool ds_pubg_find_bone_array(uint64_t meshComp, uint64_t *outData, uint32
     if (testOffset(first)) return true;
     if (testOffset(second)) return true;
 
-    // 2. Live transforms eval-context (0xE18 / 0xE28)
+    // 3. Live transforms eval-context (0xE18 / 0xE28)
     if (testOffset(0xE18)) return true;
     if (testOffset(0xE28)) return true;
-
-    // 3. CachedComponentSpaceTransforms (0xCE0)
-    if (testOffset(0xCE0)) return true;
 
     return false;
 }
@@ -5061,37 +5027,8 @@ static inline DSPUBGActorClass ds_pubg_smart_classify_scenery(const char *name) 
 // Called once per tick, before any scanner runs: refreshes the skip set,
 // detects the local capsule and rebinds the static library to this world.
 static void ds_pubg_smart_begin_frame(uint64_t world, uint64_t localPawn) {
-    memset(s_skipActors, 0, sizeof(s_skipActors));
-    s_skipActorCount = 0;
-
-    s_localCapsule.valid = false;
-    s_localCapsule.component = 0;
-    s_localCapsule.location = DSPUBGVector{};
-    s_localCapsule.radius = 0.0f;
-    s_localCapsule.halfHeight = 0.0f;
-
-    ds_pubg_static_library_reset(world);
-
-    if (localPawn && ds_pubg_valid(localPawn)) {
-        ds_pubg_smart_skip(localPawn);
-        ds_pubg_smart_detect_local_capsule(localPawn);
-
-        // [A2] The local player is a dynamic actor too: register its capsule
-        // so the shape registry always knows where we stand.
-        if (s_localCapsule.valid) {
-            DSPUBGRotator localRot = {};
-            DSPUBGVector localScale = { 1.0f, 1.0f, 1.0f };
-            uint64_t capComp = s_localCapsule.component;
-            if (capComp && ds_pubg_valid(capComp)) {
-                ds_pubg_read(capComp + 0x1F0ULL, &localRot, sizeof(localRot));
-                ds_pubg_read(capComp + 0x1FCULL, &localScale, sizeof(localScale));
-            }
-            ds_pubg_dynamic_update(localPawn, DSPUBGShapeKind::Capsule,
-                                   DSPUBGActorClass::DynamicPawn, DSPUBGActLocal,
-                                   s_localCapsule.location, localRot, localScale,
-                                   s_localCapsule.radius, s_localCapsule.halfHeight);
-        }
-    }
+    (void)world;
+    (void)localPawn;
 }
 
 static void ds_pubg_tick(void) {
@@ -5336,48 +5273,50 @@ static void ds_pubg_tick(void) {
             }
         }
 
-        // 0. Fast reject non-character actors by name
-        char pawnName[64] = {0};
-        bool hasPawnName = ds_pubg_get_actor_name(pawn, pawnName, sizeof(pawnName));
-        if (hasPawnName) {
-            bool isScenery = (strstr(pawnName, "StaticMesh") || strstr(pawnName, "Foliage") ||
-                strstr(pawnName, "Landscape") || strstr(pawnName, "Building") ||
-                strstr(pawnName, "House") || strstr(pawnName, "Tree") ||
-                strstr(pawnName, "Rock") || strstr(pawnName, "Wall") ||
-                strstr(pawnName, "Fence") || strstr(pawnName, "Door") ||
-                strstr(pawnName, "Window") || strstr(pawnName, "Floor") ||
-                strstr(pawnName, "Roof") || strstr(pawnName, "Brush") ||
-                strstr(pawnName, "SM_") || strstr(pawnName, "Mesh") ||
-                strstr(pawnName, "BP_Building") || strstr(pawnName, "BP_House") ||
-                strstr(pawnName, "BP_Wall") || strstr(pawnName, "BP_Door") ||
-                strstr(pawnName, "BP_Fence") || strstr(pawnName, "BP_Stair") ||
-                strstr(pawnName, "Arch") || strstr(pawnName, "Prop") ||
-                strstr(pawnName, "Stair") || strstr(pawnName, "Tower") ||
-                strstr(pawnName, "Shed") || strstr(pawnName, "Gate") ||
-                strstr(pawnName, "Container") || strstr(pawnName, "Obstacle"));
-            if (isScenery) {
-                cEntry.actor = pawn;
-                cEntry.isScenery = true;
-                cEntry.isPawn = false;
-                cEntry.itemCat = DSPUBGItemCategoryNone;
-                cEntry.vCommon = 0;
-                return false;
-            }
+        // Fast path: if already cached as a Pawn, skip costly GNames name lookups
+        if (!(cEntry.actor == pawn && cEntry.isPawn)) {
+            char pawnName[64] = {0};
+            bool hasPawnName = ds_pubg_get_actor_name(pawn, pawnName, sizeof(pawnName));
+            if (hasPawnName) {
+                bool isScenery = (strstr(pawnName, "StaticMesh") || strstr(pawnName, "Foliage") ||
+                    strstr(pawnName, "Landscape") || strstr(pawnName, "Building") ||
+                    strstr(pawnName, "House") || strstr(pawnName, "Tree") ||
+                    strstr(pawnName, "Rock") || strstr(pawnName, "Wall") ||
+                    strstr(pawnName, "Fence") || strstr(pawnName, "Door") ||
+                    strstr(pawnName, "Window") || strstr(pawnName, "Floor") ||
+                    strstr(pawnName, "Roof") || strstr(pawnName, "Brush") ||
+                    strstr(pawnName, "SM_") || strstr(pawnName, "Mesh") ||
+                    strstr(pawnName, "BP_Building") || strstr(pawnName, "BP_House") ||
+                    strstr(pawnName, "BP_Wall") || strstr(pawnName, "BP_Door") ||
+                    strstr(pawnName, "BP_Fence") || strstr(pawnName, "BP_Stair") ||
+                    strstr(pawnName, "Arch") || strstr(pawnName, "Prop") ||
+                    strstr(pawnName, "Stair") || strstr(pawnName, "Tower") ||
+                    strstr(pawnName, "Shed") || strstr(pawnName, "Gate") ||
+                    strstr(pawnName, "Container") || strstr(pawnName, "Obstacle"));
+                if (isScenery) {
+                    cEntry.actor = pawn;
+                    cEntry.isScenery = true;
+                    cEntry.isPawn = false;
+                    cEntry.itemCat = DSPUBGItemCategoryNone;
+                    cEntry.vCommon = 0;
+                    return false;
+                }
 
-            if (strcasestr(pawnName, "Bullet") || strcasestr(pawnName, "Proj") || strcasestr(pawnName, "Weapon") ||
-                strcasestr(pawnName, "PickUp") || strcasestr(pawnName, "Vehicle") || strcasestr(pawnName, "VH_") ||
-                strcasestr(pawnName, "Drop") || strcasestr(pawnName, "Tomb") || strcasestr(pawnName, "Box") ||
-                strcasestr(pawnName, "Supply") || strcasestr(pawnName, "Particle") || strcasestr(pawnName, "Effect") ||
-                strcasestr(pawnName, "Decal") || strcasestr(pawnName, "Camera") || strcasestr(pawnName, "Volume") ||
-                strcasestr(pawnName, "Trigger") || strcasestr(pawnName, "AirDrop") || strcasestr(pawnName, "Item") ||
-                strcasestr(pawnName, "Controller") || strcasestr(pawnName, "Light") || strcasestr(pawnName, "Audio") ||
-                strcasestr(pawnName, "Sound") || strcasestr(pawnName, "Zone") || strcasestr(pawnName, "Fog") ||
-                strcasestr(pawnName, "Shell") || strcasestr(pawnName, "Cartridge") || strcasestr(pawnName, "Trace") ||
-                strcasestr(pawnName, "Grenade") || strcasestr(pawnName, "Smoke") || strcasestr(pawnName, "Explosion") ||
-                strcasestr(pawnName, "Shoulei") || strcasestr(pawnName, "Molotov") || strcasestr(pawnName, "Burn") ||
-                strcasestr(pawnName, "Lobby") || strcasestr(pawnName, "MainCity") || strcasestr(pawnName, "PetAvatar") ||
-                strcasestr(pawnName, "LobbyModel") || strcasestr(pawnName, "Avatar") || strcasestr(pawnName, "Preview")) {
-                return false;
+                if (strcasestr(pawnName, "Bullet") || strcasestr(pawnName, "Proj") || strcasestr(pawnName, "Weapon") ||
+                    strcasestr(pawnName, "PickUp") || strcasestr(pawnName, "Vehicle") || strcasestr(pawnName, "VH_") ||
+                    strcasestr(pawnName, "Drop") || strcasestr(pawnName, "Tomb") || strcasestr(pawnName, "Box") ||
+                    strcasestr(pawnName, "Supply") || strcasestr(pawnName, "Particle") || strcasestr(pawnName, "Effect") ||
+                    strcasestr(pawnName, "Decal") || strcasestr(pawnName, "Camera") || strcasestr(pawnName, "Volume") ||
+                    strcasestr(pawnName, "Trigger") || strcasestr(pawnName, "AirDrop") || strcasestr(pawnName, "Item") ||
+                    strcasestr(pawnName, "Controller") || strcasestr(pawnName, "Light") || strcasestr(pawnName, "Audio") ||
+                    strcasestr(pawnName, "Sound") || strcasestr(pawnName, "Zone") || strcasestr(pawnName, "Fog") ||
+                    strcasestr(pawnName, "Shell") || strcasestr(pawnName, "Cartridge") || strcasestr(pawnName, "Trace") ||
+                    strcasestr(pawnName, "Grenade") || strcasestr(pawnName, "Smoke") || strcasestr(pawnName, "Explosion") ||
+                    strcasestr(pawnName, "Shoulei") || strcasestr(pawnName, "Molotov") || strcasestr(pawnName, "Burn") ||
+                    strcasestr(pawnName, "Lobby") || strcasestr(pawnName, "MainCity") || strcasestr(pawnName, "PetAvatar") ||
+                    strcasestr(pawnName, "LobbyModel") || strcasestr(pawnName, "Avatar") || strcasestr(pawnName, "Preview")) {
+                    return false;
+                }
             }
         }
 
@@ -5397,11 +5336,11 @@ static void ds_pubg_tick(void) {
         if (isDead) return false;
 
         // 4. Must have valid RootComponent and Mesh (standard UE4 character)
-        uint64_t rootComp = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
+        uint64_t rootComp = (cEntry.actor == pawn && cEntry.rootComp) ? cEntry.rootComp : ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
         if (!rootComp) rootComp = ds_pubg_read_ptr(pawn + 0x180ULL);
         if (!rootComp || !ds_pubg_valid(rootComp)) return false;
 
-        uint64_t meshComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
+        uint64_t meshComp = (cEntry.actor == pawn && cEntry.meshComp) ? cEntry.meshComp : ds_pubg_read_ptr(pawn + kDSPUBGCharacterMeshOffset);
         if (!meshComp) meshComp = ds_pubg_read_ptr(pawn + 0x320ULL);
         if (!meshComp || !ds_pubg_valid(meshComp)) return false;
 
@@ -5417,6 +5356,8 @@ static void ds_pubg_tick(void) {
         cEntry.isScenery = false;
         cEntry.itemCat = DSPUBGItemCategoryNone;
         cEntry.vCommon = 0;
+        cEntry.rootComp = rootComp;
+        cEntry.meshComp = meshComp;
 
         bool isKnocked = false;
         // Check multiple possible GroggyHealth offsets in STExtraCharacter (shifted by +0x10 in new DUMP: 0xE78, 0xE7C, 0xE80)
@@ -5450,25 +5391,7 @@ static void ds_pubg_tick(void) {
         // 6. Team filter:
         int32_t teamId = ds_pubg_read_i32(pawn + kDSPUBGCharacterTeamIDOffset);
         if (localTeamId > 0 && teamId == localTeamId) {
-            // [A3] Teammate: add it to the skip set so no scanner treats it as
-            // geometry or as a loot actor, but keep it in the dynamic registry
-            // so we still know where our squad is.
             ds_pubg_smart_skip(pawn);
-            uint64_t mateRoot = ds_pubg_read_ptr(pawn + kDSPUBGActorRootComponentOffset);
-            if (!mateRoot || !ds_pubg_valid(mateRoot)) {
-                mateRoot = ds_pubg_read_ptr(pawn + 0x180ULL);
-            }
-            DSPUBGVector mateLoc = {};
-            DSPUBGRotator mateRot = {};
-            DSPUBGVector mateScale = { 1.0f, 1.0f, 1.0f };
-            if (mateRoot && ds_pubg_valid(mateRoot)) {
-                ds_pubg_read(mateRoot + kDSPUBGSceneCompRelativeLocOffset, &mateLoc, sizeof(mateLoc));
-                ds_pubg_read(mateRoot + 0x1F0ULL, &mateRot, sizeof(mateRot));
-                ds_pubg_read(mateRoot + 0x1FCULL, &mateScale, sizeof(mateScale));
-            }
-            ds_pubg_dynamic_update(pawn, DSPUBGShapeKind::Capsule,
-                                   DSPUBGActorClass::DynamicPawn, DSPUBGActTeammate,
-                                   mateLoc, mateRot, mateScale, 0.0f, 0.0f);
             return false;
         }
         if (teamId < 0 || teamId > 200000000) {
@@ -5493,31 +5416,6 @@ static void ds_pubg_tick(void) {
                 rootLoc.Y += parentLoc.Y;
                 rootLoc.Z += parentLoc.Z;
             }
-        }
-
-        // [A2] Dynamic actor: refresh the live transform of this pawn together
-        // with its capsule hitbox so the shape registry always knows where the
-        // character is right now.
-        {
-            float capRadius = 0.0f;
-            float capHalfHeight = 0.0f;
-            uint64_t capComp = ds_pubg_read_ptr(pawn + kDSPUBGCharacterCapsuleOffset);
-            if (capComp && ds_pubg_valid(capComp)) {
-                capRadius = ds_pubg_read_f32(capComp + kDSPUGCapsuleRadiusOffset);
-                capHalfHeight = ds_pubg_read_f32(capComp + kDSPUGCapsuleHalfHeightOffset);
-                if (!isfinite(capRadius) || capRadius < 0.0f) capRadius = 0.0f;
-                if (!isfinite(capHalfHeight) || capHalfHeight < 0.0f) capHalfHeight = 0.0f;
-            }
-            DSPUBGRotator pawnRot = {};
-            DSPUBGVector pawnScale = { 1.0f, 1.0f, 1.0f };
-            if (rootComp && ds_pubg_valid(rootComp)) {
-                ds_pubg_read(rootComp + 0x1F0ULL, &pawnRot, sizeof(pawnRot));
-                ds_pubg_read(rootComp + 0x1FCULL, &pawnScale, sizeof(pawnScale));
-            }
-            ds_pubg_dynamic_update(pawn, DSPUBGShapeKind::Capsule,
-                                   DSPUBGActorClass::DynamicPawn, 0u,
-                                   rootLoc, pawnRot, pawnScale,
-                                   capRadius, capHalfHeight);
         }
 
         DSPUBGRotator actorRot = {};
@@ -5764,13 +5662,34 @@ static void ds_pubg_tick(void) {
             if (meshComp && ds_pubg_valid(meshComp)) {
                 uint32_t bCount = 0;
                 uint32_t resolvedOff = 0;
-                if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
+                if (cEntry.actor == pawn && cEntry.boneData && cEntry.boneCount >= 20) {
+                    boneData = cEntry.boneData;
+                    bCount = cEntry.boneCount;
+                    resolvedOff = cEntry.boneOffset;
+                } else if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
+                    cEntry.boneData = boneData;
+                    cEntry.boneCount = bCount;
+                    cEntry.boneOffset = resolvedOff;
+                }
+
+                if (boneData && bCount >= 20) {
                     g_dspubgLastBoneOff = resolvedOff;
 
                     uint8_t boneBuf[68 * 48];
                     uint32_t needReadCount = (bCount > 68) ? 68 : bCount;
                     size_t readSize = (size_t)needReadCount * 48;
-                    if (ds_pubg_read(boneData, boneBuf, readSize)) {
+                    bool readOk = ds_pubg_read(boneData, boneBuf, readSize);
+                    if (!readOk) {
+                        if (ds_pubg_find_bone_array(meshComp, &boneData, &bCount, &resolvedOff) && boneData && bCount >= 20) {
+                            cEntry.boneData = boneData;
+                            cEntry.boneCount = bCount;
+                            cEntry.boneOffset = resolvedOff;
+                            needReadCount = (bCount > 68) ? 68 : bCount;
+                            readSize = (size_t)needReadCount * 48;
+                            readOk = ds_pubg_read(boneData, boneBuf, readSize);
+                        }
+                    }
+                    if (readOk) {
                         auto getBoneLocal = [&](int idx, DSPUBGVector &outV) -> bool {
                             if (idx < 0 || idx >= (int)needReadCount) return false;
                             const uint8_t *boneEntry = boneBuf + (size_t)idx * 48;
@@ -6537,29 +6456,6 @@ static void ds_pubg_tick(void) {
             stagedVehicleCount++;
         }
 
-        // [A2] Dynamic actor: loot and vehicles are moving objects, refresh
-        // their transform so the shape registry stays current.
-        {
-            uint32_t dynFlags = 0;
-            DSPUBGShapeKind dynShape = DSPUBGShapeKind::Sphere;
-            DSPUBGActorClass dynClass = DSPUBGActorClass::LootItem;
-            if (cat == DSPUBGItemCategoryVehicle) {
-                dynFlags = DSPUBGActVehicle;
-                dynShape = DSPUBGShapeKind::Obb;
-                dynClass = DSPUBGActorClass::DynamicVehicle;
-            } else if (cat == DSPUBGItemCategoryWeapon) {
-                dynFlags = DSPUBGActDropped;
-                dynClass = DSPUBGActorClass::Ignored;
-            }
-            DSPUBGRotator itemRot = {};
-            DSPUBGVector itemScale = { 1.0f, 1.0f, 1.0f };
-            if (rootComp && ds_pubg_valid(rootComp)) {
-                ds_pubg_read(rootComp + 0x1F0ULL, &itemRot, sizeof(itemRot));
-                ds_pubg_read(rootComp + 0x1FCULL, &itemScale, sizeof(itemScale));
-            }
-            ds_pubg_dynamic_update(actor, dynShape, dynClass, dynFlags, rootLoc,
-                                   itemRot, itemScale, 0.0f, 0.0f);
-        }
     };
 
     // Vischeck disabled per user request: map obstacle scan skipped
@@ -6592,7 +6488,33 @@ static void ds_pubg_tick(void) {
         }
     }
 
-    // Source 2: Levels Actors
+    // Source 2: Levels Actors (Dual-Cadence Engine: Fast Pawn/Bone loop every frame, throttled loot sweep)
+    struct DSPUBGCachedLoot {
+        DSPUBGVector worldLoc;
+        DSPUBGItemCategory category;
+        char name[36];
+        uint32_t colorRGBA;
+        bool isPriority;
+    };
+    static DSPUBGCachedLoot s_cachedLoot[kDSPUBGMaxItems * 2];
+    static int s_cachedLootCount = 0;
+    static uint32_t s_levelScanTick = 0;
+    static std::vector<uint64_t> s_trackedLevelPawns;
+
+    // Fast-path: Update any tracked level pawns at full 60/120 Hz frame rate
+    for (size_t pi = 0; pi < s_trackedLevelPawns.size(); ) {
+        uint64_t tp = s_trackedLevelPawns[pi];
+        if (!tp || !ds_pubg_valid(tp)) {
+            s_trackedLevelPawns.erase(s_trackedLevelPawns.begin() + pi);
+            continue;
+        }
+        if (!processPawn(tp, 0, false)) {
+            s_trackedLevelPawns.erase(s_trackedLevelPawns.begin() + pi);
+        } else {
+            pi++;
+        }
+    }
+
     auto collectActorsFromLevel = [&](uint64_t lvl) {
         if (!lvl || !ds_pubg_valid(lvl)) return;
         uint64_t actorsData = 0;
@@ -6626,7 +6548,11 @@ static void ds_pubg_tick(void) {
                             continue;
                         }
                         if (cEntry.isPawn) {
-                            processPawn(actor, 0, false);
+                            if (processPawn(actor, 0, false)) {
+                                bool already = false;
+                                for (uint64_t tp : s_trackedLevelPawns) { if (tp == actor) { already = true; break; } }
+                                if (!already && s_trackedLevelPawns.size() < 64) s_trackedLevelPawns.push_back(actor);
+                            }
                             continue;
                         }
                     }
@@ -6635,14 +6561,41 @@ static void ds_pubg_tick(void) {
                         if (!processGrenade(actor)) {
                             processItemOrVehicle(actor);
                         }
+                    } else {
+                        bool already = false;
+                        for (uint64_t tp : s_trackedLevelPawns) { if (tp == actor) { already = true; break; } }
+                        if (!already && s_trackedLevelPawns.size() < 64) s_trackedLevelPawns.push_back(actor);
                     }
                 }
             }
         }
     };
 
-    if (level) {
+    bool needFullLevelScan = ((++s_levelScanTick % 6 == 0) || (s_cachedLootCount == 0 && (g_pubgEspItem || g_pubgEspVehicle)));
+    if (needFullLevelScan && level) {
+        int beforeCount = itemStagingCount;
         collectActorsFromLevel(level);
+        // Cache discovered loot items with their 3D world coordinates for zero-latency reprojection
+        s_cachedLootCount = 0;
+        for (int i = beforeCount; i < itemStagingCount && s_cachedLootCount < (int)(sizeof(s_cachedLoot)/sizeof(s_cachedLoot[0])); i++) {
+            DSPUBGCachedLoot &cl = s_cachedLoot[s_cachedLootCount++];
+            cl.category = itemStaging[i].category;
+            strncpy(cl.name, itemStaging[i].name, sizeof(cl.name) - 1);
+            cl.name[sizeof(cl.name) - 1] = '\0';
+            cl.colorRGBA = itemStaging[i].colorRGBA;
+            cl.isPriority = itemStaging[i].isPriority;
+        }
+    } else {
+        // High-speed intermediate frame: preserve and re-publish staged loot items (<0.02ms)
+        for (int i = 0; i < s_cachedLootCount && itemStagingCount < kDSPUBGMaxItems * 2; i++) {
+            DSPUBGProjectedItem &pi = itemStaging[itemStagingCount++];
+            pi.category = s_cachedLoot[i].category;
+            strncpy(pi.name, s_cachedLoot[i].name, sizeof(pi.name) - 1);
+            pi.name[sizeof(pi.name) - 1] = '\0';
+            pi.isVisible = true;
+            pi.colorRGBA = s_cachedLoot[i].colorRGBA;
+            pi.isPriority = s_cachedLoot[i].isPriority;
+        }
     }
 
     g_dspubgLastEnemyCount = enemyCount;
@@ -6706,8 +6659,4 @@ static void ds_pubg_tick(void) {
 
     // Advance tick
     ++s_visTickCounter;
-
-    // [A2] Drop dynamic actors that stopped being refreshed so the registry
-    // never keeps a stale transform alive.
-    ds_pubg_dynamic_prune();
 }
