@@ -1272,8 +1272,8 @@ static void ds_hosted_apply_pubg(void) {
         if (arrow) arrow.hidden = YES;
         if (arrowText) arrowText.hidden = YES;
 
-        // Player Visibility & Colors (MADNESS 100% authentic: Green visible, Red occluded / knocked)
-        BOOL isGreen = !p.isOccluded && !p.isKnocked;
+        // Player Visibility & Colors (Vischeck disabled: Green alive, Red knocked)
+        BOOL isGreen = !p.isKnocked;
         UIColor *playerColor = isGreen
             ? [UIColor colorWithRed:0.0 green:1.0 blue:0.0 alpha:0.95]
             : [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:0.95];
@@ -1546,7 +1546,10 @@ static void ds_hosted_apply_pubg(void) {
 
                 if (drawnLines > 0) {
                     skel.path = skelPath.CGPath;
-                    skel.strokeColor = playerColor.CGColor;
+                    UIColor *skelColor = p.isKnocked
+                        ? [UIColor colorWithRed:1.0 green:0.0 blue:0.0 alpha:0.95]
+                        : [UIColor colorWithWhite:1.0 alpha:0.95];
+                    skel.strokeColor = skelColor.CGColor;
                     skel.lineWidth = g_pubgEspThickness;
                     skel.hidden = NO;
                 } else {
@@ -1612,35 +1615,9 @@ static void ds_hosted_apply_pubg(void) {
         }
     }
 
-    // Diagnostics line: live vischeck / actor classification state.
+    // Diagnostics line: disabled per user request
     if (g_hostedPUBGStatusLabel) {
-        const char *dbgStatus = ds_pubg_get_debug_status();
-        NSString *statusStr = dbgStatus ? [NSString stringWithUTF8String:dbgStatus] : @"";
-        if (statusStr.length > 0) {
-            // Four fixed diagnostic lines; keep the full width so no line clips
-            // and anchor left so the glyph column stays readable.
-            CGFloat sW = width - 24.0f;
-            if (sW > 760.0f) sW = 760.0f;
-            CGFloat sH = 94.0f;
-            g_hostedPUBGStatusLabel.frame = CGRectMake(12.0f, 44.0f, sW, sH);
-            g_hostedPUBGStatusLabel.fontSize = 9.0f;
-            g_hostedPUBGStatusLabel.font = (__bridge CFTypeRef)[UIFont monospacedDigitSystemFontOfSize:9.0
-                                                                                          weight:UIFontWeightSemibold];
-            g_hostedPUBGStatusLabel.alignmentMode = kCAAlignmentLeft;
-            g_hostedPUBGStatusLabel.wrapped = YES;
-            g_hostedPUBGStatusLabel.foregroundColor = [UIColor colorWithRed:1.0 green:0.82 blue:0.25 alpha:0.85].CGColor;
-            g_hostedPUBGStatusLabel.backgroundColor = UIColor.clearColor.CGColor;
-            g_hostedPUBGStatusLabel.shadowColor = [UIColor blackColor].CGColor;
-            g_hostedPUBGStatusLabel.shadowRadius = 1.0f;
-            g_hostedPUBGStatusLabel.shadowOpacity = 1.0f;
-            g_hostedPUBGStatusLabel.shadowOffset = CGSizeZero;
-            if (![g_hostedPUBGStatusLabel.string isEqualToString:statusStr]) {
-                g_hostedPUBGStatusLabel.string = statusStr;
-            }
-            g_hostedPUBGStatusLabel.hidden = NO;
-        } else {
-            g_hostedPUBGStatusLabel.hidden = YES;
-        }
+        g_hostedPUBGStatusLabel.hidden = YES;
     }
 
     // Render Items / Loot ESP

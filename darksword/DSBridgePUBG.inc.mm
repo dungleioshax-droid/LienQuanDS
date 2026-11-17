@@ -2924,89 +2924,6 @@ static void ds_pubg_overlay_reset(void) {
     s_crateCache.clear();
 }
 
-// Ported from DarkPubg DecryptActorsArray (port logic of QBL __ZN...DecryptActorsArrayEyyi)
-// Resolves ULevel Actors array: plain at 0xA0 or encrypted at 0x448
-static uint64_t ds_pubg_decrypt_actors_array(uint64_t uLevel) {
-    if (!ds_pubg_valid(uLevel)) return 0;
-
-    // 1) Level + 0xA0: Plain TArray
-    uint64_t vPlain = ds_pubg_read_ptr(uLevel + 0xA0ULL);
-    if (vPlain > 0 && ds_pubg_valid(vPlain)) {
-        return uLevel + 0xA0ULL;
-    }
-
-    // 2) Level + 0x448: Encrypted TArray (if already plain pointer)
-    uint64_t vEnc = ds_pubg_read_ptr(uLevel + 0x448ULL);
-    if (vEnc > 0 && ds_pubg_valid(vEnc)) {
-        return uLevel + 0x448ULL;
-    }
-
-    // 3) Read 0x20 bytes (4 uint64_t) at 0x448 + 0x10
-    uint64_t enc[4] = {0, 0, 0, 0};
-    if (!ds_pubg_read(uLevel + 0x448ULL + 0x10ULL, enc, sizeof(enc))) {
-        return 0;
-    }
-
-    // Branch 1: enc[0] table of 8 offsets + 8 scattered bytes
-    if (enc[0] > 0) {
-        if (!ds_pubg_valid(enc[0])) return 0;
-        uint32_t vals[8] = {0};
-        if (!ds_pubg_read(enc[0] + 0x80ULL, vals, sizeof(vals))) {
-            return 0;
-        }
-        uint64_t r = 0;
-        for (int i = 0; i < 8; i++) {
-            uint64_t addr = enc[0] + (uint64_t)vals[i];
-            if (addr < enc[0] || !ds_pubg_valid(addr)) {
-                return 0;
-            }
-            uint8_t b = ds_pubg_read_u8(addr);
-            r |= ((uint64_t)b) << (8 * i);
-        }
-        if (ds_pubg_valid(r)) return r;
-        return 0;
-    }
-
-    // Branch 2: enc[1] subtract 4 per byte
-    if (enc[1] > 0) {
-        if (!ds_pubg_valid(enc[1])) return 0;
-        uint64_t ea = ds_pubg_read_ptr(enc[1]);
-        if (ea) {
-            uint64_t r = 0;
-            for (int i = 0; i < 8; i++) {
-                uint8_t b = (uint8_t)(ea >> (8 * i));
-                r |= ((uint64_t)(uint8_t)(b - 4)) << (8 * i);
-            }
-            if (ds_pubg_valid(r)) return r;
-        }
-        return 0;
-    }
-
-    // Branch 3: enc[2] ror 56 (rotate left 8)
-    if (enc[2] > 0) {
-        if (!ds_pubg_valid(enc[2])) return 0;
-        uint64_t ea = ds_pubg_read_ptr(enc[2]);
-        if (ea) {
-            uint64_t r = (ea >> 56) | (ea << 8);
-            if (ds_pubg_valid(r)) return r;
-        }
-        return 0;
-    }
-
-    // Branch 4: enc[3] XOR with 0xCDCD00
-    if (enc[3] > 0) {
-        if (!ds_pubg_valid(enc[3])) return 0;
-        uint64_t ea = ds_pubg_read_ptr(enc[3]);
-        if (ea) {
-            uint64_t r = ea ^ 0xCDCD00ULL;
-            if (ds_pubg_valid(r)) return r;
-        }
-        return 0;
-    }
-
-    return 0;
-}
-
 static bool ds_pubg_actors_array_at(uint64_t arr, uint64_t *outData, uint32_t *outCount) {
     if (!ds_pubg_valid(arr)) return false;
     uint64_t data = ds_pubg_read_ptr(arr + 0x0ULL);
@@ -3015,6 +2932,94 @@ static bool ds_pubg_actors_array_at(uint64_t arr, uint64_t *outData, uint32_t *o
     if (count > 0 && !ds_pubg_valid(data)) return false;
     if (outData) *outData = data;
     if (outCount) *outCount = count;
+    return true;
+}
+
+// Scores a {TArrayData,TArrayNum} header by how many of its first entries read
+// back as real UObjects. `arr` points at the header itself, not at the
+// elements. A random {pointer, small integer} pair in the level body scores 0,
+// so the highest score is the actor list.
+static int ds_pubg_actor_array_score(uint64_t arr, uint64_t &outData, uint32_t &outCount) {
+    uint64_t data = 0;
+    uint32_t count = 0;
+    if (!ds_pubg_actors_array_at(arr, &data, &count)) return 0;
+    if (!data || count == 0) return 0;
+
+    const uint32_t probe = count < 8 ? count : 8;
+    int score = 0;
+    for (uint32_t i = 0; i < probe; i++) {
+        uint64_t a = ds_pubg_read_ptr(data + (uint64_t)i * sizeof(uint64_t));
+        if (!a || !ds_pubg_valid(a)) return 0;
+        score++;
+        // A live UObject carries ClassPrivate at 0x10; that second hop is what
+        // separates an actor list from an array of random in-range pointers.
+        uint64_t cls = ds_pubg_read_ptr(a + 0x10ULL);
+        if (cls && ds_pubg_valid(cls)) score += 2;
+    }
+    outData = data;
+    outCount = count;
+    return score;
+}
+
+static bool ds_pubg_actor_array_plausible(uint64_t arr, uint64_t *outData, uint32_t *outCount) {
+    uint64_t data = 0;
+    uint32_t count = 0;
+    if (ds_pubg_actor_array_score(arr, data, count) < 2) return false;
+    if (outData) *outData = data;
+    if (outCount) *outCount = count;
+    return true;
+}
+
+// The actors TArray is not at a fixed offset on this build: reading 0xA0 gave a
+// one element "array" (HUD A1 S0 B0). The header is located by scanning the
+// ULevel body for a {ptr,count} pair whose elements are real UObjects, and the
+// winning offset is cached for the session.
+static uint64_t g_dspubgLevelActorsOff = 0;
+
+static bool ds_pubg_find_level_actors(uint64_t lvl, uint64_t *outData, uint32_t *outCount) {
+    if (!lvl || !ds_pubg_valid(lvl)) return false;
+
+    if (g_dspubgLevelActorsOff) {
+        if (ds_pubg_actor_array_plausible(lvl + g_dspubgLevelActorsOff, outData, outCount)) return true;
+        g_dspubgLevelActorsOff = 0;
+    }
+
+    // One bulk read of the level body, then score every {ptr,count} pair in it.
+    // Probe cost is one read per level; scoring runs entirely on the snapshot.
+    // The best-scoring header wins, so a decoy one-element array cannot latch.
+    const uint64_t kScanBase = 0x28ULL;
+    const uint64_t kScanSize = 0x1FD8ULL;
+    static uint8_t body[kScanSize];
+    if (!ds_pubg_read(lvl + kScanBase, body, sizeof(body))) return false;
+
+    uint64_t bestOff = 0;
+    uint64_t bestData = 0;
+    uint32_t bestCount = 0;
+    int bestScore = 0;
+    for (uint64_t off = 0; off + 0x10 <= sizeof(body); off += 0x8) {
+        uint64_t data = 0;
+        uint32_t count = 0;
+        memcpy(&data, body + off, sizeof(data));
+        memcpy(&count, body + off + 8, sizeof(count));
+        data &= 0x0000FFFFFFFFFFFFULL;
+        if (!data || !ds_pubg_valid(data)) continue;
+        if (count < 2 || count > 20000) continue;
+
+        uint64_t arrAddr = lvl + kScanBase + off;
+        int score = ds_pubg_actor_array_score(arrAddr, data, count);
+        // Prefer the largest list, then the best score: ULevel::Actors is the
+        // longest UObject array in the level by a wide margin.
+        if (score > 0 && (count > bestCount || (count == bestCount && score > bestScore))) {
+            bestScore = score;
+            bestCount = count;
+            bestData = data;
+            bestOff = kScanBase + off;
+        }
+    }
+    if (!bestOff) return false;
+    g_dspubgLevelActorsOff = bestOff;
+    if (outData) *outData = bestData;
+    if (outCount) *outCount = bestCount;
     return true;
 }
 
@@ -4055,57 +4060,9 @@ static uint32_t s_obsFar = 0;
 static uint32_t s_obsPxIdFound = 0;
 static uint32_t s_obsUnnamed = 0;
 
-// Live informative diagnostic HUD string
+// Live informative diagnostic HUD string (disabled per user request)
 static const char* ds_pubg_get_debug_status(void) {
-    if (!g_dspubgTargetActive.load(std::memory_order_acquire)) {
-        return "PUBG: Waiting for game process...";
-    }
-    if (!g_dspubgBase) {
-        return "PUBG: Attached (Resolving Base...)";
-    }
-    if (!g_dspubgCachedWorld && !g_dspubgEngineRva && !g_dspubgWorldRva) {
-        return "PUBG: Scanning Engine & World...";
-    }
-    if (!g_dspubgCachedWorld) {
-        return "PUBG: Attached (Waiting for Match)";
-    }
-    if (g_dspubgLastEnemyCount > 0 || g_dspubgLastBotCount > 0 || g_dspubgLastActorsCount > 0) {
-        // Multi-line layout: the single-line build overflowed the old 340pt
-        // label, which hid the geometry/offset half of the diagnostics.
-        snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG %dE %dB | OBS %d ST %d DYN %d\n"
-                 "A%u N%u S%u B%u L%u | PX %u/%u/%u\n"
-                 "m:0x%llX g:%lld p:%lld | G %u/%u/%u/%u/%u/%u\n"
-                 "x%u y%u z%u | M %u/%u/%u | GN %d s%d\n"
-                 "act r%u c%u m%u b%u | z%u f%u u%u",
-                 g_dspubgLastEnemyCount, g_dspubgLastBotCount, s_obstacleCount,
-                 (int)s_staticActorCount, (int)s_dynamicActorCount,
-                 s_obsScanActors, s_obsNameOk, s_obsScenery, s_obsBoxOk, s_obsLevels,
-                 s_obsPxActors, s_obsPxShapes, s_obsPxBoxes,
-                 (unsigned long long)g_dspubgPxShapeMgrOff,
-                 (long long)g_dspubgPxGeomOff, (long long)g_dspubgPxPoseOff,
-                 s_pxGeomCount[kDSPUBGPxGeomBox],
-                 s_pxGeomCount[kDSPUBGPxGeomCapsule],
-                 s_pxGeomCount[kDSPUBGPxGeomSphere],
-                 s_pxGeomCount[kDSPUBGPxGeomConvex],
-                 s_pxGeomCount[kDSPUBGPxGeomTriMesh],
-                 s_pxGeomCount[kDSPUBGPxGeomHeightField],
-                 s_pxNoAabb, s_pxNoSane, s_pxNoCover,
-                 s_pxMeshPtrOk, s_pxMeshVertOk, s_pxMeshStoredOk,
-                 g_dspubgGNames ? 1 : 0,
-                 g_dspubgNameLayout.score,
-                 s_obsNoRoot, s_obsNoComp, s_obsNoMeshComp, s_obsCompBoxes,
-                 s_obsRootZero, s_obsFar, s_obsUnnamed);
-        return g_dspubgStatusBuf;
-    }
-    if (g_dspubgLastActorsCount > 0) {
-        snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: In Match (0 Enemies | %d Actors)", g_dspubgLastActorsCount);
-    } else {
-        snprintf(g_dspubgStatusBuf, sizeof(g_dspubgStatusBuf),
-                 "PUBG: In Lobby (Waiting for Match)");
-    }
-    return g_dspubgStatusBuf;
+    return "";
 }
 
 static bool ds_pubg_is_in_match(uint64_t world, uint64_t playerController, uint64_t localPawn) {
@@ -5765,90 +5722,8 @@ static void ds_pubg_tick(void) {
                         }
                         p.has3DBox = c3dOk;
 
-                        // -------------------------------------------------------------
-                        // Pure Physics Vischeck (PhysX style raycast query):
-                        // Không dùng GPU timestamp. Visibility được quyết định bằng cách
-                        // bắn chùm tia (ray bundle) từ camera vào các điểm trên thân địch
-                        // (đầu, ngực, hông, chân, 2 vai) và test Ray-OBB (Kay-Kajiya slab)
-                        // với thư viện vật cản của bản đồ. Chỉ cần 1 tia lọt qua là
-                        // thấy được một phần thân -> Xanh.
-                        // -------------------------------------------------------------
-                        bool rawVisible;
-                        if (s_obstacleCount <= 0) {
-                            rawVisible = true; // Chưa có dữ liệu vật cản: coi như thấy
-                        } else {
-                            DSPUBGVector targetHead = top;  targetHead.Z  -= (isKnocked ? 4.0f : 8.0f);
-                            DSPUBGVector targetChest = pos; targetChest.Z += (halfH * 0.35f);
-                            DSPUBGVector targetPelvis = pos;
-                            DSPUBGVector targetFeet = pos;  targetFeet.Z  -= (halfH * 0.9f);
-
-                            // 2 điểm probe lệch ngang 18cm, vuông góc với tia nhìn:
-                            // địch chỉ ló vai ra khỏi mép tường vẫn được tính là thấy.
-                            float dirX = pos.X - camLoc.X, dirY = pos.Y - camLoc.Y;
-                            float dirLen = sqrtf(dirX * dirX + dirY * dirY);
-                            float offX = 0.0f, offY = 0.0f;
-                            if (dirLen > 1.0f) {
-                                offX = (-dirY / dirLen) * 18.0f;
-                                offY = ( dirX / dirLen) * 18.0f;
-                            }
-                            DSPUBGVector targetLShoulder = targetChest;
-                            targetLShoulder.X += offX; targetLShoulder.Y += offY;
-                            DSPUBGVector targetRShoulder = targetChest;
-                            targetRShoulder.X -= offX; targetRShoulder.Y -= offY;
-
-                            rawVisible =
-                                ds_pubg_ray_has_line_of_sight(camLoc, targetHead) ||
-                                ds_pubg_ray_has_line_of_sight(camLoc, targetChest) ||
-                                ds_pubg_ray_has_line_of_sight(camLoc, targetPelvis) ||
-                                ds_pubg_ray_has_line_of_sight(camLoc, targetFeet) ||
-                                ds_pubg_ray_has_line_of_sight(camLoc, targetLShoulder) ||
-                                ds_pubg_ray_has_line_of_sight(camLoc, targetRShoulder);
-                        }
-
-                        // Temporal smoothing: nhìn thấy chuyển Xanh tức thì, mất dấu phải
-                        // 2 frame liên tiếp bị chắn mới chuyển Đỏ (chống giật nháy 1 frame).
-                        int visSlot = -1;
-                        for (int v = 0; v < 128; v++) {
-                            if (s_visHistories[v].actor == pawn) {
-                                visSlot = v;
-                                break;
-                            }
-                        }
-                        if (visSlot < 0) {
-                            for (int v = 0; v < 128; v++) {
-                                if (s_visHistories[v].actor == 0 || (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
-                                    visSlot = v;
-                                    memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
-                                    s_visHistories[v].actor = pawn;
-                                    s_visHistories[v].isOccluded = !rawVisible;
-                                    break;
-                                }
-                            }
-                        }
-
-                        bool isOccluded;
-                        if (visSlot >= 0) {
-                            DSPUBGVisHistory &vh = s_visHistories[visSlot];
-                            vh.lastSeenTick = s_visTickCounter;
-                            vh.actor = pawn;
-
-                            if (rawVisible) {
-                                vh.visibleStreak++;
-                                vh.occludedStreak = 0;
-                                vh.isOccluded = false;
-                            } else {
-                                vh.occludedStreak++;
-                                vh.visibleStreak = 0;
-                                if (vh.occludedStreak >= 2) {
-                                    vh.isOccluded = true;
-                                }
-                            }
-                            isOccluded = vh.isOccluded;
-                        } else {
-                            isOccluded = !rawVisible;
-                        }
-
-                        p.isOccluded = isOccluded;
+                        // Vischeck disabled per user request: enemies are not occluded
+                        p.isOccluded = false;
                     }
                 }
             }
@@ -6687,350 +6562,8 @@ static void ds_pubg_tick(void) {
         }
     };
 
-    // -------------------------------------------------------------
-    // Pre-pass: Scan and stage Map Collision Obstacle Boxes (250m radius)
-    // Multi-level scan (PersistentLevel, CurrentLevel, Levels array, StreamingLevels)
-    // Runs before PlayerArray so all obstacle geometry is immediately available for Vischeck.
-    // -------------------------------------------------------------
-    float camMoveDistSq = (camLoc.X - s_lastObstacleScanLoc.X) * (camLoc.X - s_lastObstacleScanLoc.X) +
-                          (camLoc.Y - s_lastObstacleScanLoc.Y) * (camLoc.Y - s_lastObstacleScanLoc.Y) +
-                          (camLoc.Z - s_lastObstacleScanLoc.Z) * (camLoc.Z - s_lastObstacleScanLoc.Z);
-    uint64_t scanInterval = (s_obstacleCount > 0) ? 8 : 30; // empty library: retry slower
-    if ((s_visTickCounter - s_obstacleLastScanTick) >= scanInterval || camMoveDistSq > 250000.0f) {
-        s_lastObstacleScanLoc = camLoc;
-        s_obstacleLastScanTick = s_visTickCounter;
-
-        static DSPUBGObstacleBox s_obstaclesStaging[kDSPUBGMaxObstacles];
-        int stagedCount = 0;
-        s_obsScanActors = 0;
-        s_obsNameOk = 0;
-        s_obsScenery = 0;
-        s_obsBoxOk = 0;
-        s_obsLevels = 0;
-        s_obsPxActors = 0;
-        s_obsPxShapes = 0;
-        s_obsPxBoxes = 0;
-        memset(s_pxGeomCount, 0, sizeof(s_pxGeomCount));
-        s_pxNoAabb = 0;
-        s_pxNoCover = 0;
-        s_pxNoSane = 0;
-        s_pxMeshPtrOk = 0;
-        s_pxMeshVertOk = 0;
-        s_pxMeshStoredOk = 0;
-        s_obsNoRoot = 0;
-        s_obsNoComp = 0;
-        s_obsNoMeshComp = 0;
-        s_obsCompBoxes = 0;
-        s_obsRootZero = 0;
-        s_obsFar = 0;
-        s_obsUnnamed = 0;
-
-        // [A1] The cached geometry belongs to one level set: seamless travel
-        // swaps the levels while keeping the same UWorld, so the library is
-        // dropped whenever the level signature changes.
-        uint64_t levelSig = (uint64_t)level ^
-                            ((uint64_t)ds_pubg_read_ptr(world + 0x468ULL) << 1) ^
-                            ((uint64_t)ds_pubg_read_ptr(world + 0x440ULL) << 2);
-        if (levelSig != s_staticActorLevelSig) {
-            s_staticActorLevelSig = levelSig;
-            ds_pubg_static_library_invalidate();
-        }
-
-        uint64_t seenLevels[64] = {0};
-        int seenCount = 0;
-
-        auto scanLevelObstacles = [&](uint64_t lvl) {
-            if (!lvl || !ds_pubg_valid(lvl) || stagedCount >= kDSPUBGMaxObstacles) return;
-            s_obsLevels++;
-            for (int s = 0; s < seenCount; s++) {
-                if (seenLevels[s] == lvl) return;
-            }
-            if (seenCount < 64) seenLevels[seenCount++] = lvl;
-
-            uint64_t actorsData = 0;
-            uint32_t actorsCount = 0;
-            uint64_t arr = ds_pubg_decrypt_actors_array(lvl);
-            if (arr && ds_pubg_valid(arr)) {
-                ds_pubg_actors_array_at(arr, &actorsData, &actorsCount);
-            }
-            if (!actorsData || actorsCount == 0) {
-                ds_pubg_actors_array_at(lvl + 0xA0ULL, &actorsData, &actorsCount);
-            }
-            if (!actorsData || actorsCount == 0) {
-                uint64_t cluster = ds_pubg_read_ptr(lvl + 0xE0ULL);
-                if (cluster && ds_pubg_valid(cluster)) {
-                    ds_pubg_actors_array_at(cluster + 0x28ULL, &actorsData, &actorsCount);
-                }
-            }
-            if (!actorsData || actorsCount == 0) return;
-            if (actorsCount > 4096) actorsCount = 4096;
-
-            std::vector<uint64_t> actBuf(actorsCount, 0);
-            if (!ds_pubg_read(actorsData, actBuf.data(), actorsCount * sizeof(uint64_t))) return;
-
-            for (uint32_t i = 0; i < actorsCount && stagedCount < kDSPUBGMaxObstacles; i++) {
-                uint64_t actor = actBuf[i];
-                if (!actor || !ds_pubg_valid(actor)) continue;
-                s_obsScanActors++;
-
-                // [A3] Smart filter: self, teammates and skipped actors are never geometry.
-                if (ds_pubg_smart_is_skipped(actor)) continue;
-
-                // [A2] Already registered as a moving actor (player, vehicle, loot):
-                // it must never be promoted to static geometry.
-                if (ds_pubg_dynamic_find(actor)) continue;
-
-
-                // The shared actor cache (g_dspubgActorCache) belongs to the player
-                // and item scanners. This scanner must never write into it: doing so
-                // evicts the player scanner entry, which makes processPawn classify
-                // the pawn by name again - and a pawn whose name matches the scenery
-                // list would then be dropped completely and never rendered.
-                // The classification below therefore uses its own memory only.
-
-                // [A3] Actor already known to be non-geometry (player, loot, light,
-                // volume, ...): skip it without another name lookup.
-                if (ds_pubg_nonstatic_known(actor)) continue;
-
-                // [A1] Static library: geometry captured once, reused afterwards
-                // without touching the target process again. TTL refreshes it
-                // because a few scenery actors (doors, platforms) can move.
-                bool staticFound = false;
-                DSPUBGStaticActor *sEntry = ds_pubg_static_slot(actor, staticFound);
-                const uint64_t kDSPUBGStaticCacheTTL = 60;   // ticks
-                if (staticFound && (s_visTickCounter - sEntry->capturedTick) <= kDSPUBGStaticCacheTTL) {
-                    for (int b = 0; b < sEntry->boxCount && stagedCount < kDSPUBGMaxObstacles; b++) {
-                        float dx = sEntry->boxes[b].center.X - camLoc.X;
-                        float dy = sEntry->boxes[b].center.Y - camLoc.Y;
-                        float dz = sEntry->boxes[b].center.Z - camLoc.Z;
-                        float dSq = dx * dx + dy * dy + dz * dz;
-                        if (dSq < (25000.0f * 25000.0f)) { // 250 meters
-                            s_obstaclesStaging[stagedCount++] = sEntry->boxes[b];
-                        }
-                    }
-                    continue;
-                }
-
-                // A name is a hint, never a gate. GNames resolution depends on
-                // the pool layout found at runtime, and when it degrades the
-                // previous version discarded every actor before ever reading a
-                // component - a HUD showing A838 N3 S3 B0 with zero obstacles.
-                // Geometry is therefore attempted for every candidate actor;
-                // the name only removes the classes that must never occlude
-                // (foliage, water, sky, pawns, vehicles, loot).
-                char aName[64] = {0};
-                const bool haveName = ds_pubg_get_actor_name(actor, aName, sizeof(aName));
-                if (haveName) s_obsNameOk++;
-
-                if (haveName) {
-                    if (ds_pubg_is_soft_scenery_name(aName)) {
-                        ds_pubg_nonstatic_remember(actor);
-                        continue;
-                    }
-
-                    // [A3] Classify before it can become static geometry:
-                    // vehicles move and dropped weapons are loot.
-                    DSPUBGActorClass aClass = ds_pubg_smart_classify_scenery(aName);
-                    if (aClass != DSPUBGActorClass::StaticScenery) {
-                        ds_pubg_nonstatic_remember(actor);
-                        if (aClass == DSPUBGActorClass::DynamicVehicle) {
-                            // [A2] Vehicle: register it as a moving actor instead.
-                            uint64_t vRoot = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-                            DSPUBGVector vLoc = {};
-                            DSPUBGRotator vRot = {};
-                            DSPUBGVector vScale = { 1.0f, 1.0f, 1.0f };
-                            if (vRoot && ds_pubg_valid(vRoot)) {
-                                ds_pubg_read(vRoot + kDSPUBGSceneCompRelativeLocOffset, &vLoc, sizeof(vLoc));
-                                ds_pubg_read(vRoot + 0x1F0ULL, &vRot, sizeof(vRot));
-                                ds_pubg_read(vRoot + 0x1FCULL, &vScale, sizeof(vScale));
-                            }
-                            ds_pubg_dynamic_update(actor, DSPUBGShapeKind::Obb,
-                                                   DSPUBGActorClass::DynamicVehicle,
-                                                   DSPUBGActVehicle, vLoc, vRot, vScale,
-                                                   0.0f, 0.0f);
-                        }
-                        continue;
-                    }
-                }
-                else {
-                    // GNames never resolved this actor's name. Geometry is
-                    // still attempted below; counted only as a name stat.
-                    s_obsUnnamed++;
-                }
-                s_obsScenery++;
-
-                // Static geometry: capture the collision OBB once and cache it.
-                {
-                    uint64_t rootComp = ds_pubg_read_ptr(actor + kDSPUBGActorRootComponentOffset);
-                    if (rootComp && ds_pubg_valid(rootComp)) {
-                        DSPUBGVector rootLoc = {};
-                        if (!ds_pubg_read(rootComp + kDSPUBGSceneCompRelativeLocOffset, &rootLoc, sizeof(rootLoc))) { s_obsNoRoot++; continue; }
-                        if (fabsf(rootLoc.X) < 1.0f && fabsf(rootLoc.Y) < 1.0f && fabsf(rootLoc.Z) < 1.0f) { s_obsRootZero++; continue; }
-
-                        float dx = rootLoc.X - camLoc.X;
-                        float dy = rootLoc.Y - camLoc.Y;
-                        float dz = rootLoc.Z - camLoc.Z;
-                        if (dx * dx + dy * dy + dz * dz >= (25000.0f * 25000.0f)) { s_obsFar++; continue; }
-
-                        // Walk the actor's component list: a building actor usually
-                        // owns several instanced wall modules plus a static mesh.
-                        uint64_t comps[24] = {0};
-                        int compCount = 0;
-                        auto pushComp = [&](uint64_t c) {
-                            if (!c || !ds_pubg_valid(c)) return;
-                            for (int k = 0; k < compCount; k++) if (comps[k] == c) return;
-                            if (compCount < 24) comps[compCount++] = c;
-                        };
-                        pushComp(rootComp);
-
-                        // AActor.BlueprintCreatedComponents 0x400, InstanceComponents 0x410
-                        static const uint64_t kActorCompArrays[] = { 0x400ULL, 0x410ULL };
-                        for (uint64_t arrOff : kActorCompArrays) {
-                            uint64_t arrData = ds_pubg_read_ptr(actor + arrOff);
-                            uint32_t arrCount = ds_pubg_read_u32(actor + arrOff + 8ULL);
-                            if (!arrData || !ds_pubg_valid(arrData)) continue;
-                            if (arrCount == 0 || arrCount > 64) continue;
-                            uint64_t buf[64] = {0};
-                            uint32_t toRead = arrCount > 64 ? 64 : arrCount;
-                            if (!ds_pubg_read(arrData, buf, (size_t)toRead * sizeof(uint64_t))) continue;
-                            for (uint32_t k = 0; k < toRead; k++) pushComp(buf[k]);
-                        }
-
-                        // Level-placed actors ship with both arrays above empty:
-                        // their meshes hang off the root component through
-                        // USceneComponent.AttachChildren (0x198). A building is
-                        // usually Root -> BuildingMesh -> WallModules, so the
-                        // walk has to follow depth, not just one level: a single
-                        // pass captured the intermediate mesh and missed every
-                        // wall beneath it.
-                        for (int qi = 0; qi < compCount && qi < 24; qi++) {
-                            uint64_t childData = ds_pubg_read_ptr(comps[qi] + 0x198ULL);
-                            uint32_t childCount = ds_pubg_read_u32(comps[qi] + 0x198ULL + 8ULL);
-                            if (!childData || !ds_pubg_valid(childData)) continue;
-                            if (childCount == 0 || childCount > 64) continue;
-                            uint64_t childBuf[64] = {0};
-                            uint32_t toRead = childCount > 64 ? 64 : childCount;
-                            if (!ds_pubg_read(childData, childBuf, (size_t)toRead * sizeof(uint64_t))) continue;
-                            for (uint32_t k = 0; k < toRead; k++) pushComp(childBuf[k]);
-                        }
-
-                        int boxTotal = 0;
-                        DSPUBGObstacleBox capturedBoxes[kDSPUBGStaticBoxesPerActor] = {};
-                        DSPUBGObstacleBox local[kDSPUBGBoxesPerComponent] = {};
-
-                        if (compCount <= 1) s_obsNoComp++;
-                        bool anyMeshComp = false;
-                        uint64_t probeMesh = 0;
-                        for (int ci = 0; ci < compCount && !anyMeshComp; ci++) {
-                            if (ds_pubg_component_has_static_mesh(comps[ci], probeMesh)) anyMeshComp = true;
-                        }
-                        if (!anyMeshComp) s_obsNoMeshComp++;
-
-                        for (int ci = 0; ci < compCount && boxTotal < kDSPUBGStaticBoxesPerActor; ci++) {
-                            // PhysX first: it is the geometry the game actually
-                            // collides with, and it is independent of the cooked
-                            // AggregateGeom that may be absent or placeholder.
-                            int n = ds_pubg_px_component_boxes(comps[ci], camLoc, local,
-                                                               kDSPUBGBoxesPerComponent);
-                            if (n <= 0) {
-                                n = ds_pubg_extract_instanced_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
-                            }
-                            if (n <= 0) {
-                                n = ds_pubg_extract_component_boxes(comps[ci], camLoc, local, kDSPUBGBoxesPerComponent);
-                            }
-                            if (n > 0) s_obsCompBoxes++;
-                            for (int b = 0; b < n && boxTotal < kDSPUBGStaticBoxesPerActor; b++) {
-                                float bx = local[b].center.X - camLoc.X;
-                                float by = local[b].center.Y - camLoc.Y;
-                                float bz = local[b].center.Z - camLoc.Z;
-                                if (bx * bx + by * by + bz * bz > (25000.0f * 25000.0f)) continue;
-                                capturedBoxes[boxTotal++] = local[b];
-                                if (stagedCount < kDSPUBGMaxObstacles) {
-                                    s_obstaclesStaging[stagedCount++] = local[b];
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
-
-                        s_obsBoxOk += (uint32_t)boxTotal;
-
-                        if (boxTotal > 0 && sEntry) {
-                            if (!staticFound) s_staticActorCount++;
-                            sEntry->actor = actor;
-                            sEntry->component = comps[0];
-                            sEntry->boxCount = boxTotal;
-                            memcpy(sEntry->boxes, capturedBoxes, (size_t)boxTotal * sizeof(DSPUBGObstacleBox));
-                            sEntry->capturedTick = s_visTickCounter;
-                        }
-                    }
-                }
-            }
-        };
-
-        // 1. PersistentLevel
-        if (level) scanLevelObstacles(level);
-
-        // 2. CurrentLevel
-        uint64_t curLvl = ds_pubg_read_ptr(world + 0x468ULL);
-        if (curLvl && curLvl != level) scanLevelObstacles(curLvl);
-
-        // 3. Sub-levels in Levels array (0x440)
-        uint64_t levelsData = ds_pubg_read_ptr(world + 0x440ULL);
-        int32_t levelsCount = ds_pubg_read_i32(world + 0x448ULL);
-        if (levelsData && levelsCount > 0 && levelsCount < 64) {
-            std::vector<uint64_t> lvlArr(levelsCount, 0);
-            if (ds_pubg_read(levelsData, lvlArr.data(), levelsCount * sizeof(uint64_t))) {
-                for (int32_t li = 0; li < levelsCount && stagedCount < kDSPUBGMaxObstacles; li++) {
-                    scanLevelObstacles(lvlArr[li]);
-                }
-            }
-        }
-
-        // 4. StreamingLevels (0x88)
-        uint64_t streamData = ds_pubg_read_ptr(world + 0x88ULL);
-        int32_t streamCount = ds_pubg_read_i32(world + 0x90ULL);
-        if (streamData && streamCount > 0 && streamCount < 64) {
-            std::vector<uint64_t> slArr(streamCount, 0);
-            if (ds_pubg_read(streamData, slArr.data(), streamCount * sizeof(uint64_t))) {
-                for (int32_t si = 0; si < streamCount && stagedCount < kDSPUBGMaxObstacles; si++) {
-                    uint64_t sl = slArr[si];
-                    if (sl && ds_pubg_valid(sl)) {
-                        uint64_t loadedLvl = ds_pubg_read_ptr(sl + 0x168ULL);
-                        if (loadedLvl) scanLevelObstacles(loadedLvl);
-                    }
-                }
-            }
-        }
-
-        // 5. WorldComposition.TilesStreaming (0xD08 -> 0x110)
-        // A world-composed map keeps its tiles here, not in StreamingLevels.
-        // Without this pass only the persistent level is walked - the HUD
-        // showed L1 / A124 on a map that has thousands of actors.
-        uint64_t worldComp = ds_pubg_read_ptr(world + 0xD08ULL);
-        if (worldComp && ds_pubg_valid(worldComp)) {
-            uint64_t tilesData = ds_pubg_read_ptr(worldComp + 0x110ULL);
-            int32_t tilesCount = ds_pubg_read_i32(worldComp + 0x118ULL);
-            if (tilesData && tilesCount > 0 && tilesCount < 4096) {
-                std::vector<uint64_t> tileArr((size_t)tilesCount, 0);
-                uint32_t toRead = (uint32_t)tilesCount;
-                if (toRead > 512) toRead = 512;
-                if (ds_pubg_read(tilesData, tileArr.data(), (size_t)toRead * sizeof(uint64_t))) {
-                    for (uint32_t ti = 0; ti < toRead && stagedCount < kDSPUBGMaxObstacles; ti++) {
-                        uint64_t sl = tileArr[ti];
-                        if (!sl || !ds_pubg_valid(sl)) continue;
-                        uint64_t loadedLvl = ds_pubg_read_ptr(sl + 0x168ULL);
-                        if (loadedLvl) scanLevelObstacles(loadedLvl);
-                    }
-                }
-            }
-        }
-
-        if (stagedCount > 0 || s_obstacleCount == 0) {
-            s_obstacleCount = stagedCount;
-            memcpy(s_obstacles, s_obstaclesStaging, (size_t)stagedCount * sizeof(DSPUBGObstacleBox));
-        }
-    }
+    // Vischeck disabled per user request: map obstacle scan skipped
+    s_obstacleCount = 0;
 
     // Source 1: GameState.PlayerArray
     uint64_t gameState = ds_pubg_read_ptr(world + kDSPUBGWorldGameStateOffset);
@@ -7065,18 +6598,10 @@ static void ds_pubg_tick(void) {
         uint64_t actorsData = 0;
         uint32_t actorsCount = 0;
 
-        uint64_t arr = ds_pubg_decrypt_actors_array(lvl);
-        if (arr && ds_pubg_valid(arr)) {
-            ds_pubg_actors_array_at(arr, &actorsData, &actorsCount);
-        }
-
-        if (!actorsData || actorsCount == 0) {
-            ds_pubg_actors_array_at(lvl + 0xA0ULL, &actorsData, &actorsCount);
-        }
-        if (!actorsData || actorsCount == 0) {
+        if (!ds_pubg_find_level_actors(lvl, &actorsData, &actorsCount)) {
             uint64_t cluster = ds_pubg_read_ptr(lvl + 0xE0ULL);
             if (cluster && ds_pubg_valid(cluster)) {
-                ds_pubg_actors_array_at(cluster + 0x28ULL, &actorsData, &actorsCount);
+                ds_pubg_actor_array_plausible(cluster + 0x28ULL, &actorsData, &actorsCount);
             }
         }
 
@@ -7179,13 +6704,8 @@ static void ds_pubg_tick(void) {
         }
     }
 
-    // Advance vischeck tick & clean up stale records (> 15 ticks unseen)
+    // Advance tick
     ++s_visTickCounter;
-    for (int v = 0; v < 128; v++) {
-        if (s_visHistories[v].actor != 0 && (s_visTickCounter - s_visHistories[v].lastSeenTick) > 15) {
-            memset(&s_visHistories[v], 0, sizeof(DSPUBGVisHistory));
-        }
-    }
 
     // [A2] Drop dynamic actors that stopped being refreshed so the registry
     // never keeps a stale transform alive.
