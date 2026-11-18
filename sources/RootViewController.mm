@@ -1182,7 +1182,7 @@ static BOOL IsPUBGProcessRunning(void) {
             [titleLbl.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
             [vLabel.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
             [vLabel.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-            [valueLbl.leadingAnchor constraintGreaterThanOrEqualToAnchor:titleLbl.trailingAnchor constant:12.0],
+            [vLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:titleLbl.trailingAnchor constant:12.0],
         ]];
 
         if (topView) {
