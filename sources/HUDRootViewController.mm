@@ -14,6 +14,7 @@
 #import "HUDRootViewController.h"
 #import "HUDBackdropLabel.h"
 #import "DarkPubg-Swift.h"
+#import "DSTheme.h"
 
 #pragma mark -
 
@@ -394,6 +395,7 @@ static const CACornerMask kCornerMaskAll = kCALayerMinXMinYCorner | kCALayerMaxX
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     /* Just put your HUD view here */
 
     _contentView = [[UIView alloc] init];
@@ -401,10 +403,13 @@ static const CACornerMask kCornerMaskAll = kCALayerMinXMinYCorner | kCALayerMaxX
     _contentView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:_contentView];
 
-    _blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+    _blurEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
     _blurView = [[UIVisualEffectView alloc] initWithEffect:_blurEffect];
-    _blurView.layer.cornerRadius = HUD_MIN_CORNER_RADIUS;
+    _blurView.layer.cornerRadius = HUD_MIN_CORNER_RADIUS + 1.0;
+    _blurView.layer.cornerCurve = kCACornerCurveContinuous;
     _blurView.layer.masksToBounds = YES;
+    _blurView.layer.borderWidth = 0.75;
+    _blurView.layer.borderColor = [DSColorAccent() colorWithAlphaComponent:0.35].CGColor;
     _blurView.translatesAutoresizingMaskIntoConstraints = NO;
     _containerView = [[ScreenshotInvisibleContainer alloc] initWithContent:_blurView];
     _containerView.hiddenContainer.translatesAutoresizingMaskIntoConstraints = NO;
@@ -413,8 +418,8 @@ static const CACornerMask kCornerMaskAll = kCALayerMinXMinYCorner | kCALayerMaxX
     _speedLabel = [[HUDBackdropLabel alloc] initWithFrame:CGRectZero];
     _speedLabel.numberOfLines = 0;
     _speedLabel.textAlignment = NSTextAlignmentCenter;
-    _speedLabel.textColor = [UIColor whiteColor];
-    _speedLabel.font = [UIFont systemFontOfSize:HUD_FONT_SIZE];
+    _speedLabel.textColor = DSColorTextPrimary();
+    _speedLabel.font = [UIFont monospacedDigitSystemFontOfSize:(CGFloat)HUD_FONT_SIZE weight:UIFontWeightSemibold];
     _speedLabel.hidden = YES;
     _speedLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [_speedLabel setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisVertical];

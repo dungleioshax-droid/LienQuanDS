@@ -12,6 +12,7 @@
 #import "HUDHelper.h"
 #import "DSBridge.h"
 #import "JetsamHelper.h"
+#import "DSTheme.h"
 
 @implementation MainApplicationDelegate {
     RootViewController *_rootViewController;
@@ -73,7 +74,7 @@
 
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
     // Opaque window — do not inherit TrollStore HUD transparency.
-    self.window.backgroundColor = [UIColor colorWithRed:26/255.0 green:188/255.0 blue:156/255.0 alpha:1.0];
+    self.window.backgroundColor = DSColorInk();
     self.window.opaque = YES;
     [self.window setRootViewController:_rootViewController];
     [self.window makeKeyAndVisible];

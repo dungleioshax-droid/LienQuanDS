@@ -135,6 +135,7 @@
 /* Begin PBXFileReference section */
 		DS3A0647113D290CFB5F7D9F /* libxpf.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libxpf.dylib; path = Vendor/darksword-lib-thin/libxpf.dylib; sourceTree = SOURCE_ROOT; };
 		DS02D856F5C47EF0755250DA /* libgrabkernel2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libgrabkernel2.dylib; path = Vendor/darksword-lib-thin/libgrabkernel2.dylib; sourceTree = SOURCE_ROOT; };
+		D5A1B2C3D4E5F60718293A4B /* DSTheme.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = DSTheme.h; path = darksword/DSTheme.h; sourceTree = SOURCE_ROOT; };
 		DS5DD4BDAA87258C38A20CEA /* DSInProcessHUD.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = DSInProcessHUD.h; path = darksword/DSInProcessHUD.h; sourceTree = SOURCE_ROOT; };
 		DSD388242B94FD8AC25B634C /* DSInProcessHUD.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = DSInProcessHUD.mm; path = darksword/DSInProcessHUD.mm; sourceTree = SOURCE_ROOT; };
 		DSB8752946F8F938B70355A6 /* persistence_stub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = persistence_stub.m; path = darksword/stubs/persistence_stub.m; sourceTree = SOURCE_ROOT; };
@@ -304,6 +305,7 @@
 				D51000000000000000000004 /* vm.m */,
 				D51000000000000000000005 /* pac.m */,
 				D51000000000000000000006 /* findcachedataoff.m */,
+				D5A1B2C3D4E5F60718293A4B /* DSTheme.h */,
 				DS5DD4BDAA87258C38A20CEA /* DSInProcessHUD.h */,
 				DSD388242B94FD8AC25B634C /* DSInProcessHUD.mm */,
 				DSB8752946F8F938B70355A6 /* persistence_stub.m */,
