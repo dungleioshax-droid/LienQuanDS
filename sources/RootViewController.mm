@@ -229,6 +229,8 @@ static BOOL IsPUBGProcessRunning(void) {
     NSMutableDictionary *_userDefaults;
     MainButton *_mainButton;
     UILabel *_buttonSubLabel;
+    UIActivityIndicatorView *_mainBtnSpinner;
+    BOOL _isHUDLaunching;
 
     // Tab Navigation Containers
     UIView *_homeView;
@@ -265,19 +267,12 @@ static BOOL IsPUBGProcessRunning(void) {
     UILabel *_consoleLiveLabel;
     UITextView *_consoleTextView;
     NSMutableAttributedString *_consoleLogStorage;
-    NSTimer *_consoleHeartbeatTimer;
 
     // Setting localized labels
     UILabel *_settingTitleLabel;
     UILabel *_settingSubTitleLabel;
     UILabel *_langHeaderLabel;
     UISegmentedControl *_langSegmentedControl;
-
-    // Telegram Community Card
-    UIView *_telegramCard;
-    UILabel *_telegramHeaderLabel;
-    UILabel *_telegramHandleLabel;
-    UILabel *_telegramSubLabel;
 
     // Developer Card
     UILabel *_aboutHeaderLabel;
@@ -300,22 +295,10 @@ static BOOL IsPUBGProcessRunning(void) {
     UILabel *_infoRow3Title;
     UILabel *_infoRow4Title;
 
-    // Quick Utilities Card
-    UIView *_utilCard;
-    UILabel *_utilHeaderLabel;
-    UIButton *_clearCacheBtn;
-    UIButton *_resetConfigBtn;
-
     UILabel *_noteLabel;
 
     BOOL _isRemoteHUDActive;
     UIImpactFeedbackGenerator *_impactFeedbackGenerator;
-
-#if USE_DARKSWORD
-    UIView *_dsProgressOverlay;
-    UIProgressView *_dsProgressBar;
-    UILabel *_dsProgressLabel;
-#endif
 }
 
 + (void)setShouldToggleHUDAfterLaunch:(BOOL)flag
@@ -606,18 +589,23 @@ static BOOL IsPUBGProcessRunning(void) {
     UIView *brandMark = [[UIView alloc] init];
     brandMark.translatesAutoresizingMaskIntoConstraints = NO;
     brandMark.backgroundColor = DSColorAccent();
-    brandMark.layer.cornerRadius = 13.0;
+    brandMark.layer.cornerRadius = 14.0;
     brandMark.layer.cornerCurve = kCACornerCurveContinuous;
     brandMark.layer.shadowColor = DSColorAccent().CGColor;
-    brandMark.layer.shadowOpacity = 0.35f;
-    brandMark.layer.shadowRadius = 14.0f;
-    brandMark.layer.shadowOffset = CGSizeMake(0, 6);
+    brandMark.layer.shadowOpacity = 0.50f;
+    brandMark.layer.shadowRadius = 16.0f;
+    brandMark.layer.shadowOffset = CGSizeMake(0, 5);
     [_homeView addSubview:brandMark];
 
-    UIImageView *brandGlyph = [[UIImageView alloc] initWithImage:
-        [UIImage systemImageNamed:@"bolt.fill"
-                withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:17.0
-                                                                                weight:UIImageSymbolWeightBlack]]];
+    UIImage *shieldGlyphImg = [UIImage systemImageNamed:@"bolt.shield.fill"
+                                      withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:19.0
+                                                                                                      weight:UIImageSymbolWeightBlack]];
+    if (!shieldGlyphImg) {
+        shieldGlyphImg = [UIImage systemImageNamed:@"bolt.fill"
+                                 withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:18.0
+                                                                                                 weight:UIImageSymbolWeightBlack]];
+    }
+    UIImageView *brandGlyph = [[UIImageView alloc] initWithImage:shieldGlyphImg];
     brandGlyph.translatesAutoresizingMaskIntoConstraints = NO;
     brandGlyph.tintColor = DSColorOnAccent();
     brandGlyph.contentMode = UIViewContentModeScaleAspectFit;
@@ -627,7 +615,7 @@ static BOOL IsPUBGProcessRunning(void) {
     _homeTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _homeTitleLabel.text = @"DarkPubg";
     _homeTitleLabel.textColor = DSColorTextPrimary();
-    _homeTitleLabel.font = DSFontDisplay(29.0);
+    _homeTitleLabel.font = DSFontDisplay(30.0);
     _homeTitleLabel.adjustsFontSizeToFitWidth = YES;
     _homeTitleLabel.minimumScaleFactor = 0.7;
     [_homeView addSubview:_homeTitleLabel];
@@ -635,14 +623,12 @@ static BOOL IsPUBGProcessRunning(void) {
     _homeSubTitleLabel = [[UILabel alloc] init];
     _homeSubTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _homeSubTitleLabel.textAlignment = NSTextAlignmentLeft;
-    // Letter-spacing needs an attributed string, and that bypasses the
-    // label's own font/color, so both are set explicitly here.
     _homeSubTitleLabel.attributedText = [[NSAttributedString alloc]
-        initWithString:@"PUBG MOBILE"
+        initWithString:@"KERNEL EDITION • PUBG MOBILE"
             attributes:@{
-                NSKernAttributeName: @1.6,
+                NSKernAttributeName: @1.8,
                 NSForegroundColorAttributeName: DSColorAccent(),
-                NSFontAttributeName: DSFontBody(11.0, UIFontWeightHeavy),
+                NSFontAttributeName: DSFontBody(10.5, UIFontWeightHeavy),
             }];
     [_homeView addSubview:_homeSubTitleLabel];
 
@@ -650,37 +636,43 @@ static BOOL IsPUBGProcessRunning(void) {
     UIView *statusCard = [[UIView alloc] init];
     statusCard.translatesAutoresizingMaskIntoConstraints = NO;
     DSApplyCard(statusCard, DSRadiusCard);
+    statusCard.layer.borderColor = [DSColorAccent() colorWithAlphaComponent:0.20].CGColor;
     [_homeView addSubview:statusCard];
 
     NSString *iosVer = @"";
     NSString *dsStatus = @"";
     BOOL isSupported = CheckDarkSwordSupport(&iosVer, &dsStatus);
 
-    UIImageView *appleIcon = [[UIImageView alloc] initWithImage:
-        [UIImage systemImageNamed:@"apple.logo"
-                withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14.0
-                                                                                weight:UIImageSymbolWeightMedium]]];
+    UIImage *hwIconImg = [UIImage systemImageNamed:@"cpu.fill"
+                                 withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14.0
+                                                                                                 weight:UIImageSymbolWeightSemibold]];
+    if (!hwIconImg) {
+        hwIconImg = [UIImage systemImageNamed:@"apple.logo"
+                            withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14.0
+                                                                                            weight:UIImageSymbolWeightMedium]];
+    }
+    UIImageView *appleIcon = [[UIImageView alloc] initWithImage:hwIconImg];
     appleIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    appleIcon.tintColor = DSColorTextSecondary();
+    appleIcon.tintColor = DSColorAccent();
     appleIcon.contentMode = UIViewContentModeScaleAspectFit;
     [statusCard addSubview:appleIcon];
 
     _iosVersionLabel = [[UILabel alloc] init];
     _iosVersionLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _iosVersionLabel.textColor = DSColorTextPrimary();
-    _iosVersionLabel.font = DSFontBody(14.0, UIFontWeightSemibold);
+    _iosVersionLabel.font = DSFontBody(14.0, UIFontWeightBold);
     [statusCard addSubview:_iosVersionLabel];
 
     _systemTagLabel = [[UILabel alloc] init];
     _systemTagLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _systemTagLabel.textColor = DSColorTextTertiary();
-    _systemTagLabel.font = DSFontBody(11.0, UIFontWeightSemibold);
+    _systemTagLabel.font = DSFontMono(10.5, UIFontWeightBold);
     _systemTagLabel.textAlignment = NSTextAlignmentRight;
     [statusCard addSubview:_systemTagLabel];
 
     UIView *cardSep = [[UIView alloc] init];
     cardSep.translatesAutoresizingMaskIntoConstraints = NO;
-    cardSep.backgroundColor = [DSColorHairline() colorWithAlphaComponent:0.7];
+    cardSep.backgroundColor = [DSColorHairline() colorWithAlphaComponent:0.65];
     [statusCard addSubview:cardSep];
 
     _statusDotView = [[UIView alloc] init];
@@ -689,17 +681,15 @@ static BOOL IsPUBGProcessRunning(void) {
     _statusDotView.backgroundColor = dotColor;
     _statusDotView.layer.cornerRadius = 4.0;
     _statusDotView.layer.shadowColor = dotColor.CGColor;
-    _statusDotView.layer.shadowOpacity = 0.8f;
-    _statusDotView.layer.shadowRadius = 5.0f;
+    _statusDotView.layer.shadowOpacity = 0.90f;
+    _statusDotView.layer.shadowRadius = 6.0f;
     _statusDotView.layer.shadowOffset = CGSizeZero;
     [statusCard addSubview:_statusDotView];
 
     _dsStatusLabel = [[UILabel alloc] init];
     _dsStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _dsStatusLabel.textColor = dotColor;
-    _dsStatusLabel.font = DSFontBody(13.0, UIFontWeightSemibold);
-    // The badge sits on the same row: let the status text shrink instead of
-    // colliding with it on narrow devices.
+    _dsStatusLabel.font = DSFontBody(13.0, UIFontWeightBold);
     _dsStatusLabel.adjustsFontSizeToFitWidth = YES;
     _dsStatusLabel.minimumScaleFactor = 0.8;
     [statusCard addSubview:_dsStatusLabel];
@@ -710,7 +700,7 @@ static BOOL IsPUBGProcessRunning(void) {
     _dsStatusBadge.layer.cornerRadius = 10.0;
     _dsStatusBadge.layer.cornerCurve = kCACornerCurveContinuous;
     _dsStatusBadge.layer.borderWidth = 1.0;
-    _dsStatusBadge.layer.borderColor = [dotColor colorWithAlphaComponent:0.3].CGColor;
+    _dsStatusBadge.layer.borderColor = [dotColor colorWithAlphaComponent:0.35].CGColor;
     _dsStatusBadge.layer.masksToBounds = YES;
     [statusCard addSubview:_dsStatusBadge];
 
@@ -727,9 +717,19 @@ static BOOL IsPUBGProcessRunning(void) {
     [_mainButton addTarget:self action:@selector(tapMainButton:) forControlEvents:UIControlEventTouchUpInside];
     [_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
     DSApplyPrimaryButton(_mainButton, NO);
-    _mainButton.titleLabel.font = DSFontTitle(17.5);
-    _mainButton.layer.cornerRadius = 19.0;
+    _mainButton.titleLabel.font = DSFontDisplay(18.0);
+    _mainButton.layer.cornerRadius = 20.0;
     [_homeView addSubview:_mainButton];
+
+    if (@available(iOS 13.0, *)) {
+        _mainBtnSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    } else {
+        _mainBtnSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhite];
+    }
+    _mainBtnSpinner.translatesAutoresizingMaskIntoConstraints = NO;
+    _mainBtnSpinner.hidesWhenStopped = YES;
+    _mainBtnSpinner.color = DSColorOnAccent();
+    [_mainButton addSubview:_mainBtnSpinner];
 
     _buttonSubLabel = [[UILabel alloc] init];
     _buttonSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -742,38 +742,60 @@ static BOOL IsPUBGProcessRunning(void) {
     // ------------------------------------------------------------ console card
     _consoleCard = [[UIView alloc] init];
     _consoleCard.translatesAutoresizingMaskIntoConstraints = NO;
-    _consoleCard.backgroundColor = [DSColorInk() colorWithAlphaComponent:0.92];
-    _consoleCard.layer.cornerRadius = 16.0;
+    _consoleCard.backgroundColor = [DSColorInk() colorWithAlphaComponent:0.95];
+    _consoleCard.layer.cornerRadius = 18.0;
     _consoleCard.layer.cornerCurve = kCACornerCurveContinuous;
     _consoleCard.layer.borderWidth = 1.0;
-    _consoleCard.layer.borderColor = [DSColorHairline() colorWithAlphaComponent:0.8].CGColor;
+    _consoleCard.layer.borderColor = [DSColorHairline() colorWithAlphaComponent:0.85].CGColor;
     _consoleCard.clipsToBounds = YES;
     [_homeView addSubview:_consoleCard];
 
     UIView *consoleHeader = [[UIView alloc] init];
     consoleHeader.translatesAutoresizingMaskIntoConstraints = NO;
-    consoleHeader.backgroundColor = [DSColorSurface() colorWithAlphaComponent:0.85];
+    consoleHeader.backgroundColor = [DSColorSurface() colorWithAlphaComponent:0.90];
     [_consoleCard addSubview:consoleHeader];
+
+    UIView *dotRed = [[UIView alloc] init];
+    dotRed.translatesAutoresizingMaskIntoConstraints = NO;
+    dotRed.backgroundColor = [UIColor colorWithRed:1.000 green:0.373 blue:0.337 alpha:1.0];
+    dotRed.layer.cornerRadius = 4.0;
+    [consoleHeader addSubview:dotRed];
+
+    UIView *dotYellow = [[UIView alloc] init];
+    dotYellow.translatesAutoresizingMaskIntoConstraints = NO;
+    dotYellow.backgroundColor = [UIColor colorWithRed:1.000 green:0.741 blue:0.180 alpha:1.0];
+    dotYellow.layer.cornerRadius = 4.0;
+    [consoleHeader addSubview:dotYellow];
+
+    UIView *dotGreen = [[UIView alloc] init];
+    dotGreen.translatesAutoresizingMaskIntoConstraints = NO;
+    dotGreen.backgroundColor = [UIColor colorWithRed:0.153 green:0.788 blue:0.247 alpha:1.0];
+    dotGreen.layer.cornerRadius = 4.0;
+    [consoleHeader addSubview:dotGreen];
+
+    _consoleHeaderLabel = [[UILabel alloc] init];
+    _consoleHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _consoleHeaderLabel.textColor = DSColorTextSecondary();
+    _consoleHeaderLabel.font = DSFontMono(10.0, UIFontWeightBold);
+    _consoleHeaderLabel.text = @"CONSOLE LOG";
+    [consoleHeader addSubview:_consoleHeaderLabel];
 
     _consoleLiveDot = [[UIView alloc] init];
     _consoleLiveDot.translatesAutoresizingMaskIntoConstraints = NO;
     _consoleLiveDot.backgroundColor = DSColorSuccess();
-    _consoleLiveDot.layer.cornerRadius = 3.0;
+    _consoleLiveDot.layer.cornerRadius = 3.5;
+    _consoleLiveDot.layer.shadowColor = DSColorSuccess().CGColor;
+    _consoleLiveDot.layer.shadowOpacity = 0.85f;
+    _consoleLiveDot.layer.shadowRadius = 4.0f;
+    _consoleLiveDot.layer.shadowOffset = CGSizeZero;
     [consoleHeader addSubview:_consoleLiveDot];
 
     _consoleLiveLabel = [[UILabel alloc] init];
     _consoleLiveLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _consoleLiveLabel.textColor = DSColorSuccess();
-    _consoleLiveLabel.font = DSFontMono(9.5, UIFontWeightBold);
+    _consoleLiveLabel.font = DSFontMono(9.5, UIFontWeightHeavy);
     _consoleLiveLabel.text = @"LIVE";
     [consoleHeader addSubview:_consoleLiveLabel];
-
-    _consoleHeaderLabel = [[UILabel alloc] init];
-    _consoleHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _consoleHeaderLabel.textColor = DSColorTextTertiary();
-    _consoleHeaderLabel.font = DSFontMono(9.5, UIFontWeightBold);
-    _consoleHeaderLabel.text = @"CONSOLE LOG";
-    [consoleHeader addSubview:_consoleHeaderLabel];
 
     UIView *consoleSep = [[UIView alloc] init];
     consoleSep.translatesAutoresizingMaskIntoConstraints = NO;
@@ -787,7 +809,7 @@ static BOOL IsPUBGProcessRunning(void) {
     _consoleTextView.selectable = NO;
     _consoleTextView.showsVerticalScrollIndicator = YES;
     _consoleTextView.indicatorStyle = UIScrollViewIndicatorStyleWhite;
-    _consoleTextView.textContainerInset = UIEdgeInsetsMake(8, 10, 8, 10);
+    _consoleTextView.textContainerInset = UIEdgeInsetsMake(8, 12, 8, 12);
     _consoleTextView.scrollEnabled = YES;
     [_consoleCard addSubview:_consoleTextView];
 
@@ -795,13 +817,13 @@ static BOOL IsPUBGProcessRunning(void) {
     [NSLayoutConstraint activateConstraints:@[
         [brandMark.leadingAnchor constraintEqualToAnchor:_contentColumn.leadingAnchor constant:DSGutter],
         [brandMark.topAnchor constraintEqualToAnchor:_homeView.topAnchor constant:10.0],
-        [brandMark.widthAnchor constraintEqualToConstant:44.0],
-        [brandMark.heightAnchor constraintEqualToConstant:44.0],
+        [brandMark.widthAnchor constraintEqualToConstant:48.0],
+        [brandMark.heightAnchor constraintEqualToConstant:48.0],
 
         [brandGlyph.centerXAnchor constraintEqualToAnchor:brandMark.centerXAnchor],
         [brandGlyph.centerYAnchor constraintEqualToAnchor:brandMark.centerYAnchor],
-        [brandGlyph.widthAnchor constraintEqualToConstant:22.0],
-        [brandGlyph.heightAnchor constraintEqualToConstant:22.0],
+        [brandGlyph.widthAnchor constraintEqualToConstant:24.0],
+        [brandGlyph.heightAnchor constraintEqualToConstant:24.0],
 
         [_homeTitleLabel.leadingAnchor constraintEqualToAnchor:brandMark.trailingAnchor constant:12.0],
         [_homeTitleLabel.topAnchor constraintEqualToAnchor:brandMark.topAnchor constant:-4.0],
@@ -814,7 +836,7 @@ static BOOL IsPUBGProcessRunning(void) {
         [statusCard.topAnchor constraintEqualToAnchor:brandMark.bottomAnchor constant:16.0],
         [statusCard.leadingAnchor constraintEqualToAnchor:_contentColumn.leadingAnchor constant:DSGutter],
         [statusCard.trailingAnchor constraintEqualToAnchor:_contentColumn.trailingAnchor constant:-DSGutter],
-        [statusCard.heightAnchor constraintEqualToConstant:88.0],
+        [statusCard.heightAnchor constraintEqualToConstant:90.0],
 
         [appleIcon.leadingAnchor constraintEqualToAnchor:statusCard.leadingAnchor constant:16.0],
         [appleIcon.topAnchor constraintEqualToAnchor:statusCard.topAnchor constant:16.0],
@@ -853,7 +875,10 @@ static BOOL IsPUBGProcessRunning(void) {
         [_mainButton.topAnchor constraintEqualToAnchor:statusCard.bottomAnchor constant:14.0],
         [_mainButton.leadingAnchor constraintEqualToAnchor:_contentColumn.leadingAnchor constant:DSGutter],
         [_mainButton.trailingAnchor constraintEqualToAnchor:_contentColumn.trailingAnchor constant:-DSGutter],
-        [_mainButton.heightAnchor constraintEqualToConstant:56.0],
+        [_mainButton.heightAnchor constraintEqualToConstant:58.0],
+
+        [_mainBtnSpinner.centerYAnchor constraintEqualToAnchor:_mainButton.centerYAnchor],
+        [_mainBtnSpinner.trailingAnchor constraintEqualToAnchor:_mainButton.titleLabel.leadingAnchor constant:-10.0],
 
         [_buttonSubLabel.topAnchor constraintEqualToAnchor:_mainButton.bottomAnchor constant:7.0],
         [_buttonSubLabel.leadingAnchor constraintEqualToAnchor:_contentColumn.leadingAnchor constant:DSGutter],
@@ -867,19 +892,33 @@ static BOOL IsPUBGProcessRunning(void) {
         [consoleHeader.topAnchor constraintEqualToAnchor:_consoleCard.topAnchor],
         [consoleHeader.leadingAnchor constraintEqualToAnchor:_consoleCard.leadingAnchor],
         [consoleHeader.trailingAnchor constraintEqualToAnchor:_consoleCard.trailingAnchor],
-        [consoleHeader.heightAnchor constraintEqualToConstant:32.0],
+        [consoleHeader.heightAnchor constraintEqualToConstant:34.0],
 
-        [_consoleLiveDot.leadingAnchor constraintEqualToAnchor:consoleHeader.leadingAnchor constant:14.0],
-        [_consoleLiveDot.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
-        [_consoleLiveDot.widthAnchor constraintEqualToConstant:6.0],
-        [_consoleLiveDot.heightAnchor constraintEqualToConstant:6.0],
+        [dotRed.leadingAnchor constraintEqualToAnchor:consoleHeader.leadingAnchor constant:14.0],
+        [dotRed.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [dotRed.widthAnchor constraintEqualToConstant:8.0],
+        [dotRed.heightAnchor constraintEqualToConstant:8.0],
 
-        [_consoleLiveLabel.leadingAnchor constraintEqualToAnchor:_consoleLiveDot.trailingAnchor constant:5.0],
+        [dotYellow.leadingAnchor constraintEqualToAnchor:dotRed.trailingAnchor constant:6.0],
+        [dotYellow.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [dotYellow.widthAnchor constraintEqualToConstant:8.0],
+        [dotYellow.heightAnchor constraintEqualToConstant:8.0],
+
+        [dotGreen.leadingAnchor constraintEqualToAnchor:dotYellow.trailingAnchor constant:6.0],
+        [dotGreen.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [dotGreen.widthAnchor constraintEqualToConstant:8.0],
+        [dotGreen.heightAnchor constraintEqualToConstant:8.0],
+
+        [_consoleHeaderLabel.leadingAnchor constraintEqualToAnchor:dotGreen.trailingAnchor constant:10.0],
+        [_consoleHeaderLabel.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+
+        [_consoleLiveLabel.trailingAnchor constraintEqualToAnchor:consoleHeader.trailingAnchor constant:-14.0],
         [_consoleLiveLabel.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
 
-        [_consoleHeaderLabel.leadingAnchor constraintEqualToAnchor:_consoleLiveLabel.trailingAnchor constant:10.0],
-        [_consoleHeaderLabel.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
-        [_consoleHeaderLabel.trailingAnchor constraintLessThanOrEqualToAnchor:consoleHeader.trailingAnchor constant:-14.0],
+        [_consoleLiveDot.trailingAnchor constraintEqualToAnchor:_consoleLiveLabel.leadingAnchor constant:-5.0],
+        [_consoleLiveDot.centerYAnchor constraintEqualToAnchor:consoleHeader.centerYAnchor],
+        [_consoleLiveDot.widthAnchor constraintEqualToConstant:7.0],
+        [_consoleLiveDot.heightAnchor constraintEqualToConstant:7.0],
 
         [consoleSep.topAnchor constraintEqualToAnchor:consoleHeader.bottomAnchor],
         [consoleSep.leadingAnchor constraintEqualToAnchor:_consoleCard.leadingAnchor],
@@ -1104,99 +1143,6 @@ static BOOL IsPUBGProcessRunning(void) {
         [systemCard.bottomAnchor constraintEqualToAnchor:secRow3.bottomAnchor constant:12.0],
     ]];
 
-    // ------------------------------------------------------ community card
-    _telegramCard = [[UIView alloc] init];
-    _telegramCard.translatesAutoresizingMaskIntoConstraints = NO;
-    DSApplyCard(_telegramCard, DSRadiusCard);
-    _telegramCard.layer.borderColor = [DSColorInfo() colorWithAlphaComponent:0.30].CGColor;
-    _telegramCard.layer.shadowColor = DSColorInfo().CGColor;
-    _telegramCard.layer.shadowOpacity = 0.14f;
-    _telegramCard.layer.masksToBounds = NO;
-    _telegramCard.userInteractionEnabled = YES;
-    UITapGestureRecognizer *tgTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(openTelegramLink)];
-    [_telegramCard addGestureRecognizer:tgTap];
-    _telegramCard.accessibilityLabel = @"Telegram community";
-    [_settingContentView addSubview:_telegramCard];
-
-    UIView *tgBadge = [[UIView alloc] init];
-    tgBadge.translatesAutoresizingMaskIntoConstraints = NO;
-    tgBadge.backgroundColor = DSColorInfo();
-    tgBadge.layer.shadowColor = DSColorInfo().CGColor;
-    tgBadge.layer.shadowOpacity = 0.45f;
-    tgBadge.layer.shadowRadius = 12.0f;
-    tgBadge.layer.shadowOffset = CGSizeMake(0, 4);
-    tgBadge.layer.cornerRadius = 21.0;
-    tgBadge.layer.cornerCurve = kCACornerCurveContinuous;
-    tgBadge.userInteractionEnabled = NO;
-    [_telegramCard addSubview:tgBadge];
-
-    UIImageView *tgIcon = [[UIImageView alloc] initWithImage:
-        [UIImage systemImageNamed:@"paperplane.fill"
-                withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:17.0
-                                                                                weight:UIImageSymbolWeightBold]]];
-    tgIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    tgIcon.tintColor = UIColor.whiteColor;
-    tgIcon.contentMode = UIViewContentModeScaleAspectFit;
-    [tgBadge addSubview:tgIcon];
-
-    _telegramHeaderLabel = [[UILabel alloc] init];
-    _telegramHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _telegramHeaderLabel.textColor = DSColorInfo();
-    _telegramHeaderLabel.font = DSFontBody(10.5, UIFontWeightHeavy);
-    [_telegramCard addSubview:_telegramHeaderLabel];
-
-    _telegramHandleLabel = [[UILabel alloc] init];
-    _telegramHandleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _telegramHandleLabel.text = @"@ds_pubgmb";
-    _telegramHandleLabel.textColor = DSColorTextPrimary();
-    _telegramHandleLabel.font = DSFontTitle(17.0);
-    [_telegramCard addSubview:_telegramHandleLabel];
-
-    _telegramSubLabel = [[UILabel alloc] init];
-    _telegramSubLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _telegramSubLabel.textColor = DSColorTextTertiary();
-    _telegramSubLabel.font = DSFontBody(11.5, UIFontWeightMedium);
-    [_telegramCard addSubview:_telegramSubLabel];
-
-    UIImageView *tgChevron = [[UIImageView alloc] initWithImage:
-        [UIImage systemImageNamed:@"chevron.right"
-                withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:13.0
-                                                                                weight:UIImageSymbolWeightBold]]];
-    tgChevron.translatesAutoresizingMaskIntoConstraints = NO;
-    tgChevron.tintColor = DSColorTextTertiary();
-    tgChevron.userInteractionEnabled = NO;
-    [_telegramCard addSubview:tgChevron];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [tgBadge.leadingAnchor constraintEqualToAnchor:_telegramCard.leadingAnchor constant:16.0],
-        [tgBadge.centerYAnchor constraintEqualToAnchor:_telegramCard.centerYAnchor],
-        [tgBadge.widthAnchor constraintEqualToConstant:42.0],
-        [tgBadge.heightAnchor constraintEqualToConstant:42.0],
-
-        [tgIcon.centerXAnchor constraintEqualToAnchor:tgBadge.centerXAnchor],
-        [tgIcon.centerYAnchor constraintEqualToAnchor:tgBadge.centerYAnchor],
-        [tgIcon.widthAnchor constraintEqualToConstant:20.0],
-        [tgIcon.heightAnchor constraintEqualToConstant:20.0],
-
-        [tgChevron.trailingAnchor constraintEqualToAnchor:_telegramCard.trailingAnchor constant:-16.0],
-        [tgChevron.centerYAnchor constraintEqualToAnchor:_telegramCard.centerYAnchor],
-        [tgChevron.widthAnchor constraintEqualToConstant:10.0],
-        [tgChevron.heightAnchor constraintEqualToConstant:16.0],
-
-        [_telegramHeaderLabel.leadingAnchor constraintEqualToAnchor:tgBadge.trailingAnchor constant:12.0],
-        [_telegramHeaderLabel.topAnchor constraintEqualToAnchor:_telegramCard.topAnchor constant:17.0],
-        [_telegramHeaderLabel.trailingAnchor constraintLessThanOrEqualToAnchor:tgChevron.leadingAnchor constant:-8.0],
-
-        [_telegramHandleLabel.leadingAnchor constraintEqualToAnchor:_telegramHeaderLabel.leadingAnchor],
-        [_telegramHandleLabel.topAnchor constraintEqualToAnchor:_telegramHeaderLabel.bottomAnchor constant:1.0],
-        [_telegramHandleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:tgChevron.leadingAnchor constant:-8.0],
-
-        [_telegramSubLabel.leadingAnchor constraintEqualToAnchor:_telegramHeaderLabel.leadingAnchor],
-        [_telegramSubLabel.topAnchor constraintEqualToAnchor:_telegramHandleLabel.bottomAnchor constant:1.0],
-        [_telegramSubLabel.trailingAnchor constraintLessThanOrEqualToAnchor:tgChevron.leadingAnchor constant:-8.0],
-        [_telegramSubLabel.bottomAnchor constraintLessThanOrEqualToAnchor:_telegramCard.bottomAnchor constant:-15.0],
-    ]];
-
     // --------------------------------------------------------- about card
     UIView *infoCard = [[UIView alloc] init];
     infoCard.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1236,7 +1182,7 @@ static BOOL IsPUBGProcessRunning(void) {
             [titleLbl.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
             [vLabel.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
             [vLabel.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
-            [vLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:titleLbl.trailingAnchor constant:12.0],
+            [valueLbl.leadingAnchor constraintGreaterThanOrEqualToAnchor:titleLbl.trailingAnchor constant:12.0],
         ]];
 
         if (topView) {
@@ -1263,53 +1209,6 @@ static BOOL IsPUBGProcessRunning(void) {
         [infoCard.bottomAnchor constraintEqualToAnchor:r4.bottomAnchor constant:12.0],
     ]];
 
-    // ------------------------------------------------------ utilities card
-    _utilCard = [[UIView alloc] init];
-    _utilCard.translatesAutoresizingMaskIntoConstraints = NO;
-    DSApplyCard(_utilCard, DSRadiusCard);
-    [_settingContentView addSubview:_utilCard];
-
-    _utilHeaderLabel = [[UILabel alloc] init];
-    _utilHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _utilHeaderLabel.textColor = DSColorTextTertiary();
-    _utilHeaderLabel.font = DSFontBody(11.0, UIFontWeightHeavy);
-    [_utilCard addSubview:_utilHeaderLabel];
-
-    _clearCacheBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    _clearCacheBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    DSApplyGhostButton(_clearCacheBtn, DSColorAccent());
-    _clearCacheBtn.titleLabel.numberOfLines = 2;
-    _clearCacheBtn.titleLabel.textAlignment = NSTextAlignmentCenter;
-    _clearCacheBtn.titleLabel.font = DSFontBody(11.5, UIFontWeightBold);
-    [_clearCacheBtn addTarget:self action:@selector(clearCacheTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [_utilCard addSubview:_clearCacheBtn];
-
-    _resetConfigBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    _resetConfigBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    DSApplyGhostButton(_resetConfigBtn, DSColorDanger());
-    _resetConfigBtn.titleLabel.numberOfLines = 2;
-    _resetConfigBtn.titleLabel.textAlignment = NSTextAlignmentCenter;
-    _resetConfigBtn.titleLabel.font = DSFontBody(11.5, UIFontWeightBold);
-    [_resetConfigBtn addTarget:self action:@selector(resetConfigTapped:) forControlEvents:UIControlEventTouchUpInside];
-    [_utilCard addSubview:_resetConfigBtn];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [_utilHeaderLabel.topAnchor constraintEqualToAnchor:_utilCard.topAnchor constant:16.0],
-        [_utilHeaderLabel.leadingAnchor constraintEqualToAnchor:_utilCard.leadingAnchor constant:16.0],
-
-        [_clearCacheBtn.topAnchor constraintEqualToAnchor:_utilHeaderLabel.bottomAnchor constant:10.0],
-        [_clearCacheBtn.leadingAnchor constraintEqualToAnchor:_utilCard.leadingAnchor constant:14.0],
-        [_clearCacheBtn.heightAnchor constraintEqualToConstant:52.0],
-
-        [_resetConfigBtn.topAnchor constraintEqualToAnchor:_clearCacheBtn.topAnchor],
-        [_resetConfigBtn.leadingAnchor constraintEqualToAnchor:_clearCacheBtn.trailingAnchor constant:10.0],
-        [_resetConfigBtn.trailingAnchor constraintEqualToAnchor:_utilCard.trailingAnchor constant:-14.0],
-        [_resetConfigBtn.widthAnchor constraintEqualToAnchor:_clearCacheBtn.widthAnchor],
-        [_resetConfigBtn.heightAnchor constraintEqualToAnchor:_clearCacheBtn.heightAnchor],
-
-        [_utilCard.bottomAnchor constraintEqualToAnchor:_clearCacheBtn.bottomAnchor constant:14.0],
-    ]];
-
     // ----------------------------------------------------------- dev card
     UIView *devCard = [[UIView alloc] init];
     devCard.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1333,7 +1232,7 @@ static BOOL IsPUBGProcessRunning(void) {
 
     _devNameLabel = [[UILabel alloc] init];
     _devNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _devNameLabel.text = @"DLX07";
+    _devNameLabel.text = @"Dũng Lê";
     _devNameLabel.textColor = DSColorTextPrimary();
     _devNameLabel.font = DSFontTitle(18.0);
     [devCard addSubview:_devNameLabel];
@@ -1407,20 +1306,11 @@ static BOOL IsPUBGProcessRunning(void) {
         [systemCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:DSGutter],
         [systemCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-DSGutter],
 
-        [_telegramCard.topAnchor constraintEqualToAnchor:systemCard.bottomAnchor constant:DSSectionGap],
-        [_telegramCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:DSGutter],
-        [_telegramCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-DSGutter],
-        [_telegramCard.heightAnchor constraintEqualToConstant:86.0],
-
-        [infoCard.topAnchor constraintEqualToAnchor:_telegramCard.bottomAnchor constant:DSSectionGap],
+        [infoCard.topAnchor constraintEqualToAnchor:systemCard.bottomAnchor constant:DSSectionGap],
         [infoCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:DSGutter],
         [infoCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-DSGutter],
 
-        [_utilCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:DSSectionGap],
-        [_utilCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:DSGutter],
-        [_utilCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-DSGutter],
-
-        [devCard.topAnchor constraintEqualToAnchor:_utilCard.bottomAnchor constant:DSSectionGap],
+        [devCard.topAnchor constraintEqualToAnchor:infoCard.bottomAnchor constant:DSSectionGap],
         [devCard.leadingAnchor constraintEqualToAnchor:_settingContentView.leadingAnchor constant:DSGutter],
         [devCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-DSGutter],
 
@@ -1429,77 +1319,6 @@ static BOOL IsPUBGProcessRunning(void) {
         [noteCard.trailingAnchor constraintEqualToAnchor:_settingContentView.trailingAnchor constant:-DSGutter],
         [noteCard.bottomAnchor constraintEqualToAnchor:_settingContentView.bottomAnchor constant:-24.0],
     ]];
-}
-
-#pragma mark - Telegram and Utility Actions
-
-- (void)openTelegramLink
-{
-    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
-
-    BOOL isEN = IsEnglish();
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Opening Telegram channel: @ds_pubgmb" : @"Đang mở liên kết Telegram: @ds_pubgmb") tagColor:DSColorInfo()];
-
-    NSURL *url = [NSURL URLWithString:@"https://t.me/ds_pubgmb"];
-    if ([[UIApplication sharedApplication] canOpenURL:url]) {
-        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
-    }
-}
-
-- (void)clearCacheTapped:(UIButton *)sender
-{
-    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
-
-    NSString *tmpDir = NSTemporaryDirectory();
-    NSArray *tmpFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:tmpDir error:nil];
-    for (NSString *file in tmpFiles) {
-        [[NSFileManager defaultManager] removeItemAtPath:[tmpDir stringByAppendingPathComponent:file] error:nil];
-    }
-
-    BOOL isEN = IsEnglish();
-    [self appendConsoleLog:@"SYS" message:(isEN ? @"Memory cache purged successfully" : @"Đã giải phóng bộ nhớ đệm thành công") tagColor:DSColorSuccess()];
-
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:isEN ? @"Notice" : @"Thông báo"
-                                                                   message:isEN ? @"Temporary memory cache cleaned successfully!" : @"Đã dọn dẹp bộ nhớ đệm thành công!"
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:isEN ? @"OK" : @"Đã hiểu" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)resetConfigTapped:(UIButton *)sender
-{
-    if (_impactFeedbackGenerator) [_impactFeedbackGenerator impactOccurred];
-
-    BOOL isEN = IsEnglish();
-    UIAlertController *confirm = [UIAlertController alertControllerWithTitle:isEN ? @"Reset HUD Settings" : @"Đặt lại cài đặt HUD"
-                                                                     message:isEN ? @"Are you sure you want to reset all HUD configurations to default?" : @"Bạn có chắc chắn muốn đặt lại toàn bộ cấu hình HUD về mặc định?"
-                                                              preferredStyle:UIAlertControllerStyleAlert];
-    [confirm addAction:[UIAlertAction actionWithTitle:isEN ? @"Cancel" : @"Huỷ" style:UIAlertActionStyleCancel handler:nil]];
-    [confirm addAction:[UIAlertAction actionWithTitle:isEN ? @"Reset" : @"Đặt lại" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-        NSDictionary *defaults = @{
-            @"DarkPubg_ShowLine": @NO,
-            @"DarkPubg_ShowBox": @YES,
-            @"DarkPubg_ShowHealth": @YES,
-            @"DarkPubg_ShowDistance": @YES,
-            @"DarkPubg_ShowBones": @YES,
-            @"DarkPubg_ShowWeapon": @YES,
-            @"DarkPubg_ShowTotalEnemies": @YES,
-            @"DarkPubg_ScanDistance": @300.0,
-        };
-        for (NSString *key in defaults) {
-            [[NSUserDefaults standardUserDefaults] setObject:defaults[key] forKey:key];
-        }
-        [[NSUserDefaults standardUserDefaults] synchronize];
-
-        [self appendConsoleLog:@"SYS" message:(isEN ? @"HUD configuration reset to defaults" : @"Đã khôi phục cài đặt HUD về mặc định") tagColor:DSColorWarning()];
-
-        UIAlertController *doneAlert = [UIAlertController alertControllerWithTitle:isEN ? @"Success" : @"Thành công"
-                                                                           message:isEN ? @"HUD configuration restored to default settings!" : @"Đã đặt lại cấu hình HUD về mặc định!"
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-        [doneAlert addAction:[UIAlertAction actionWithTitle:isEN ? @"OK" : @"Đã hiểu" style:UIAlertActionStyleDefault handler:nil]];
-        [self presentViewController:doneAlert animated:YES completion:nil];
-    }]];
-    [self presentViewController:confirm animated:YES completion:nil];
 }
 
 #pragma mark - Console Logging and Pulse Helpers
@@ -1631,10 +1450,12 @@ static BOOL IsPUBGProcessRunning(void) {
         : (isEN ? @"UNSUPPORTED" : @"CHƯA HỖ TRỢ");
 
     if (_isRemoteHUDActive) {
-        [_mainButton setTitle:@"EXIT HUD" forState:UIControlStateNormal];
+        [_mainButton setTitle:isEN ? @"EXIT HUD" : @"DỪNG HUD" forState:UIControlStateNormal];
         _buttonSubLabel.text = isEN ? @"DarkPubg is currently active in game" : @"DarkPubg đang hoạt động trong game";
+    } else if (_isHUDLaunching) {
+        // Retain dynamic percentage while loading
     } else {
-        [_mainButton setTitle:@"OPEN HUD" forState:UIControlStateNormal];
+        [_mainButton setTitle:isEN ? @"OPEN HUD" : @"MỞ HUD" forState:UIControlStateNormal];
         _buttonSubLabel.text = isEN ? @"Tap to launch in-game ESP menu" : @"Nhấn để bật menu ESP trong game";
     }
 
@@ -1646,13 +1467,9 @@ static BOOL IsPUBGProcessRunning(void) {
     _settingSubTitleLabel.text = isEN ? @"Information & Options" : @"Thông tin & Tuỳ chọn";
     _langHeaderLabel.text = isEN ? @"LANGUAGE" : @"NGÔN NGỮ";
 
-    // Telegram
-    _telegramHeaderLabel.text = isEN ? @"TELEGRAM COMMUNITY" : @"CỘNG ĐỒNG TELEGRAM";
-    _telegramSubLabel.text = isEN ? @"Official updates & support group" : @"Nhóm hỗ trợ & cập nhật chính thức";
-
     // Developer
     _devHeaderLabel.text = isEN ? @"DEVELOPER" : @"NGƯỜI PHÁT TRIỂN";
-    _devNameLabel.text = @"DLX07";
+    _devNameLabel.text = @"Dũng Lê";
 
     // Security & Protection
     _secHeaderLabel.text = isEN ? @"SECURITY & ENGINE" : @"BẢO MẬT & HỆ THỐNG";
@@ -1669,11 +1486,6 @@ static BOOL IsPUBGProcessRunning(void) {
     _infoRow2Title.text = isEN ? @"Version" : @"Phiên bản";
     _infoRow3Title.text = isEN ? @"Target Game" : @"Trò chơi";
     _infoRow4Title.text = isEN ? @"Exploit Engine" : @"Kiểu can thiệp";
-
-    // Utilities
-    _utilHeaderLabel.text = isEN ? @"QUICK UTILITIES" : @"CÔNG CỤ TIỆN ÍCH";
-    [_clearCacheBtn setTitle:isEN ? @"Clean Memory Cache" : @"Dọn dẹp bộ nhớ đệm" forState:UIControlStateNormal];
-    [_resetConfigBtn setTitle:isEN ? @"Reset HUD Settings" : @"Đặt lại cấu hình HUD" forState:UIControlStateNormal];
 
     // Note
     _noteLabel.text = isEN ?
@@ -1703,22 +1515,11 @@ static BOOL IsPUBGProcessRunning(void) {
     [self registerNotifications];
     [self seedBootLogs];
     [self startPulseAnimation:_consoleLiveDot];
-
-    __weak typeof(self) weakSelf = self;
-    _consoleHeartbeatTimer = [NSTimer scheduledTimerWithTimeInterval:30.0 repeats:YES block:^(NSTimer * _Nonnull timer) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (strongSelf && !strongSelf->_homeView.hidden) {
-            BOOL isEN = IsEnglish();
-            [strongSelf appendConsoleLog:@"SYS" message:(isEN ? @"Kernel heartbeat: memory stable, zero leak" : @"Nhịp hoạt động: bộ nhớ ổn định, không rò rỉ") tagColor:DSColorInfo()];
-        }
-    }];
 }
 
 - (void)dealloc
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [_consoleHeartbeatTimer invalidate];
-    _consoleHeartbeatTimer = nil;
 }
 
 - (void)viewDidLayoutSubviews
@@ -1743,6 +1544,8 @@ static BOOL IsPUBGProcessRunning(void) {
     _isRemoteHUDActive = [self isHUDEnabled];
 
     dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_isHUDLaunching) return;
+
         [self applyLanguageTexts];
         BOOL destructive = self->_isRemoteHUDActive;
         UIColor *fill = destructive ? DSColorDanger() : DSColorAccent();
@@ -1751,46 +1554,64 @@ static BOOL IsPUBGProcessRunning(void) {
         [self->_mainButton setTitleColor:destructive ? UIColor.whiteColor
                                                  : DSColorOnAccent()
                                 forState:UIControlStateNormal];
+        self->_mainButton.contentEdgeInsets = UIEdgeInsetsZero;
     });
 }
 
 - (void)doEnableHUD
 {
     BOOL isNowEnabled = [self isHUDEnabled];
-    if (isNowEnabled) return;
+    if (isNowEnabled || _isHUDLaunching) return;
 
     BOOL isEN = IsEnglish();
+    _isHUDLaunching = YES;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self->_mainBtnSpinner.color = DSColorOnAccent();
+        [self->_mainBtnSpinner startAnimating];
+        [self->_mainButton setTitle:isEN ? @"LAUNCHING... 0%" : @"ĐANG NẠP HUD... 0%" forState:UIControlStateNormal];
+        self->_buttonSubLabel.text = isEN ? @"Attaching DarkSword Kernel..." : @"Đang nạp qua DarkSword Kernel...";
+        self->_mainButton.contentEdgeInsets = UIEdgeInsetsMake(0, 24, 0, 0);
+    });
+
     [self appendConsoleLog:@"KERN" message:(isEN ? @"Attaching DarkSword kernel hooks..." : @"Đang nạp bộ nhớ qua DarkSword Kernel...") tagColor:DSColorWarning()];
 
     [self setHUDEnabled:YES];
 
-#if USE_DARKSWORD
-    [self showDSProgressOverlay];
-#endif
     [_impactFeedbackGenerator prepare];
     int anyToken;
     __weak typeof(self) weakSelf = self;
     notify_register_dispatch(NOTIFY_LAUNCHED_HUD, &anyToken, dispatch_get_main_queue(), ^(int token) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         notify_cancel(token);
-#if USE_DARKSWORD
-        [strongSelf hideDSProgressOverlay];
-#endif
+        if (!strongSelf) return;
+
+        strongSelf->_isHUDLaunching = NO;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [strongSelf->_mainBtnSpinner stopAnimating];
+            strongSelf->_mainButton.contentEdgeInsets = UIEdgeInsetsZero;
+            [strongSelf reloadMainButtonState];
+            [strongSelf.backgroundView setUserInteractionEnabled:YES];
+        });
         [strongSelf->_impactFeedbackGenerator impactOccurred];
-        [strongSelf reloadMainButtonState];
-        [strongSelf.backgroundView setUserInteractionEnabled:YES];
 
         BOOL isEN = IsEnglish();
         [strongSelf appendConsoleLog:@"OK" message:(isEN ? @"ESP Overlay successfully launched in-game!" : @"Menu ESP đã kích hoạt thành công trong game!") tagColor:DSColorSuccess()];
     });
 
-    [self.backgroundView setUserInteractionEnabled:NO];
+    [self.backgroundView setUserInteractionEnabled:YES];
 }
 
 - (void)doDisableHUD
 {
     BOOL isNowEnabled = [self isHUDEnabled];
-    if (!isNowEnabled) return;
+    if (!isNowEnabled && !_isHUDLaunching) return;
+
+    _isHUDLaunching = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self->_mainBtnSpinner stopAnimating];
+        self->_mainButton.contentEdgeInsets = UIEdgeInsetsZero;
+    });
 
     BOOL isEN = IsEnglish();
     [self appendConsoleLog:@"INFO" message:(isEN ? @"User requested HUD stop" : @"Yêu cầu tắt HUD từ người dùng") tagColor:DSColorAccent()];
@@ -1798,9 +1619,6 @@ static BOOL IsPUBGProcessRunning(void) {
 
     [self setHUDEnabled:NO];
 
-#if USE_DARKSWORD
-    [self hideDSProgressOverlay];
-#endif
     [self.backgroundView setUserInteractionEnabled:NO];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -1813,6 +1631,8 @@ static BOOL IsPUBGProcessRunning(void) {
 
 - (void)tapMainButton:(UIButton *)sender
 {
+    if (_isHUDLaunching) return;
+
     BOOL isNowEnabled = [self isHUDEnabled];
 
     // If HUD is currently ON, turn it OFF:
@@ -1832,95 +1652,67 @@ static BOOL IsPUBGProcessRunning(void) {
     [self doEnableHUD];
 }
 
-#pragma mark - DarkSword Progress Overlay
+#pragma mark - DarkSword Progress Callbacks
 
 #if USE_DARKSWORD
 - (void)showDSProgressOverlay
 {
-    if (!_dsProgressOverlay) {
-        UIView *overlay = [[UIView alloc] initWithFrame:self.view.bounds];
-        overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        overlay.backgroundColor = [DSColorInk() colorWithAlphaComponent:0.97];
-
-        UIProgressView *bar = [[UIProgressView alloc] initWithProgressViewStyle:UIProgressViewStyleBar];
-        bar.translatesAutoresizingMaskIntoConstraints = NO;
-        bar.progressTintColor = DSColorAccent();
-        bar.trackTintColor = [DSColorHairline() colorWithAlphaComponent:0.7];
-        bar.progress = 0.0;
-        [overlay addSubview:bar];
-
-        UILabel *label = [[UILabel alloc] init];
-        label.translatesAutoresizingMaskIntoConstraints = NO;
-        label.textColor = UIColor.whiteColor;
-        label.font = DSFontMono(14.0, UIFontWeightSemibold);
-        label.textAlignment = NSTextAlignmentCenter;
-        label.numberOfLines = 0;
-        label.lineBreakMode = NSLineBreakByWordWrapping;
-        label.text = [NSString stringWithFormat:@"%@\n0%%", NSLocalizedString(@"Initializing DarkPubg", nil)];
-        [overlay addSubview:label];
-
-        [NSLayoutConstraint activateConstraints:@[
-            [bar.centerYAnchor constraintEqualToAnchor:overlay.centerYAnchor constant:-12.0],
-            [bar.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:44.0],
-            [bar.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor constant:-44.0],
-            [bar.heightAnchor constraintEqualToConstant:4.0],
-            [label.topAnchor constraintEqualToAnchor:bar.bottomAnchor constant:18.0],
-            [label.leadingAnchor constraintEqualToAnchor:overlay.leadingAnchor constant:28.0],
-            [label.trailingAnchor constraintEqualToAnchor:overlay.trailingAnchor constant:-28.0],
-            [label.bottomAnchor constraintLessThanOrEqualToAnchor:overlay.bottomAnchor constant:-40.0],
-        ]];
-        _dsProgressOverlay = overlay;
-        _dsProgressBar = bar;
-        _dsProgressLabel = label;
-    }
-
-    if (!_dsProgressOverlay.superview) [self.view addSubview:_dsProgressOverlay];
-    [self.view bringSubviewToFront:_dsProgressOverlay];
-    _dsProgressOverlay.hidden = NO;
-    _dsProgressBar.progressTintColor = DSColorAccent();
-    _dsProgressBar.progress = 0.0;
-    _dsProgressLabel.numberOfLines = 0;
-    _dsProgressLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _dsProgressLabel.font = DSFontMono(14.0, UIFontWeightSemibold);
-    _dsProgressLabel.textAlignment = NSTextAlignmentCenter;
-    _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n0%%", NSLocalizedString(@"Initializing DarkPubg", nil)];
+    // Replaced by inline spinner & progress % on OPEN HUD button
 }
 
 - (void)hideDSProgressOverlay
 {
-    _dsProgressOverlay.hidden = YES;
+    // Replaced by inline spinner & progress % on OPEN HUD button
 }
 
 - (void)showDSFailure:(NSString *)error
 {
-    if (!_dsProgressOverlay) [self showDSProgressOverlay];
-    if (!_dsProgressOverlay.superview) [self.view addSubview:_dsProgressOverlay];
-    [self.view bringSubviewToFront:_dsProgressOverlay];
-    _dsProgressOverlay.hidden = NO;
-    _dsProgressBar.progress = 1.0f;
-    _dsProgressBar.progressTintColor = DSColorDanger();
-    _dsProgressLabel.numberOfLines = 0;
-    _dsProgressLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    _dsProgressLabel.font = DSFontMono(13.0, UIFontWeightRegular);
-    _dsProgressLabel.textAlignment = NSTextAlignmentLeft;
-    _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n\n%@",
-        NSLocalizedString(@"DarkPubg initialization failed", nil),
-        error.length > 0 ? error : NSLocalizedString(@"Unknown error", nil)];
+    _isHUDLaunching = NO;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self->_mainBtnSpinner stopAnimating];
+        self->_mainButton.contentEdgeInsets = UIEdgeInsetsZero;
+        [self reloadMainButtonState];
+    });
+    [self appendConsoleLog:@"ERR" message:error tagColor:DSColorDanger()];
 }
 
 - (void)dsProgressDidChange:(NSNotification *)note
 {
     if (!DSBridgeIsRunning()) {
-        if (DSBridgeHUDEnabled()) [self hideDSProgressOverlay];
+        if (DSBridgeHUDEnabled()) {
+            _isHUDLaunching = NO;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self->_mainBtnSpinner stopAnimating];
+                self->_mainButton.contentEdgeInsets = UIEdgeInsetsZero;
+                [self reloadMainButtonState];
+            });
+        }
         return;
     }
     double p = DSBridgeProgress();
     if (p < 0.0) p = 0.0;
     if (p > 1.0) p = 1.0;
-    _dsProgressBar.progress = (float)p;
+    int pct = (int)llround(p * 100.0);
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+
     NSString *stage = DSBridgeStage();
-    if (stage.length == 0) stage = NSLocalizedString(@"Initializing DarkPubg", nil);
-    _dsProgressLabel.text = [NSString stringWithFormat:@"%@\n%d%%", stage, (int)llround(p * 100.0)];
+    BOOL isEN = IsEnglish();
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self->_isHUDLaunching) {
+            [self->_mainBtnSpinner startAnimating];
+            self->_mainButton.contentEdgeInsets = UIEdgeInsetsMake(0, 24, 0, 0);
+            NSString *title = isEN
+                ? [NSString stringWithFormat:@"LAUNCHING... %d%%", pct]
+                : [NSString stringWithFormat:@"ĐANG NẠP HUD... %d%%", pct];
+            [self->_mainButton setTitle:title forState:UIControlStateNormal];
+
+            if (stage && stage.length > 0) {
+                self->_buttonSubLabel.text = stage;
+            }
+        }
+    });
 }
 #endif
 

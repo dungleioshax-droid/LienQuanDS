@@ -282,22 +282,22 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.btnVie.hidden = YES;
     [self.titleBox addSubview:self.btnVie];
 
-    // 4. Contact button: [ DLX07 ]
+    // 4. Contact button: [ Dũng Lê ]
     self.contactBtn = [UIButton buttonWithType:UIButtonTypeCustom];
     self.contactBtn.frame = CGRectMake(186, 3, 56, 18);
     self.contactBtn.backgroundColor = DSColorAccent();
     self.contactBtn.layer.cornerRadius = 9.0;
     self.contactBtn.clipsToBounds = YES;
-    [self.contactBtn setTitle:@"DLX07" forState:UIControlStateNormal];
+    [self.contactBtn setTitle:@"Dũng Lê" forState:UIControlStateNormal];
     [self.contactBtn setTitleColor:DSColorOnAccent() forState:UIControlStateNormal];
     self.contactBtn.titleLabel.font = DSFontBody(9.0, UIFontWeightHeavy);
     [self.contactBtn addTarget:self action:@selector(contactTapped) forControlEvents:UIControlEventTouchUpInside];
     self.contactBtn.hidden = YES;
     [self.titleBox addSubview:self.contactBtn];
 
-    // 5. Handles: @DLX07  DARKSWORD~KERNEL
+    // 5. Handles: Dũng Lê  DARKSWORD~KERNEL
     self.handleMajed = [[UILabel alloc] initWithFrame:CGRectMake(248, 3, 72, 18)];
-    self.handleMajed.text = @"@DLX07";
+    self.handleMajed.text = @"Dũng Lê";
     self.handleMajed.textColor = DSColorTextPrimary();
     self.handleMajed.font = DSFontBody(9.5, UIFontWeightBold);
     self.handleMajed.textAlignment = NSTextAlignmentLeft;
