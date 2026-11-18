@@ -19,7 +19,7 @@ permissions:
 jobs:
   build:
     name: Build and upload DarkPubg IPA
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout
