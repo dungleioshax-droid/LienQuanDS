@@ -39,6 +39,9 @@ static const CGFloat kMadnessPanelH = 325.0f;
 @property (nonatomic, strong) NSTimer *clockTimer;
 
 // Circular Radar HUD
+@property (nonatomic, strong) CAShapeLayer *radarBgLayer;
+@property (nonatomic, strong) CAShapeLayer *radarDotsLayer;
+@property (nonatomic, strong) CAShapeLayer *radarKnockedDotsLayer;
 @property (nonatomic, strong) CAShapeLayer *triangleMaskLayer;
 @property (nonatomic, strong) CAShapeLayer *radacircle;
 @property (nonatomic, strong) CAShapeLayer *radacircle2;
@@ -393,19 +396,14 @@ static const CGFloat kMadnessPanelH = 325.0f;
     UIPanGestureRecognizer *radarPan = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handleRadarPan:)];
     [self.dragMap addGestureRecognizer:radarPan];
 
-    // 1. Center green triangle
-    UIBezierPath *tri = [UIBezierPath bezierPath];
-    [tri moveToPoint:CGPointMake(rx - 5.0f, ry + 5.0f)];
-    [tri addLineToPoint:CGPointMake(rx + 5.0f, ry + 5.0f)];
-    [tri addLineToPoint:CGPointMake(rx, ry - 5.0f)];
-    [tri closePath];
-    self.triangleMaskLayer = [CAShapeLayer layer];
-    self.triangleMaskLayer.path = tri.CGPath;
-    self.triangleMaskLayer.strokeColor = DSColorAccent().CGColor;
-    self.triangleMaskLayer.fillColor = DSColorAccent().CGColor;
-    [self.dragMap.layer addSublayer:self.triangleMaskLayer];
+    // 0. Radar Background Disc (dark semi-transparent disc)
+    self.radarBgLayer = [CAShapeLayer layer];
+    self.radarBgLayer.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rx, ry) radius:47.0f startAngle:0 endAngle:(CGFloat)(2*M_PI) clockwise:YES].CGPath;
+    self.radarBgLayer.fillColor = [UIColor colorWithRed:0.04f green:0.06f blue:0.08f alpha:0.55f].CGColor;
+    self.radarBgLayer.strokeColor = [UIColor clearColor].CGColor;
+    [self.dragMap.layer addSublayer:self.radarBgLayer];
 
-    // 2. FOV lines
+    // 1. FOV lines
     UIBezierPath *line = [UIBezierPath bezierPath];
     [line moveToPoint:CGPointMake(rx, ry)];
     [line addLineToPoint:CGPointMake(rx - 33.0f, ry - 33.0f)];
@@ -417,7 +415,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.ViewLine.lineWidth = 1.0f;
     [self.dragMap.layer addSublayer:self.ViewLine];
 
-    // 3. Inner red circle (radius 17)
+    // 2. Inner red circle (radius 17 ~ 50m)
     self.radacircle = [CAShapeLayer layer];
     self.radacircle.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rx, ry) radius:17.0f startAngle:0 endAngle:(CGFloat)(2*M_PI) clockwise:YES].CGPath;
     self.radacircle.strokeColor = DSColorDanger().CGColor;
@@ -425,7 +423,7 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.radacircle.lineWidth = 1.0f;
     [self.dragMap.layer addSublayer:self.radacircle];
 
-    // 4. Middle orange circle (radius 32)
+    // 3. Middle orange circle (radius 32 ~ 100m)
     self.radacircle2 = [CAShapeLayer layer];
     self.radacircle2.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rx, ry) radius:32.0f startAngle:0 endAngle:(CGFloat)(2*M_PI) clockwise:YES].CGPath;
     self.radacircle2.strokeColor = DSColorWarning().CGColor;
@@ -433,13 +431,129 @@ static const CGFloat kMadnessPanelH = 325.0f;
     self.radacircle2.lineWidth = 1.0f;
     [self.dragMap.layer addSublayer:self.radacircle2];
 
-    // 5. Outer green circle (radius 47)
+    // 4. Outer green circle (radius 47 ~ 150m)
     self.radacircle3 = [CAShapeLayer layer];
     self.radacircle3.path = [UIBezierPath bezierPathWithArcCenter:CGPointMake(rx, ry) radius:47.0f startAngle:0 endAngle:(CGFloat)(2*M_PI) clockwise:YES].CGPath;
     self.radacircle3.strokeColor = DSColorAccent().CGColor;
     self.radacircle3.fillColor = UIColor.clearColor.CGColor;
     self.radacircle3.lineWidth = 1.0f;
     [self.dragMap.layer addSublayer:self.radacircle3];
+
+    // 5. Alive enemy / bot red dots layer (crisp red dots with thin white outline)
+    self.radarDotsLayer = [CAShapeLayer layer];
+    self.radarDotsLayer.fillColor = [UIColor colorWithRed:1.0f green:0.12f blue:0.12f alpha:1.0f].CGColor;
+    self.radarDotsLayer.strokeColor = [UIColor whiteColor].CGColor;
+    self.radarDotsLayer.lineWidth = 0.8f;
+    [self.dragMap.layer addSublayer:self.radarDotsLayer];
+
+    // 6. Knocked enemy orange warning dots layer
+    self.radarKnockedDotsLayer = [CAShapeLayer layer];
+    self.radarKnockedDotsLayer.fillColor = [UIColor colorWithRed:1.0f green:0.55f blue:0.0f alpha:1.0f].CGColor;
+    self.radarKnockedDotsLayer.strokeColor = [UIColor blackColor].CGColor;
+    self.radarKnockedDotsLayer.lineWidth = 0.8f;
+    [self.dragMap.layer addSublayer:self.radarKnockedDotsLayer];
+
+    // 7. Center green triangle (local player position & heading, placed on top)
+    UIBezierPath *tri = [UIBezierPath bezierPath];
+    [tri moveToPoint:CGPointMake(rx - 5.0f, ry + 5.0f)];
+    [tri addLineToPoint:CGPointMake(rx + 5.0f, ry + 5.0f)];
+    [tri addLineToPoint:CGPointMake(rx, ry - 5.0f)];
+    [tri closePath];
+    self.triangleMaskLayer = [CAShapeLayer layer];
+    self.triangleMaskLayer.path = tri.CGPath;
+    self.triangleMaskLayer.strokeColor = DSColorAccent().CGColor;
+    self.triangleMaskLayer.fillColor = DSColorAccent().CGColor;
+    [self.dragMap.layer addSublayer:self.triangleMaskLayer];
+}
+
+- (void)updateRadarWithPlayers:(nullable const void *)players count:(int)count {
+    if (!self.dragMap || self.dragMap.hidden || !g_pubgEspRadar) {
+        if (self.radarDotsLayer && self.radarDotsLayer.path != nil) {
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            self.radarDotsLayer.path = nil;
+            if (self.radarKnockedDotsLayer) self.radarKnockedDotsLayer.path = nil;
+            [CATransaction commit];
+        }
+        return;
+    }
+
+    if (!players || count <= 0) {
+        if (self.radarDotsLayer && self.radarDotsLayer.path != nil) {
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            self.radarDotsLayer.path = nil;
+            if (self.radarKnockedDotsLayer) self.radarKnockedDotsLayer.path = nil;
+            [CATransaction commit];
+        }
+        return;
+    }
+
+    const DSPUBGProjectedPlayer *playerList = (const DSPUBGProjectedPlayer *)players;
+    const CGFloat rx = 47.0f;
+    const CGFloat ry = 47.0f;
+    const CGFloat maxRadius = 43.5f;
+    const CGFloat scale = 43.5f / 150.0f; // 150m max visible radius on radar (~0.29 pt/m)
+    const CGFloat dotRadius = 2.8f;
+    const CGFloat dotDiameter = dotRadius * 2.0f;
+
+    UIBezierPath *aliveDots = [UIBezierPath bezierPath];
+    UIBezierPath *knockedDots = [UIBezierPath bezierPath];
+    int aliveCount = 0;
+    int knockedCount = 0;
+
+    for (int i = 0; i < count; i++) {
+        const DSPUBGProjectedPlayer &p = playerList[i];
+        if (p.isDead) continue;
+
+        // Relative coordinates to camera:
+        // camRelX: cm Right (+X)
+        // camRelZ: cm Forward (+Z)
+        float relX = p.camRelX * 0.01f; // meters right
+        float relZ = p.camRelZ * 0.01f; // meters forward
+
+        if (isnan(relX) || isnan(relZ) || isinf(relX) || isinf(relZ)) continue;
+
+        // In radar coordinates:
+        // Forward is UP (-Y)
+        // Right is +X
+        float ox = relX * scale;
+        float oy = -relZ * scale;
+
+        float dist = hypotf(ox, oy);
+        if (dist > maxRadius) {
+            if (dist > 0.001f) {
+                ox = (ox / dist) * maxRadius;
+                oy = (oy / dist) * maxRadius;
+            } else {
+                continue;
+            }
+        }
+
+        CGFloat dotX = rx + (CGFloat)ox;
+        CGFloat dotY = ry + (CGFloat)oy;
+
+        CGRect r = CGRectMake(dotX - dotRadius, dotY - dotRadius, dotDiameter, dotDiameter);
+        UIBezierPath *circlePath = [UIBezierPath bezierPathWithOvalInRect:r];
+
+        if (p.isKnocked) {
+            [knockedDots appendPath:circlePath];
+            knockedCount++;
+        } else {
+            [aliveDots appendPath:circlePath];
+            aliveCount++;
+        }
+    }
+
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    if (self.radarDotsLayer) {
+        self.radarDotsLayer.path = (aliveCount > 0) ? aliveDots.CGPath : nil;
+    }
+    if (self.radarKnockedDotsLayer) {
+        self.radarKnockedDotsLayer.path = (knockedCount > 0) ? knockedDots.CGPath : nil;
+    }
+    [CATransaction commit];
 }
 
 #pragma mark - Clock & Contact

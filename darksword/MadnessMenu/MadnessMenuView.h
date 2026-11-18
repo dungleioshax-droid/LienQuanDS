@@ -57,6 +57,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)attachToWindow:(UIWindow *)window;
 - (void)loadMenu; // original selector spelling: looadmenu
 - (void)resetToDefaults;
+- (void)updateRadarWithPlayers:(nullable const void *)players count:(int)count;
 
 @property (nonatomic, strong, readonly) UIButton *panel;
 @property (nonatomic, strong, readonly) UIButton *handle;

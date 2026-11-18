@@ -512,6 +512,7 @@ static void ds_hosted_esp_set_enabled(bool enabled) {
 - (BOOL)dsShouldAcceptHitView:(UIView *)hitView;
 - (UIButton *)toggleButton;
 - (void)dsUpdatePubgLanguage;
+- (void)dsUpdateRadarWithPlayers:(const DSPUBGProjectedPlayer *)players count:(int)count;
 @end
 
 static UIWindow *g_hostedMenuWindow = nil;
@@ -607,6 +608,12 @@ static void ds_hosted_menu_set_expanded(BOOL expanded);
         [_madnessMenu previewOpen];
     } else {
         [_madnessMenu previewClose];
+    }
+}
+
+- (void)dsUpdateRadarWithPlayers:(const DSPUBGProjectedPlayer *)players count:(int)count {
+    if (_madnessMenu) {
+        [_madnessMenu updateRadarWithPlayers:players count:count];
     }
 }
 
@@ -995,6 +1002,9 @@ static CATextLayer *g_hostedPUBGTopCountLabel = nil;
 static CATextLayer *g_hostedPUBGStatusLabel = nil;
 
 static void ds_hosted_pubg_hide_all(void) {
+    if (g_hostedMenuViewController) {
+        [g_hostedMenuViewController dsUpdateRadarWithPlayers:NULL count:0];
+    }
     for (int i = 0; i < kDSPUBGMaxPlayers; i++) {
         if (g_hostedPUBGBoxLayers[i] && !g_hostedPUBGBoxLayers[i].hidden) g_hostedPUBGBoxLayers[i].hidden = YES;
         if (g_hostedPUBGSkeletonLayers[i] && !g_hostedPUBGSkeletonLayers[i].hidden) g_hostedPUBGSkeletonLayers[i].hidden = YES;
@@ -1960,6 +1970,11 @@ static void ds_hosted_apply_pubg(void) {
     // Banner removed per user request: "không cần làm cái thông báo địch rút bom đâu xoá đi cho tôi"
     if (g_hostedPUBGGrenadeDangerBanner) {
         g_hostedPUBGGrenadeDangerBanner.hidden = YES;
+    }
+
+    // Update circular radar HUD with live enemy dots
+    if (g_hostedMenuViewController) {
+        [g_hostedMenuViewController dsUpdateRadarWithPlayers:players count:count];
     }
     } @catch (NSException *ex) {
         // Guard against any UIKit / CoreAnimation unexpected exception
